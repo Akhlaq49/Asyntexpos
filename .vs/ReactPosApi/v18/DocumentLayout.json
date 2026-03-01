@@ -1,0 +1,256 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\html\\html\\ReactPosApi\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\controllers\\subcategoriescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:controllers\\subcategoriescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\controllers\\whatsappcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:controllers\\whatsappcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\controllers\\accounttypescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:controllers\\accounttypescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\database\\saleunification.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:database\\saleunification.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\database\\financetables.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:database\\financetables.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\services\\financereportservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:services\\financereportservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\services\\reportservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:services\\reportservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\services\\hrmservices.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:services\\hrmservices.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\data\\scripts\\createhrmtables.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:data\\scripts\\createhrmtables.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\data\\scripts\\addpartycolumns.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:data\\scripts\\addpartycolumns.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\data\\scripts\\createpurchasestable_complete.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:data\\scripts\\createpurchasestable_complete.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\controllers\\purchasescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:controllers\\purchasescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\data\\scripts\\droppurchasestable.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:data\\scripts\\droppurchasestable.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|d:\\html\\html\\reactposapi\\data\\scripts\\createpurchasestable.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}",
+      "RelativeMoniker": "D:0:0:{4439ACA5-F4FB-38AB-DAC4-8C84F0AED5AE}|ReactPosApi.csproj|solutionrelative:data\\scripts\\createpurchasestable.sql||{CC5D8DF0-88F4-4BB2-9DBB-B48CEE65C30A}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "AccountTypesController.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Controllers\\AccountTypesController.cs",
+              "RelativeDocumentMoniker": "Controllers\\AccountTypesController.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Controllers\\AccountTypesController.cs",
+              "RelativeToolTip": "Controllers\\AccountTypesController.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-28T14:14:28.913Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Program.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAAFsAAAAAAAAAAAAAAGQAAAAoAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-28T09:09:46.021Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "SubCategoriesController.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Controllers\\SubCategoriesController.cs",
+              "RelativeDocumentMoniker": "Controllers\\SubCategoriesController.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Controllers\\SubCategoriesController.cs",
+              "RelativeToolTip": "Controllers\\SubCategoriesController.cs",
+              "ViewState": "AgIAACoAAAAAAAAAAAAowAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-28T14:18:59.605Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "WhatsAppController.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Controllers\\WhatsAppController.cs",
+              "RelativeDocumentMoniker": "Controllers\\WhatsAppController.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Controllers\\WhatsAppController.cs",
+              "RelativeToolTip": "Controllers\\WhatsAppController.cs",
+              "ViewState": "AgIAABMAAAAAAAAAAAAQwBcAAAADAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-28T14:15:45.032Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "SaleUnification.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Database\\SaleUnification.sql",
+              "RelativeDocumentMoniker": "Database\\SaleUnification.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Database\\SaleUnification.sql",
+              "RelativeToolTip": "Database\\SaleUnification.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-27T23:13:04.473Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "FinanceTables.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Database\\FinanceTables.sql",
+              "RelativeDocumentMoniker": "Database\\FinanceTables.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Database\\FinanceTables.sql",
+              "RelativeToolTip": "Database\\FinanceTables.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-27T22:36:23.619Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "FinanceReportService.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Services\\FinanceReportService.cs",
+              "RelativeDocumentMoniker": "Services\\FinanceReportService.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Services\\FinanceReportService.cs",
+              "RelativeToolTip": "Services\\FinanceReportService.cs",
+              "ViewState": "AgIAAHoAAAAAAAAAAAAAwIEAAAAsAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-27T22:31:56.87Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "ReportService.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Services\\ReportService.cs",
+              "RelativeDocumentMoniker": "Services\\ReportService.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Services\\ReportService.cs",
+              "RelativeToolTip": "Services\\ReportService.cs",
+              "ViewState": "AgIAAHcEAAAAAAAAAAAAwH4EAAA9AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-27T21:32:06.609Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "HrmServices.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Services\\HrmServices.cs",
+              "RelativeDocumentMoniker": "Services\\HrmServices.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Services\\HrmServices.cs",
+              "RelativeToolTip": "Services\\HrmServices.cs",
+              "ViewState": "AgIAAB0CAAAAAAAAAAAAACICAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-27T20:24:20.063Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "CreateHrmTables.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\CreateHrmTables.sql",
+              "RelativeDocumentMoniker": "Data\\Scripts\\CreateHrmTables.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\CreateHrmTables.sql",
+              "RelativeToolTip": "Data\\Scripts\\CreateHrmTables.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-27T20:06:25.947Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "AddPartyColumns.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\AddPartyColumns.sql",
+              "RelativeDocumentMoniker": "Data\\Scripts\\AddPartyColumns.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\AddPartyColumns.sql",
+              "RelativeToolTip": "Data\\Scripts\\AddPartyColumns.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-27T19:29:28.588Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
+              "Title": "CreatePurchasesTable_Complete.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\CreatePurchasesTable_Complete.sql",
+              "RelativeDocumentMoniker": "Data\\Scripts\\CreatePurchasesTable_Complete.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\CreatePurchasesTable_Complete.sql",
+              "RelativeToolTip": "Data\\Scripts\\CreatePurchasesTable_Complete.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-26T22:23:39.354Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 14,
+              "Title": "CreatePurchasesTable.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\CreatePurchasesTable.sql",
+              "RelativeDocumentMoniker": "Data\\Scripts\\CreatePurchasesTable.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\CreatePurchasesTable.sql",
+              "RelativeToolTip": "Data\\Scripts\\CreatePurchasesTable.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-26T22:23:34.996Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 12,
+              "Title": "PurchasesController.cs",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Controllers\\PurchasesController.cs",
+              "RelativeDocumentMoniker": "Controllers\\PurchasesController.cs",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Controllers\\PurchasesController.cs",
+              "RelativeToolTip": "Controllers\\PurchasesController.cs",
+              "ViewState": "AgIAADkAAAAAAAAAAAD4v0EAAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-26T22:12:21.936Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 13,
+              "Title": "DropPurchasesTable.sql",
+              "DocumentMoniker": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\DropPurchasesTable.sql",
+              "RelativeDocumentMoniker": "Data\\Scripts\\DropPurchasesTable.sql",
+              "ToolTip": "D:\\html\\html\\ReactPosApi\\Data\\Scripts\\DropPurchasesTable.sql",
+              "RelativeToolTip": "Data\\Scripts\\DropPurchasesTable.sql",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
+              "WhenOpened": "2026-02-26T22:23:37.939Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

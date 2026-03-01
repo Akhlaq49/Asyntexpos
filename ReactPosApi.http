@@ -1,0 +1,6 @@
+@ReactPosApi_HostAddress = http://localhost:5193
+
+GET {{ReactPosApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
