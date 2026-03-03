@@ -3,10 +3,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ReactPosApi.Models;
 
-public class BankAccount
+public class BankAccount : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [Required, MaxLength(200)]
     public string HolderName { get; set; } = string.Empty;

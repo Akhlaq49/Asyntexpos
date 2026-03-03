@@ -85,7 +85,10 @@ public class UserService : IUserService
         if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
             throw new ArgumentException("Password must be at least 6 characters.");
 
-        var exists = await _db.Parties.AnyAsync(p => p.Email == dto.Email.ToLower().Trim());
+        // Bypass tenant filter — emails must be globally unique for login-capable roles
+        var exists = await _db.Parties
+            .IgnoreQueryFilters()
+            .AnyAsync(p => p.Email == dto.Email.ToLower().Trim());
         if (exists)
             throw new InvalidOperationException("Email is already registered.");
 
@@ -118,7 +121,10 @@ public class UserService : IUserService
         var emailLower = dto.Email.ToLower().Trim();
         if (emailLower != party.Email)
         {
-            var exists = await _db.Parties.AnyAsync(p => p.Email == emailLower && p.Id != id);
+            // Bypass tenant filter — emails must be globally unique for login-capable roles
+            var exists = await _db.Parties
+                .IgnoreQueryFilters()
+                .AnyAsync(p => p.Email == emailLower && p.Id != id);
             if (exists)
                 throw new InvalidOperationException("Email is already registered.");
         }

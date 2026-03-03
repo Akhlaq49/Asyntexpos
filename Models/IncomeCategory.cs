@@ -2,10 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class IncomeCategory
+public class IncomeCategory : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [Required, MaxLength(50)]
     public string Code { get; set; } = string.Empty;

@@ -3,10 +3,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ReactPosApi.Models;
 
-public class Leave
+public class Leave : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     /// <summary>Employee who applied – FK to Parties</summary>
     public int EmployeeId { get; set; }

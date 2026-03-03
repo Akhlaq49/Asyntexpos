@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class Sale
+public class Sale : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [MaxLength(50)]
     public string Reference { get; set; } = string.Empty;
@@ -60,9 +62,11 @@ public class Sale
     public List<SalePayment> Payments { get; set; } = new();
 }
 
-public class SaleItem
+public class SaleItem : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     public int SaleId { get; set; }
     public Sale Sale { get; set; } = null!;
@@ -81,9 +85,11 @@ public class SaleItem
     public decimal TotalCost { get; set; }
 }
 
-public class SalePayment
+public class SalePayment : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     public int SaleId { get; set; }
     public Sale Sale { get; set; } = null!;

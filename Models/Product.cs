@@ -2,10 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class Product
+public class Product : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [MaxLength(100)]
     public string? Store { get; set; }

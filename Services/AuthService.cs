@@ -13,11 +13,13 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IFormFieldConfigService _formFieldConfigService;
 
-    public AuthService(AppDbContext db, IConfiguration config)
+    public AuthService(AppDbContext db, IConfiguration config, IFormFieldConfigService formFieldConfigService)
     {
         _db = db;
         _config = config;
+        _formFieldConfigService = formFieldConfigService;
     }
 
     private static readonly string[] LoginRoles = { "Admin", "Manager", "User" };
@@ -33,22 +35,40 @@ public class AuthService : IAuthService
         if (dto.Password.Length < 6)
             throw new ArgumentException("Password must be at least 6 characters.");
 
-        var exists = await _db.Parties.AnyAsync(p => p.Email == dto.Email.ToLower());
+        // Bypass tenant query filter — email must be globally unique for auth
+        var exists = await _db.Parties
+            .IgnoreQueryFilters()
+            .AnyAsync(p => p.Email == dto.Email.ToLower());
         if (exists)
             throw new InvalidOperationException("Email is already registered.");
+
+        // ── MULTI-TENANCY: Create a new tenant for every registration ──
+        var tenant = new Tenant
+        {
+            Name = dto.FullName.Trim(),
+            Email = dto.Email.ToLower().Trim(),
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.Tenants.Add(tenant);
+        await _db.SaveChangesAsync(); // Get the tenant Id
 
         var party = new Party
         {
             FullName = dto.FullName.Trim(),
             Email = dto.Email.ToLower().Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = "User",
+            Role = "Admin",  // Registering user becomes Admin (Super Admin) of their tenant
             IsActive = true,
+            TenantId = tenant.Id,  // Explicitly set — bypass auto-set since no JWT yet
             CreatedAt = DateTime.UtcNow
         };
 
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
+
+        // Seed default form field configs for the new tenant
+        await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
 
         var token = GenerateJwtToken(party);
         return new AuthResponseDto { Token = token, User = MapToDto(party) };
@@ -59,7 +79,9 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
             throw new ArgumentException("Email and password are required.");
 
+        // Bypass tenant query filter — login must search across all tenants
         var party = await _db.Parties
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.Email == dto.Email.ToLower()
                                    && LoginRoles.Contains(p.Role)
                                    && p.PasswordHash != null);
@@ -89,7 +111,8 @@ public class AuthService : IAuthService
             new Claim(ClaimTypes.NameIdentifier, party.Id.ToString()),
             new Claim(ClaimTypes.Email, party.Email ?? ""),
             new Claim(ClaimTypes.Name, party.FullName),
-            new Claim(ClaimTypes.Role, party.Role)
+            new Claim(ClaimTypes.Role, party.Role),
+            new Claim("TenantId", party.TenantId.ToString())  // ← embedded for all subsequent requests
         };
 
         var expiryMinutes = int.Parse(_config["Jwt:ExpiryMinutes"] ?? "1440");

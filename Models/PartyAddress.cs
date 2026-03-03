@@ -7,10 +7,12 @@ namespace ReactPosApi.Models;
 /// Stores billing/shipping addresses for Parties (customers, etc.).
 /// A Party can have multiple addresses with different types.
 /// </summary>
-public class PartyAddress
+public class PartyAddress : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     /// <summary>FK to Party (customer)</summary>
     public int PartyId { get; set; }

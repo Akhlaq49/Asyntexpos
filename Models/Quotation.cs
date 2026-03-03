@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class Quotation
+public class Quotation : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [MaxLength(50)]
     public string Reference { get; set; } = string.Empty;
@@ -44,9 +46,11 @@ public class Quotation
     public List<QuotationItem> Items { get; set; } = new();
 }
 
-public class QuotationItem
+public class QuotationItem : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     public int QuotationId { get; set; }
     public Quotation Quotation { get; set; } = null!;

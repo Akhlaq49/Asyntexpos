@@ -6,10 +6,12 @@ namespace ReactPosApi.Models;
 /// <summary>
 /// Purchase model for managing purchase orders and supplier/vendor purchases
 /// </summary>
-public class Purchase
+public class Purchase : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [MaxLength(100)]
     [Required]

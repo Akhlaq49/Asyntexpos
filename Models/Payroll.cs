@@ -3,10 +3,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ReactPosApi.Models;
 
-public class Payroll
+public class Payroll : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     /// <summary>Employee – FK to Parties</summary>
     public int EmployeeId { get; set; }

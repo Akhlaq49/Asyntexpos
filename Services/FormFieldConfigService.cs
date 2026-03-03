@@ -101,9 +101,12 @@ public class FormFieldConfigService : IFormFieldConfigService
         return true;
     }
 
-    public async Task SeedDefaultsAsync()
+    public async Task SeedDefaultsAsync(int tenantId = 0)
     {
-          var anyExist = await _db.FormFieldConfigs.AnyAsync();
+        // Use IgnoreQueryFilters — at startup there is no tenant context in JWT
+        var anyExist = await _db.FormFieldConfigs
+            .IgnoreQueryFilters()
+            .AnyAsync(f => tenantId == 0 || f.TenantId == tenantId);
         if (anyExist) return; // already seeded
 
         var defaults = new List<FormFieldConfig>
@@ -163,6 +166,7 @@ public class FormFieldConfigService : IFormFieldConfigService
 
         foreach (var d in defaults)
         {
+            d.TenantId = tenantId;  // Explicitly set tenant for seeded records
             d.CreatedAt = DateTime.UtcNow;
             d.UpdatedAt = DateTime.UtcNow;
         }

@@ -7,10 +7,12 @@ namespace ReactPosApi.Models;
 /// Join table linking a Party (as guarantor) to an InstallmentPlan.
 /// A party can guarantee multiple plans; a plan can have multiple guarantors.
 /// </summary>
-public class PlanGuarantor
+public class PlanGuarantor : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     public int PlanId { get; set; }
 

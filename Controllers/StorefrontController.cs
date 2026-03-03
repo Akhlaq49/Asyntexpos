@@ -370,7 +370,8 @@ public class StorefrontController : ControllerBase
     [HttpPost("auth/register")]
     public async Task<IActionResult> Register([FromBody] StorefrontRegisterDto dto)
     {
-        if (await _db.Parties.AnyAsync(p => p.Email == dto.Email))
+        // Bypass tenant filter — check email globally to prevent duplicates
+        if (await _db.Parties.IgnoreQueryFilters().AnyAsync(p => p.Email == dto.Email))
             return Conflict(new { success = false, message = "Email already registered" });
 
         var party = new Party

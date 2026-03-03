@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class StockTransfer
+public class StockTransfer : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [MaxLength(200)]
     public string WarehouseFrom { get; set; } = string.Empty;
@@ -23,9 +25,11 @@ public class StockTransfer
     public List<StockTransferItem> Items { get; set; } = new();
 }
 
-public class StockTransferItem
+public class StockTransferItem : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     public int StockTransferId { get; set; }
     public StockTransfer StockTransfer { get; set; } = null!;

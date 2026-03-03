@@ -8,10 +8,12 @@ namespace ReactPosApi.Models;
 /// Supplier, Biller, Store, Warehouse, etc.
 /// The Role field distinguishes between types.
 /// </summary>
-public class Party
+public class Party : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [Required, MaxLength(200)]
     public string FullName { get; set; } = string.Empty;

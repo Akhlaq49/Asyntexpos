@@ -10,5 +10,5 @@ public interface IFormFieldConfigService
     Task<FormFieldConfig> UpsertAsync(string formName, string fieldName, string fieldLabel, bool isVisible);
     Task<List<FormFieldConfig>> BulkUpsertAsync(List<FormFieldConfig> configs);
     Task<bool> DeleteAsync(int id);
-    Task SeedDefaultsAsync();
+    Task SeedDefaultsAsync(int tenantId = 0);
 }

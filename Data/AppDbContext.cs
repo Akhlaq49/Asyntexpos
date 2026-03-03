@@ -1,11 +1,29 @@
+using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using ReactPosApi.Models;
+using ReactPosApi.Services;
 
 namespace ReactPosApi.Data;
 
 public class AppDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    private readonly int _tenantId;
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, ITenantProvider tenantProvider)
+        : base(options)
+    {
+        _tenantId = tenantProvider.TenantId;
+    }
+
+    /// <summary>
+    /// Exposed for EF Core query filter parameterization.
+    /// EF Core re-evaluates this property per query from the current DbContext instance.
+    /// </summary>
+    public int CurrentTenantId => _tenantId;
+
+    // Tenants (not tenant-scoped — global table)
+    public DbSet<Tenant> Tenants => Set<Tenant>();
 
     // Lookup tables
     public DbSet<Store> Stores => Set<Store>();
@@ -81,7 +99,7 @@ public class AppDbContext : DbContext
         // Category
         modelBuilder.Entity<Category>(e =>
         {
-            e.HasIndex(c => c.Slug).IsUnique();
+            e.HasIndex(c => new { c.TenantId, c.Slug }).IsUnique();
             e.Property(c => c.Status).HasDefaultValue("active");
         });
 
@@ -115,9 +133,9 @@ public class AppDbContext : DbContext
         // Party (unified: Admin, Manager, User, Customer, Guarantor, Supplier, Biller, Store, Warehouse, Employee)
         modelBuilder.Entity<Party>(e =>
         {
-            e.HasIndex(p => new { p.Email, p.Role })
+            e.HasIndex(p => new { p.TenantId, p.Email, p.Role })
              .IsUnique()
-             .HasDatabaseName("IX_Parties_Email_Role");
+             .HasDatabaseName("IX_Parties_Tenant_Email_Role");
             e.Property(p => p.Role).HasDefaultValue("Customer");
             e.Property(p => p.Status).HasDefaultValue("active");
             e.Property(p => p.IsActive).HasDefaultValue(true);
@@ -184,7 +202,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Attendance>(e =>
         {
             e.HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasIndex(a => new { a.EmployeeId, a.Date }).IsUnique();
+            e.HasIndex(a => new { a.TenantId, a.EmployeeId, a.Date }).IsUnique();
         });
 
         // InstallmentPlan
@@ -408,20 +426,20 @@ public class AppDbContext : DbContext
         // Coupon
         modelBuilder.Entity<Coupon>(e =>
         {
-            e.HasIndex(c => c.Code).IsUnique();
+            e.HasIndex(c => new { c.TenantId, c.Code }).IsUnique();
             e.Property(c => c.Discount).HasColumnType("decimal(18,2)");
         });
 
         // RolePermission
         modelBuilder.Entity<RolePermission>(e =>
         {
-            e.HasIndex(rp => new { rp.Role, rp.MenuKey }).IsUnique();
+            e.HasIndex(rp => new { rp.TenantId, rp.Role, rp.MenuKey }).IsUnique();
         });
 
         // FormFieldConfig
         modelBuilder.Entity<FormFieldConfig>(e =>
         {
-            e.HasIndex(f => new { f.FormName, f.FieldName }).IsUnique();
+            e.HasIndex(f => new { f.TenantId, f.FormName, f.FieldName }).IsUnique();
             e.Property(f => f.IsVisible).HasDefaultValue(true);
         });
 
@@ -443,5 +461,59 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.AccountType).WithMany(t => t.BankAccounts).HasForeignKey(x => x.AccountTypeId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.OpeningBalance).HasColumnType("decimal(18,2)");
         });
+
+        // ═══════════════════════════════════════════════════════════
+        // MULTI-TENANCY: Apply global query filters dynamically
+        // ═══════════════════════════════════════════════════════════
+        // For every entity implementing ITenantEntity, add a query filter:
+        //   e => e.TenantId == this.CurrentTenantId
+        // EF Core parameterizes the DbContext property reference, so the
+        // filter evaluates CurrentTenantId from the CURRENT DbContext instance
+        // on every query, even though the model is cached.
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (!typeof(ITenantEntity).IsAssignableFrom(entityType.ClrType))
+                continue;
+
+            var parameter = Expression.Parameter(entityType.ClrType, "e");
+            var tenantIdProperty = Expression.Property(parameter, nameof(ITenantEntity.TenantId));
+            var currentTenantId = Expression.Property(
+                Expression.Constant(this),
+                nameof(CurrentTenantId)
+            );
+            var filter = Expression.Lambda(
+                Expression.Equal(tenantIdProperty, currentTenantId),
+                parameter
+            );
+            entityType.SetQueryFilter(filter);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // MULTI-TENANCY: Auto-set TenantId on new entities
+    // ═══════════════════════════════════════════════════════════
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        SetTenantIdOnNewEntities();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        SetTenantIdOnNewEntities();
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void SetTenantIdOnNewEntities()
+    {
+        foreach (var entry in ChangeTracker.Entries<ITenantEntity>())
+        {
+            if (entry.State == EntityState.Added && entry.Entity.TenantId == 0 && _tenantId > 0)
+            {
+                entry.Entity.TenantId = _tenantId;
+            }
+        }
     }
 }

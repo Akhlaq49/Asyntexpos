@@ -2,10 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class Warehouse
+public class Warehouse : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [Required, MaxLength(100)]
     public string Value { get; set; } = string.Empty;

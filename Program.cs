@@ -14,6 +14,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Register application services
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IMiscellaneousRegisterService, MiscellaneousRegisterService>();
 builder.Services.AddScoped<IInstallmentService, InstallmentService>();
@@ -136,9 +138,26 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
 
-    // Seed admin party
-    if (!db.Parties.Any(p => p.Email == "admin@reactpos.com" && p.Role == "Admin"))
+    // ── MULTI-TENANCY: Seed default tenant + admin ──
+    // Use IgnoreQueryFilters() because there's no authenticated user at startup
+    var existingAdmin = db.Parties
+        .IgnoreQueryFilters()
+        .FirstOrDefault(p => p.Email == "admin@reactpos.com" && p.Role == "Admin");
+
+    if (existingAdmin == null)
     {
+        // Create default tenant
+        var defaultTenant = new Tenant
+        {
+            Name = "System Admin",
+            Email = "admin@reactpos.com",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Tenants.Add(defaultTenant);
+        db.SaveChanges();
+
+        // Create admin party under the default tenant
         db.Parties.Add(new Party
         {
             FullName = "Admin",
@@ -146,14 +165,38 @@ using (var scope = app.Services.CreateScope())
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
             Role = "Admin",
             IsActive = true,
+            TenantId = defaultTenant.Id,
             CreatedAt = DateTime.UtcNow
         });
         db.SaveChanges();
     }
+    else if (existingAdmin.TenantId == 0)
+    {
+        // Migration path: existing admin has no tenant — create one
+        var tenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
+        if (tenant == null)
+        {
+            tenant = new Tenant
+            {
+                Name = "System Admin",
+                Email = "admin@reactpos.com",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Tenants.Add(tenant);
+            db.SaveChanges();
+        }
+        existingAdmin.TenantId = tenant.Id;
+        db.SaveChanges();
+    }
 
-    // Seed default form field configurations
-    var formFieldConfigService = scope.ServiceProvider.GetRequiredService<IFormFieldConfigService>();
-    formFieldConfigService.SeedDefaultsAsync().GetAwaiter().GetResult();
+    // Seed default form field configurations for the default tenant
+    var seedTenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
+    if (seedTenant != null)
+    {
+        var formFieldConfigService = scope.ServiceProvider.GetRequiredService<IFormFieldConfigService>();
+        formFieldConfigService.SeedDefaultsAsync(seedTenant.Id).GetAwaiter().GetResult();
+    }
 }
 
 app.Run();

@@ -6,10 +6,12 @@ namespace ReactPosApi.Models;
 /// <summary>
 /// PurchaseItem model representing line items in a purchase order
 /// </summary>
-public class PurchaseItem
+public class PurchaseItem : ITenantEntity
 {
     [Key]
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [Required]
     [ForeignKey("Purchase")]

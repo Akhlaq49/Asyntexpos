@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class Invoice
+public class Invoice : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [MaxLength(50)]
     public string InvoiceNo { get; set; } = string.Empty;
@@ -66,9 +68,11 @@ public class Invoice
     public List<InvoiceItem> Items { get; set; } = new();
 }
 
-public class InvoiceItem
+public class InvoiceItem : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     public int InvoiceId { get; set; }
     public Invoice Invoice { get; set; } = null!;

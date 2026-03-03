@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
 
-public class FormFieldConfig
+public class FormFieldConfig : ITenantEntity
 {
     public int Id { get; set; }
+
+    public int TenantId { get; set; }
 
     [Required, MaxLength(100)]
     public string FormName { get; set; } = string.Empty;
