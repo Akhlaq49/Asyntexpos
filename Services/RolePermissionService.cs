@@ -12,7 +12,7 @@ public class RolePermissionService : IRolePermissionService
 
     public async Task<List<string>> GetPermissionsByRoleAsync(string role)
     {
-        if (role == "Admin")
+        if (role == "SuperAdmin" || role == "Admin")
             return new List<string> { "*" };
 
         return await _db.RolePermissions
@@ -32,11 +32,11 @@ public class RolePermissionService : IRolePermissionService
 
     public async Task<(bool success, int count, string? error)> UpdateRoleAsync(string role, string callerRole, List<string> menuKeys)
     {
-        if (callerRole != "Admin")
+        if (callerRole != "SuperAdmin" && callerRole != "Admin")
             return (false, 0, "Forbidden");
 
-        if (role == "Admin")
-            return (false, 0, "Admin role always has full access and cannot be modified.");
+        if (role == "SuperAdmin" || role == "Admin")
+            return (false, 0, "Admin/SuperAdmin roles always have full access and cannot be modified.");
 
         var existing = await _db.RolePermissions
             .Where(rp => rp.Role == role)

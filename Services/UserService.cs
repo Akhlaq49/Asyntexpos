@@ -8,9 +8,14 @@ namespace ReactPosApi.Services;
 public class UserService : IUserService
 {
     private readonly AppDbContext _db;
-    private static readonly string[] UserRoles = { "Admin", "Manager", "User" };
+    private readonly IFormFieldConfigService _formFieldConfigService;
+    private static readonly string[] UserRoles = { "SuperAdmin", "Admin", "Manager", "User" };
 
-    public UserService(AppDbContext db) => _db = db;
+    public UserService(AppDbContext db, IFormFieldConfigService formFieldConfigService)
+    {
+        _db = db;
+        _formFieldConfigService = formFieldConfigService;
+    }
 
     public async Task<PagedResult<UserDto>> GetAllPagedAsync(PaginationQuery query)
     {
@@ -92,19 +97,46 @@ public class UserService : IUserService
         if (exists)
             throw new InvalidOperationException("Email is already registered.");
 
+        var role = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
+
         var party = new Party
         {
             FullName = dto.FullName.Trim(),
             Email = dto.Email.ToLower().Trim(),
             Phone = dto.Phone?.Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim(),
+            Role = role,
             IsActive = dto.IsActive,
             CreatedAt = DateTime.UtcNow
         };
 
-        _db.Parties.Add(party);
-        await _db.SaveChangesAsync();
+        // ── MULTI-TENANCY: If SuperAdmin, create a new tenant for this user ──
+        if (role == "SuperAdmin")
+        {
+            var tenant = new Tenant
+            {
+                Name = dto.FullName.Trim(),
+                Email = dto.Email.ToLower().Trim(),
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Tenants.Add(tenant);
+            await _db.SaveChangesAsync(); // Get tenant Id
+
+            party.TenantId = tenant.Id; // Explicitly assign new tenant
+            _db.Parties.Add(party);
+            await _db.SaveChangesAsync();
+
+            // Seed default form field configs for the new tenant
+            await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+        }
+        else
+        {
+            // Non-SuperAdmin users inherit TenantId from current context (auto-set by SaveChanges)
+            _db.Parties.Add(party);
+            await _db.SaveChangesAsync();
+        }
+
         return MapToDto(party);
     }
 
@@ -132,8 +164,27 @@ public class UserService : IUserService
         party.FullName = dto.FullName.Trim();
         party.Email = emailLower;
         party.Phone = dto.Phone?.Trim();
-        party.Role = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
+        var newRole = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
         party.IsActive = dto.IsActive;
+
+        // If promoting to SuperAdmin and user doesn't already own a tenant, create one
+        if (newRole == "SuperAdmin" && party.Role != "SuperAdmin")
+        {
+            var tenant = new Tenant
+            {
+                Name = dto.FullName.Trim(),
+                Email = emailLower,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Tenants.Add(tenant);
+            await _db.SaveChangesAsync();
+
+            party.TenantId = tenant.Id;
+            await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+        }
+
+        party.Role = newRole;
 
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {

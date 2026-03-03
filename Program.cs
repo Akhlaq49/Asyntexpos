@@ -138,11 +138,11 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
 
-    // ── MULTI-TENANCY: Seed default tenant + admin ──
+    // ── MULTI-TENANCY: Seed default tenant + SuperAdmin ──
     // Use IgnoreQueryFilters() because there's no authenticated user at startup
     var existingAdmin = db.Parties
         .IgnoreQueryFilters()
-        .FirstOrDefault(p => p.Email == "admin@reactpos.com" && p.Role == "Admin");
+        .FirstOrDefault(p => p.Email == "admin@reactpos.com" && (p.Role == "SuperAdmin" || p.Role == "Admin"));
 
     if (existingAdmin == null)
     {
@@ -157,36 +157,46 @@ using (var scope = app.Services.CreateScope())
         db.Tenants.Add(defaultTenant);
         db.SaveChanges();
 
-        // Create admin party under the default tenant
+        // Create SuperAdmin party under the default tenant
         db.Parties.Add(new Party
         {
             FullName = "Admin",
             Email = "admin@reactpos.com",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
-            Role = "Admin",
+            Role = "SuperAdmin",
             IsActive = true,
             TenantId = defaultTenant.Id,
             CreatedAt = DateTime.UtcNow
         });
         db.SaveChanges();
     }
-    else if (existingAdmin.TenantId == 0)
+    else
     {
-        // Migration path: existing admin has no tenant — create one
-        var tenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
-        if (tenant == null)
+        // Upgrade existing "Admin" seed user to SuperAdmin if needed
+        if (existingAdmin.Role == "Admin")
         {
-            tenant = new Tenant
-            {
-                Name = "System Admin",
-                Email = "admin@reactpos.com",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            };
-            db.Tenants.Add(tenant);
-            db.SaveChanges();
+            existingAdmin.Role = "SuperAdmin";
         }
-        existingAdmin.TenantId = tenant.Id;
+
+        if (existingAdmin.TenantId == 0)
+        {
+            // Migration path: existing admin has no tenant — create one
+            var tenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
+            if (tenant == null)
+            {
+                tenant = new Tenant
+                {
+                    Name = "System Admin",
+                    Email = "admin@reactpos.com",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                db.Tenants.Add(tenant);
+                db.SaveChanges();
+            }
+            existingAdmin.TenantId = tenant.Id;
+        }
+
         db.SaveChanges();
     }
 

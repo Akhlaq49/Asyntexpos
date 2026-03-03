@@ -22,7 +22,7 @@ public class AuthService : IAuthService
         _formFieldConfigService = formFieldConfigService;
     }
 
-    private static readonly string[] LoginRoles = { "Admin", "Manager", "User" };
+    private static readonly string[] LoginRoles = { "SuperAdmin", "Admin", "Manager", "User" };
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
     {
@@ -42,7 +42,7 @@ public class AuthService : IAuthService
         if (exists)
             throw new InvalidOperationException("Email is already registered.");
 
-        // ── MULTI-TENANCY: Create a new tenant for every registration ──
+        // ── MULTI-TENANCY: Registration creates a SuperAdmin with a new tenant ──
         var tenant = new Tenant
         {
             Name = dto.FullName.Trim(),
@@ -58,7 +58,7 @@ public class AuthService : IAuthService
             FullName = dto.FullName.Trim(),
             Email = dto.Email.ToLower().Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = "Admin",  // Registering user becomes Admin (Super Admin) of their tenant
+            Role = "SuperAdmin",  // Registering user becomes SuperAdmin (tenant owner)
             IsActive = true,
             TenantId = tenant.Id,  // Explicitly set — bypass auto-set since no JWT yet
             CreatedAt = DateTime.UtcNow
