@@ -55,26 +55,50 @@ public class DashboardController : ControllerBase
         var overdueEntries = allEntries.Where(e => e.Status == "overdue").ToList();
         var dueEntries = allEntries.Where(e => e.Status == "due").ToList();
 
-        var totalCollected = paidEntries.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0))
-                           + partialEntries.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+        var totalCollected = paidEntries.Sum(e => (e.EmiAmount)) +
+                     partialEntries.Sum(e => (e.ActualPaidAmount ?? 0)) +
+                     partialEntries.Sum(e => (e.MiscAdjustedAmount ?? 0));
 
-        var totalOutstanding = allPlans.Where(p => p.Status == "active").Sum(p =>
-        {
-            var planEntries = allEntries.Where(e => e.PlanId == p.Id);
-            var paidForPlan = planEntries.Where(e => e.Status == "paid").Sum(e => e.EmiAmount);
-            return p.TotalPayable - p.DownPayment - paidForPlan;
-        });
+var totalOutstanding = allPlans
+    .Where(p => p.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
+    .Sum(p =>
+    {
+        // Get all entries for this plan
+        var planEntries = allEntries.Where(e => e.PlanId == p.Id);
+
+        // Total paid for this plan (Paid + Partial)
+        var paidForPlan = planEntries
+            .Where(e => e.Status?.Equals("Paid", StringComparison.OrdinalIgnoreCase) == true)
+            .Sum(e => e.EmiAmount);
+
+        var partialPaidForPlan = planEntries
+            .Where(e => e.Status?.Equals("Partial", StringComparison.OrdinalIgnoreCase) == true)
+            .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+
+        var totalPaidForPlan = paidForPlan + partialPaidForPlan;
+
+        // Outstanding for this plan
+        return (p.TotalPayable - (p.DownPayment) - totalPaidForPlan);
+    });
 
         var overdueAmount = overdueEntries.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0));
 
         // Collections this month
         var collectionsThisMonth = paidEntries
             .Where(e => !string.IsNullOrEmpty(e.PaidDate) && DateTime.TryParse(e.PaidDate, out var pd) && pd >= thisMonthStart)
-            .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+            .Sum(e => (e.EmiAmount) );
         var collectionsLastMonth = paidEntries
             .Where(e => !string.IsNullOrEmpty(e.PaidDate) && DateTime.TryParse(e.PaidDate, out var pd) && pd >= lastMonthStart && pd < thisMonthStart)
-            .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+            .Sum(e => (e.EmiAmount) );
 
+        var collectionsThisMonthPartial = partialEntries
+            .Where(e => !string.IsNullOrEmpty(e.PaidDate) && DateTime.TryParse(e.PaidDate, out var pd) && pd >= thisMonthStart)
+            .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+        var collectionsLastMonthPartial = partialEntries
+            .Where(e => !string.IsNullOrEmpty(e.PaidDate) && DateTime.TryParse(e.PaidDate, out var pd) && pd >= lastMonthStart && pd < thisMonthStart)
+            .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+        collectionsThisMonth = collectionsThisMonth + collectionsThisMonthPartial;
+        collectionsLastMonth = collectionsLastMonth + collectionsLastMonthPartial;
         // ── Customers ──
         var totalCustomers = await _db.Parties.CountAsync(p => p.Role == "Customer");
         var customersThisMonth = await _db.Parties.CountAsync(p => p.Role == "Customer" && p.CreatedAt >= thisMonthStart);
@@ -89,12 +113,15 @@ public class DashboardController : ControllerBase
 
             var collected = paidEntries
                 .Where(e => !string.IsNullOrEmpty(e.PaidDate) && DateTime.TryParse(e.PaidDate, out var pd) && pd >= monthStart && pd < monthEnd)
+                .Sum(e => (e.EmiAmount) );
+            var collectedPartial = partialEntries
+                .Where(e => !string.IsNullOrEmpty(e.PaidDate) && DateTime.TryParse(e.PaidDate, out var pd) && pd >= monthStart && pd < monthEnd)
                 .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
 
             var plansDue = allEntries
                 .Where(e => DateTime.TryParse(e.DueDate, out var dd) && dd >= monthStart && dd < monthEnd)
                 .Sum(e => e.EmiAmount);
-
+            collected = collected + collectedPartial;
             monthlyCollections.Add(new { month = monthLabel, collected, expected = plansDue });
         }
 
@@ -146,23 +173,37 @@ public class DashboardController : ControllerBase
             }).ToList();
 
         // ── Recent payments ──
-        var recentPayments = paidEntries
-            .Where(e => !string.IsNullOrEmpty(e.PaidDate))
-            .OrderByDescending(e => e.PaidDate)
-            .Take(10)
-            .Select(e =>
-            {
-                var plan = allPlans.FirstOrDefault(p => p.Id == e.PlanId);
-                return new
-                {
-                    planId = e.PlanId,
-                    installmentNo = e.InstallmentNo,
-                    paidDate = e.PaidDate,
-                    amount = (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0),
-                    customerName = plan?.Customer?.FullName ?? "Unknown",
-                    productName = plan?.Product?.ProductName ?? "Unknown"
-                };
-            }).ToList();
+       var recentPayments = allEntries
+    .Where(e => !string.IsNullOrEmpty(e.PaidDate))
+    .OrderByDescending(e => e.PaidDate)
+    .Take(10)
+    .Select(e =>
+    {
+        var plan = allPlans.FirstOrDefault(p => p.Id == e.PlanId);
+
+        decimal amount = 0;
+
+        if (e.Status?.Equals("Paid", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            amount = e.EmiAmount;
+        }
+        else if (e.Status?.Equals("Partial", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            amount = (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0);
+        }
+
+        return new
+        {
+            planId = e.PlanId,
+            installmentNo = e.InstallmentNo,
+            paidDate = e.PaidDate,
+            amount = amount,
+            customerName = plan?.Customer?.FullName ?? "Unknown",
+            productName = plan?.Product?.ProductName ?? "Unknown"
+        };
+    })
+    .ToList();
+        
 
         // ── Recent plans ──
         var recentPlans = allPlans

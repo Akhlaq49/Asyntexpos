@@ -198,6 +198,7 @@ public class InstallmentService : IInstallmentService
         }
         else
         {
+            entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
             entry.Status = "partial";
             entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
         }

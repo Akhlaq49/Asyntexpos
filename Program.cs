@@ -100,10 +100,13 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
                 "http://localhost:5173",
-                "http://localhost:3000",
+                "http://localhost:3001",
+                 "http://localhost:3000",
                 "http://localhost:4173",
                 "http://192.168.1.8:3000",
-                "http://192.168.1.8:5173"
+                "http://reactapp.asyntexconsultancy.com",
+                "https://reactapp.asyntexconsultancy.com"
+
             )
             .AllowAnyHeader()
             .AllowAnyMethod();
@@ -114,7 +117,7 @@ builder.Services.AddCors(options =>
 if (!builder.Configuration.GetSection("ASPNETCORE_URLS").Exists() &&
     string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 {
-    builder.WebHost.UseUrls("http://0.0.0.0:5000");
+    //builder.WebHost.UseUrls("http://0.0.0.0:5000");
 }
 
 var app = builder.Build();
