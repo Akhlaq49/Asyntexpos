@@ -179,3 +179,8 @@ D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publi
 D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.json
 D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
 D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.runtimeconfig.json
+D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\web.config
+D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.Development.json
+D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.json
+D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
+D:\my work place\POS\Asyntexpos\bin\Release\net8.0\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.runtimeconfig.json

@@ -66,6 +66,10 @@ builder.Services.AddScoped<IFinanceReportService, FinanceReportService>();
 // WhatsApp Cloud API
 builder.Services.AddHttpClient<IWhatsAppService, WhatsAppService>();
 
+// AI Agent Service
+builder.Services.AddScoped<IAgentToolExecutor, AgentToolExecutor>();
+builder.Services.AddHttpClient<IAgentService, AgentService>();
+
 // EF Core - MySQL (Pomelo)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
 var serverVersion = ServerVersion.AutoDetect(connectionString);
