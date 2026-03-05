@@ -196,10 +196,10 @@ public class ReportService : IReportService
             var dayPayments = dateGroups.GetValueOrDefault(dateStr, new List<Models.RepaymentEntry>());
             var dayPlans = plansInRange.Where(p => p.CreatedAt.Date == current.Date).ToList();
 
-            var cashCollected = dayPayments.Sum(p => p.ActualPaidAmount ?? 0);
-            var onlinePayments = dayPayments.Sum(p => p.MiscAdjustedAmount ?? 0);
+            var cashCollected = dayPayments.Where(p => p.Status == "paid").Sum(p => p.EmiAmount)
+                + dayPayments.Where(p => p.Status == "partial").Sum(p => (p.ActualPaidAmount ?? 0));
+            var onlinePayments = dayPayments.Where(p => p.Status == "partial").Sum(p => (p.MiscAdjustedAmount ?? 0));
             var downPayments = dayPlans.Sum(p => p.DownPayment);
-
             dailyEntries.Add(new DailyCashFlowEntryDto
             {
                 Date = dateStr,
