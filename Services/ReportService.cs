@@ -42,7 +42,8 @@ public class ReportService : IReportService
             }).ToList();
         }
 
-        var paidEntries = filteredEntries.Where(e => e.Status == "paid" || e.Status == "partial").ToList();
+        var paidEntries = filteredEntries.Where(e => e.Status == "paid").ToList();
+        var paidEntriesPartial = filteredEntries.Where(e => e.Status == "partial").ToList();
         var dueEntries = entries.Where(e => e.Status == "due" || e.Status == "overdue").ToList();
         var overdueEntries = entries.Where(e => e.Status == "overdue").ToList();
 
@@ -54,23 +55,40 @@ public class ReportService : IReportService
             {
                 Date = g.Key,
                 Count = g.Count(),
+                Amount = g.Sum(e => (e.EmiAmount) )
+            })
+            .OrderByDescending(c => c.Date)
+            .Take(30)
+            .ToList();
+        // Collection by date
+        var PartialcollectionByDate = paidEntriesPartial
+            .Where(e => !string.IsNullOrEmpty(e.PaidDate))
+            .GroupBy(e => e.PaidDate!.Length >= 10 ? e.PaidDate![..10] : e.PaidDate!)
+            .Select(g => new CollectionByDateDto
+            {
+                Date = g.Key,
+                Count = g.Count(),
                 Amount = g.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0))
             })
             .OrderByDescending(c => c.Date)
             .Take(30)
             .ToList();
+            
 
         return new InstallmentCollectionReportDto
         {
             TotalInstallmentsDue = dueEntries.Count + overdueEntries.Count + paidEntries.Count,
-            TotalCollected = paidEntries.Count,
+            TotalCollected = paidEntries.Count + paidEntriesPartial.Count,
             PendingCount = dueEntries.Count,
             LatePayments = overdueEntries.Count,
             TotalAmountDue = dueEntries.Sum(e => e.EmiAmount) + overdueEntries.Sum(e => e.EmiAmount),
-            TotalAmountCollected = paidEntries.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)),
+            TotalAmountCollected = paidEntries.Sum(e => (e.EmiAmount)) + paidEntriesPartial.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)),
             PendingAmount = dueEntries.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0)),
             LateAmount = overdueEntries.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0)),
             CollectionByDate = collectionByDate
+            .Concat(PartialcollectionByDate)
+            .OrderByDescending(c => c.Date)
+            .ToList()
         };
     }
 

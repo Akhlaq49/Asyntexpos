@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ReactPosApi")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b622f01fcd160c1153ce1382b6cd6c5e3987e467")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2d9a41453d819a4a07ed538268db56a5725388f5")]
 [assembly: System.Reflection.AssemblyProductAttribute("ReactPosApi")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ReactPosApi")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

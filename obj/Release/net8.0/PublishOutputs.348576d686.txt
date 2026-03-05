@@ -1,4 +1,7 @@
 D:\my work place\POS\Asyntexpos\publish\ReactPosApi.exe
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\web.config
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\web.config
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\web.config
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\web.config
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\web.config
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\web.config
@@ -19,6 +22,18 @@ D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\appsettings.json
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\appsettings.Development.json
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\appsettings.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.Development.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.Development.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.Development.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\appsettings.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.runtimeconfig.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.runtimeconfig.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
+D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.runtimeconfig.json
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\publish\ReactPosApi.runtimeconfig.json
 D:\my work place\POS\Asyntexpos\publish\publish\publish\publish\publish\publish\ReactPosApi.deps.json
