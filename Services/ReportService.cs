@@ -360,7 +360,7 @@ public class ReportService : IReportService
             // Paid installments
             foreach (var entry in plan.Schedule.Where(e => e.Status == "paid" || e.Status == "partial").OrderBy(e => e.InstallmentNo))
             {
-                var paidAmt = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
+                var paidAmt = entry.Status == "paid" ? entry.EmiAmount : (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
                 runningBalance -= paidAmt;
                 transactions.Add(new LedgerTransactionDto
                 {
@@ -377,7 +377,7 @@ public class ReportService : IReportService
 
         var totalPurchases = plans.Sum(p => p.TotalPayable);
         var totalPaid = plans.Sum(p => p.DownPayment + p.Schedule.Where(e => e.Status == "paid" || e.Status == "partial")
-            .Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)));
+            .Sum(e => e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)));
 
         return new CustomerLedgerDto
         {
