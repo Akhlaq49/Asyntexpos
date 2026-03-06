@@ -118,12 +118,7 @@ public class FinanceReportService : IFinanceReportService
         operating.AddRange(expenseByCategory);
 
         // Sales as operating cash inflow
-        var totalSales = await _db.Sales
-            .Where(s => s.CreatedAt >= startDate && s.CreatedAt <= endDate)
-            .SumAsync(s => (decimal?)s.GrandTotal) ?? 0;
-        if (totalSales > 0)
-            operating.Insert(0, new CashFlowLineItem { Description = "Sales Revenue", Amount = totalSales });
-
+        
         // Purchases as operating cash outflow
         var totalPurchases = await _db.Purchases
             .Where(p => p.CreatedAt >= startDate && p.CreatedAt <= endDate)

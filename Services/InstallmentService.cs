@@ -203,8 +203,8 @@ public class InstallmentService : IInstallmentService
             entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
         }
 
-        // Apply misc balance to future installments if requested
-        if (paymentDto.UseMiscBalance && plan.Customer != null)
+        // Apply misc balance to future installments (always distribute overpayments, or on request)
+        if ((overpayment > 0 || paymentDto.UseMiscBalance) && plan.Customer != null)
         {
             await ApplyMiscBalanceToInstallments(planId, plan.Customer.Id);
         }
