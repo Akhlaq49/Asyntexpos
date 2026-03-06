@@ -182,18 +182,52 @@ public class InstallmentService : IInstallmentService
 
             overpayment = totalPaidForEntry - emiAmount;
 
+            // Distribute overpayment directly to future installments
             if (overpayment > 0)
             {
-                _db.MiscellaneousRegisters.Add(new MiscellaneousRegister
+                var futureInstallments = plan.Schedule
+                    .Where(s => s.InstallmentNo > installmentNo && s.Status != "paid")
+                    .OrderBy(s => s.InstallmentNo)
+                    .ToList();
+
+                var remaining = overpayment;
+                foreach (var future in futureInstallments)
                 {
-                    CustomerId = plan.Customer!.Id,
-                    TransactionType = "Credit",
-                    Amount = overpayment,
-                    Description = $"Overpayment for installment #{installmentNo} (Paid: {paidAmount:C}, EMI: {emiAmount:C})",
-                    ReferenceId = planId.ToString(),
-                    ReferenceType = "InstallmentPayment",
-                    CreatedBy = "System"
-                });
+                    if (remaining <= 0) break;
+
+                    var futurePreviouslyPaid = (future.ActualPaidAmount ?? 0m) + (future.MiscAdjustedAmount ?? 0m);
+                    var futureRemaining = future.EmiAmount - futurePreviouslyPaid;
+
+                    if (remaining >= futureRemaining)
+                    {
+                        future.Status = "paid";
+                        future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                        future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + futureRemaining;
+                        remaining -= futureRemaining;
+                    }
+                    else
+                    {
+                        future.Status = "partial";
+                        future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                        future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + remaining;
+                        remaining = 0;
+                    }
+                }
+
+                // Only store in misc register if all installments are exhausted and there's still leftover
+                if (remaining > 0)
+                {
+                    _db.MiscellaneousRegisters.Add(new MiscellaneousRegister
+                    {
+                        CustomerId = plan.Customer!.Id,
+                        TransactionType = "Credit",
+                        Amount = remaining,
+                        Description = $"Excess after all installments paid for Plan #{planId} (Original overpayment: {overpayment:C})",
+                        ReferenceId = planId.ToString(),
+                        ReferenceType = "InstallmentPayment",
+                        CreatedBy = "System"
+                    });
+                }
             }
         }
         else
@@ -203,8 +237,8 @@ public class InstallmentService : IInstallmentService
             entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
         }
 
-        // Apply misc balance to future installments (always distribute overpayments, or on request)
-        if ((overpayment > 0 || paymentDto.UseMiscBalance) && plan.Customer != null)
+        // Apply misc balance to future installments if requested
+        if (paymentDto.UseMiscBalance && plan.Customer != null)
         {
             await ApplyMiscBalanceToInstallments(planId, plan.Customer.Id);
         }
