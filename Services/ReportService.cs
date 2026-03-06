@@ -263,14 +263,16 @@ public class ReportService : IReportService
         var totalSales = filteredPlans.Sum(p => p.ProductPrice);
         var totalDown = filteredPlans.Sum(p => p.DownPayment);
         var interestEarned = filteredEntries.Sum(e => e.Interest > 0 && (e.Status == "paid" || e.Status == "partial")
-            ? Math.Min(e.Interest, (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) : 0);
-        var totalCollected = filteredEntries.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+            ? Math.Min(e.Interest, e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) : 0);
+        var totalCollected = filteredEntries.Sum(e => e.Status == "paid" ? e.EmiAmount
+            : e.Status == "partial" ? (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0) : 0m);
 
         // Bad debts: amount from defaulted plans
         var defaultedPlans = plans.Where(p => p.Status == "defaulted").ToList();
         var badDebts = defaultedPlans.Sum(p =>
         {
-            var paid = p.Schedule.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) + p.DownPayment;
+            var paid = p.Schedule.Sum(e => e.Status == "paid" ? e.EmiAmount
+                : e.Status == "partial" ? (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0) : 0m) + p.DownPayment;
             return p.TotalPayable - paid;
         });
 
@@ -281,12 +283,14 @@ public class ReportService : IReportService
             .Select(g => new MonthlyProfitDto
             {
                 Month = g.Key,
-                Collections = g.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)),
+                Collections = g.Sum(e => e.Status == "paid" ? e.EmiAmount
+                    : e.Status == "partial" ? (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0) : 0m),
                 Interest = g.Sum(e => e.Interest > 0 && (e.Status == "paid" || e.Status == "partial")
-                    ? Math.Min(e.Interest, (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) : 0),
+                    ? Math.Min(e.Interest, e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) : 0),
                 DownPayments = 0,
                 Expenses = 0,
-                NetProfit = g.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0))
+                NetProfit = g.Sum(e => e.Status == "paid" ? e.EmiAmount
+                    : e.Status == "partial" ? (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0) : 0m)
             })
             .OrderBy(m => m.Month)
             .ToList();
@@ -481,8 +485,8 @@ public class ReportService : IReportService
             PlanId = e.PlanId,
             InstallmentNo = e.InstallmentNo,
             PaidDate = e.PaidDate ?? "",
-            Amount = e.ActualPaidAmount ?? 0,
-            MiscAmount = e.MiscAdjustedAmount,
+            Amount = e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0),
+            MiscAmount = e.Status == "paid" ? null : e.MiscAdjustedAmount,
             PaymentMethod = "Cash",
             ProductName = e.Plan.Product?.ProductName ?? "Unknown"
         }).OrderByDescending(p => p.PaidDate).ToList();
@@ -687,7 +691,7 @@ public class ReportService : IReportService
 
         var currentlyOverdue = entries.Where(e => e.Status == "overdue").ToList();
         var totalOverdueAmt = currentlyOverdue.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0));
-        var recoveredAmt = recoveredEntries.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
+        var recoveredAmt = recoveredEntries.Sum(e => e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
         var totalTarget = totalOverdueAmt + recoveredAmt;
         var recoveryRate = totalTarget > 0 ? Math.Round(recoveredAmt / totalTarget * 100, 2) : 0;
 
@@ -699,9 +703,9 @@ public class ReportService : IReportService
             {
                 Month = g.Key,
                 OverdueAmount = g.Sum(e => e.EmiAmount),
-                Recovered = g.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)),
+                Recovered = g.Sum(e => e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)),
                 RecoveryRate = g.Sum(e => e.EmiAmount) > 0
-                    ? Math.Round(g.Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) / g.Sum(e => e.EmiAmount) * 100, 2)
+                    ? Math.Round(g.Sum(e => e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)) / g.Sum(e => e.EmiAmount) * 100, 2)
                     : 0
             })
             .OrderBy(m => m.Month)
