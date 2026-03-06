@@ -1,0 +1,12 @@
+# .NET build folders
+bin/
+obj/
+
+# publish output
+publish/
+
+# VS Code
+.vscode/
+
+# environment files
+.env

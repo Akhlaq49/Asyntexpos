@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\buildMultiTargeting\ReactPosApi.props" />
-</Project>
