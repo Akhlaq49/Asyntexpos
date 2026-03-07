@@ -207,4 +207,8 @@ public class ReportsController : ControllerBase
     [HttpGet("annual-report")]
     public async Task<IActionResult> GetAnnualReport([FromQuery] int? year)
         => Ok(await _reportService.GetAnnualReportAsync(year ?? DateTime.UtcNow.Year));
+
+    [HttpGet("dpd-report")]
+    public async Task<IActionResult> GetDpdReport()
+        => Ok(await _reportService.GetDpdReportAsync());
 }

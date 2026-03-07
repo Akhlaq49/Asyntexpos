@@ -79,7 +79,8 @@ public class SaleService : ISaleService
             CustomerImage = dto.CustomerImage, Biller = dto.Biller, Source = dto.Source,
             GrandTotal = dto.GrandTotal, Paid = 0, Due = dto.GrandTotal,
             OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
-            Status = dto.Status, PaymentStatus = "Unpaid", Notes = dto.Notes,
+            Status = dto.Status, PaymentStatus = !string.IsNullOrEmpty(dto.ExpectedDate) ? "Pending" : "Unpaid", Notes = dto.Notes,
+            ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null,
             SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
             Items = dto.Items.Select(i => new SaleItem
             {
@@ -103,6 +104,7 @@ public class SaleService : ISaleService
         sale.GrandTotal = dto.GrandTotal; sale.OrderTax = dto.OrderTax;
         sale.Discount = dto.Discount; sale.Shipping = dto.Shipping;
         sale.Status = dto.Status; sale.Notes = dto.Notes;
+        sale.ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null;
         sale.Due = dto.GrandTotal - sale.Paid;
         if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
         else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
@@ -211,6 +213,7 @@ public class SaleService : ISaleService
         GrandTotal = s.GrandTotal, Paid = s.Paid, Due = s.Due,
         OrderTax = s.OrderTax, Discount = s.Discount, Shipping = s.Shipping,
         Status = s.Status, PaymentStatus = s.PaymentStatus, Notes = s.Notes, Source = s.Source,
+        ExpectedDate = s.ExpectedDate?.ToString("yyyy-MM-dd"),
         SaleDate = s.SaleDate.ToString("dd MMM yyyy"),
         Items = s.Items.Select(i => new SaleItemDto
         {

@@ -1250,4 +1250,79 @@ public class ReportService : IReportService
             }
         };
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // DPD (Days Past Due) REPORT - Based on Sale ExpectedDate
+    // ═══════════════════════════════════════════════════════════
+
+    public async Task<DpdReportDto> GetDpdReportAsync()
+    {
+        var today = DateTime.UtcNow.Date;
+
+        // Get all sales that have due > 0 and an ExpectedDate (POS pending orders)
+        var sales = await _db.Sales
+            .Where(s => s.Due > 0 && s.ExpectedDate != null)
+            .ToListAsync();
+
+        var grouped = sales
+            .Where(s => s.CustomerId.HasValue)
+            .GroupBy(s => new { s.CustomerId, s.CustomerName })
+            .Select(g =>
+            {
+                var orders = g.Select(s =>
+                {
+                    var dpd = s.ExpectedDate!.Value.Date < today
+                        ? (int)(today - s.ExpectedDate!.Value.Date).TotalDays
+                        : 0;
+                    return new DpdOrderItemDto
+                    {
+                        SaleId = s.Id,
+                        Reference = s.Reference,
+                        GrandTotal = s.GrandTotal,
+                        Paid = s.Paid,
+                        Due = s.Due,
+                        SaleDate = s.SaleDate.ToString("dd MMM yyyy"),
+                        ExpectedDate = s.ExpectedDate?.ToString("dd MMM yyyy"),
+                        Dpd = dpd,
+                        PaymentStatus = s.PaymentStatus
+                    };
+                }).OrderByDescending(o => o.Dpd).ToList();
+
+                return new DpdCustomerItemDto
+                {
+                    CustomerId = g.Key.CustomerId!.Value,
+                    CustomerName = g.Key.CustomerName,
+                    TotalAmount = g.Sum(s => s.GrandTotal),
+                    PaidAmount = g.Sum(s => s.Paid),
+                    DueAmount = g.Sum(s => s.Due),
+                    TotalOrders = g.Count(),
+                    OverdueOrders = orders.Count(o => o.Dpd > 0),
+                    MaxDpd = orders.Max(o => o.Dpd),
+                    Orders = orders
+                };
+            })
+            .OrderByDescending(c => c.MaxDpd)
+            .ToList();
+
+        // Populate phone from Parties table
+        var customerIds = grouped.Select(c => c.CustomerId).ToList();
+        var parties = await _db.Parties
+            .Where(p => customerIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Phone })
+            .ToListAsync();
+        var phoneMap = parties.ToDictionary(p => p.Id, p => p.Phone);
+        foreach (var c in grouped)
+            c.Phone = phoneMap.GetValueOrDefault(c.CustomerId);
+
+        return new DpdReportDto
+        {
+            TotalDueAmount = grouped.Sum(c => c.DueAmount),
+            TotalCustomers = grouped.Count,
+            TotalOverdueOrders = grouped.Sum(c => c.OverdueOrders),
+            TotalOverdueAmount = sales
+                .Where(s => s.ExpectedDate!.Value.Date < today)
+                .Sum(s => s.Due),
+            Customers = grouped
+        };
+    }
 }

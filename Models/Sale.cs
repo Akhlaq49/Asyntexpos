@@ -55,6 +55,9 @@ public class Sale : ITenantEntity
     public int? ShippingAddressId { get; set; }
     public PartyAddress? ShippingAddress { get; set; }
 
+    /// <summary>Expected payment date. When set, PaymentStatus starts as Pending.</summary>
+    public DateTime? ExpectedDate { get; set; }
+
     public DateTime SaleDate { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

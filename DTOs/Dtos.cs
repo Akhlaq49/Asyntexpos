@@ -458,6 +458,7 @@ public class SaleDto
     public string PaymentStatus { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public string Source { get; set; } = string.Empty;
+    public string? ExpectedDate { get; set; }
     public string SaleDate { get; set; } = string.Empty;
     public List<SaleItemDto> Items { get; set; } = new();
     public List<SalePaymentDto> Payments { get; set; } = new();
@@ -502,6 +503,7 @@ public class CreateSaleDto
     public string? Notes { get; set; }
     public string Source { get; set; } = "online";
     public string? OrderNumber { get; set; }
+    public string? ExpectedDate { get; set; }
     public List<CreateSaleItemDto> Items { get; set; } = new();
 }
 

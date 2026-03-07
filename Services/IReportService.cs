@@ -48,4 +48,7 @@ public interface IReportService
     Task<List<IncomeReportItemDto>> GetIncomeReportAsync(DateTime? from, DateTime? to);
     Task<ProfitAndLossDto> GetProfitAndLossAsync(DateTime? from, DateTime? to);
     Task<AnnualReportDto> GetAnnualReportAsync(int year);
+
+    // DPD (Days Past Due) Report
+    Task<DpdReportDto> GetDpdReportAsync();
 }

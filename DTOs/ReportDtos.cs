@@ -592,3 +592,44 @@ public class AnnualReportMonthDto
     public decimal Returns { get; set; }
     public decimal Profit { get; set; }
 }
+
+
+// ═══════════════════════════════════════════════════════════
+// 8. DPD (Days Past Due) REPORT - POS Sales
+// ═══════════════════════════════════════════════════════════
+
+public class DpdReportDto
+{
+    public decimal TotalDueAmount { get; set; }
+    public int TotalCustomers { get; set; }
+    public int TotalOverdueOrders { get; set; }
+    public decimal TotalOverdueAmount { get; set; }
+    public List<DpdCustomerItemDto> Customers { get; set; } = new();
+}
+
+public class DpdCustomerItemDto
+{
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = "";
+    public string? Phone { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal PaidAmount { get; set; }
+    public decimal DueAmount { get; set; }
+    public int TotalOrders { get; set; }
+    public int OverdueOrders { get; set; }
+    public int MaxDpd { get; set; }
+    public List<DpdOrderItemDto> Orders { get; set; } = new();
+}
+
+public class DpdOrderItemDto
+{
+    public int SaleId { get; set; }
+    public string Reference { get; set; } = "";
+    public decimal GrandTotal { get; set; }
+    public decimal Paid { get; set; }
+    public decimal Due { get; set; }
+    public string SaleDate { get; set; } = "";
+    public string? ExpectedDate { get; set; }
+    public int Dpd { get; set; }
+    public string PaymentStatus { get; set; } = "";
+}
