@@ -90,6 +90,15 @@ public class SaleService : ISaleService
             }).ToList()
         };
         _db.Sales.Add(sale);
+
+        // ── Deduct product quantities from inventory ──
+        foreach (var item in sale.Items)
+        {
+            var product = await _db.Products.FindAsync(item.ProductId);
+            if (product != null)
+                product.Quantity -= item.Quantity;
+        }
+
         await _db.SaveChangesAsync();
         return new { sale.Id, sale.Reference };
     }
@@ -110,6 +119,14 @@ public class SaleService : ISaleService
         else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
         else { sale.PaymentStatus = "Unpaid"; }
 
+        // ── Restore old item quantities to inventory ──
+        foreach (var oldItem in sale.Items)
+        {
+            var product = await _db.Products.FindAsync(oldItem.ProductId);
+            if (product != null)
+                product.Quantity += oldItem.Quantity;
+        }
+
         _db.SaleItems.RemoveRange(sale.Items);
         sale.Items = dto.Items.Select(i => new SaleItem
         {
@@ -117,6 +134,14 @@ public class SaleService : ISaleService
             PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
             TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
         }).ToList();
+
+        // ── Deduct new item quantities from inventory ──
+        foreach (var newItem in sale.Items)
+        {
+            var product = await _db.Products.FindAsync(newItem.ProductId);
+            if (product != null)
+                product.Quantity -= newItem.Quantity;
+        }
 
         await _db.SaveChangesAsync();
         return new { sale.Id };
@@ -126,6 +151,15 @@ public class SaleService : ISaleService
     {
         var sale = await _db.Sales.Include(s => s.Items).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == id);
         if (sale == null) return false;
+
+        // ── Restore product quantities to inventory ──
+        foreach (var item in sale.Items)
+        {
+            var product = await _db.Products.FindAsync(item.ProductId);
+            if (product != null)
+                product.Quantity += item.Quantity;
+        }
+
         _db.Sales.Remove(sale);
         await _db.SaveChangesAsync();
         return true;

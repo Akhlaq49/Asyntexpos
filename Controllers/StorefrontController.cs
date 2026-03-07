@@ -320,6 +320,15 @@ public class StorefrontController : ControllerBase
         };
 
         _db.Sales.Add(sale);
+
+        // ── Deduct product quantities from inventory ──
+        foreach (var item in saleItems)
+        {
+            var product = await _db.Products.FindAsync(item.ProductId);
+            if (product != null)
+                product.Quantity -= item.Quantity;
+        }
+
         await _db.SaveChangesAsync();
 
         return Ok(new
