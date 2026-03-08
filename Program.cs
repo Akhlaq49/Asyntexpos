@@ -43,6 +43,9 @@ builder.Services.AddScoped<ICouponService, CouponService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
 
+// Storefront (public online store)
+builder.Services.AddScoped<IStorefrontService, StorefrontService>();
+
 // HRM Services
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<IDesignationService, DesignationService>();
@@ -109,7 +112,9 @@ builder.Services.AddCors(options =>
                 "http://localhost:4173",
                 "http://192.168.1.8:3000",
                 "http://reactapp.asyntexconsultancy.com",
-                "https://reactapp.asyntexconsultancy.com"
+                "https://reactapp.asyntexconsultancy.com",
+                "https://frontapp.asyntexconsultancy.com",
+                "https://frontapp.asyntexconsultancy.com"
 
             )
             .AllowAnyHeader()
