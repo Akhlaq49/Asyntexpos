@@ -114,8 +114,7 @@ builder.Services.AddCors(options =>
                 "http://reactapp.asyntexconsultancy.com",
                 "https://reactapp.asyntexconsultancy.com",
                 "https://frontapp.asyntexconsultancy.com",
-                "https://frontapp.asyntexconsultancy.com"
-
+                "http://frontapp.asyntexconsultancy.com"
             )
             .AllowAnyHeader()
             .AllowAnyMethod();

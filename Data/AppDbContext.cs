@@ -74,6 +74,9 @@ public class AppDbContext : DbContext
     // Form Field Configurations
     public DbSet<FormFieldConfig> FormFieldConfigs => Set<FormFieldConfig>();
 
+    // Tenant Menu Configuration (hidden menus per tenant)
+    public DbSet<TenantMenuConfig> TenantMenuConfigs => Set<TenantMenuConfig>();
+
     // HRM
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Designation> Designations => Set<Designation>();
@@ -441,6 +444,12 @@ public class AppDbContext : DbContext
         {
             e.HasIndex(f => new { f.TenantId, f.FormName, f.FieldName }).IsUnique();
             e.Property(f => f.IsVisible).HasDefaultValue(true);
+        });
+
+        // TenantMenuConfig
+        modelBuilder.Entity<TenantMenuConfig>(e =>
+        {
+            e.HasIndex(c => new { c.TenantId, c.MenuKey }).IsUnique();
         });
 
         // Finance & Accounting
