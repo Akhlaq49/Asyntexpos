@@ -46,6 +46,9 @@ builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
 // Storefront (public online store)
 builder.Services.AddScoped<IStorefrontService, StorefrontService>();
 
+// Tenant Menu Configuration
+builder.Services.AddScoped<ITenantMenuService, TenantMenuService>();
+
 // HRM Services
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<IDesignationService, DesignationService>();

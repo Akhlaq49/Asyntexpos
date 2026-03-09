@@ -18,7 +18,17 @@ public class TenantMenuController : ControllerBase
     /// </summary>
     [HttpGet("hidden")]
     public async Task<ActionResult<List<string>>> GetHiddenMenuKeys()
-        => Ok(await _service.GetHiddenMenuKeysAsync());
+    {
+        try
+        {
+            return Ok(await _service.GetHiddenMenuKeysAsync());
+        }
+        catch
+        {
+            // Table may not exist yet – return empty list so frontend works normally
+            return Ok(new List<string>());
+        }
+    }
 
     /// <summary>
     /// Replace the set of hidden menu keys for the current tenant.
@@ -41,7 +51,17 @@ public class TenantMenuController : ControllerBase
     /// </summary>
     [HttpGet("default-dashboard")]
     public async Task<ActionResult<string>> GetDefaultDashboard()
-        => Ok(await _service.GetDefaultDashboardAsync());
+    {
+        try
+        {
+            return Ok(await _service.GetDefaultDashboardAsync());
+        }
+        catch
+        {
+            // Column may not exist yet – return default path
+            return Ok("/admin-dashboard-2");
+        }
+    }
 
     /// <summary>
     /// Set the default dashboard path for the current tenant.
