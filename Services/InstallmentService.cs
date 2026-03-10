@@ -146,7 +146,75 @@ public class InstallmentService : IInstallmentService
         if (plan.Product != null)
             await _db.Entry(plan.Product).Collection(pr => pr.Images).LoadAsync();
 
+        // ── Queue SMS notifications for plan creation ──
+        await QueuePlanCreationSms(plan, customer);
+
         return MapToDto(plan);
+    }
+
+    /// <summary>
+    /// Queue SMS to customer and all guarantors when a plan is created.
+    /// </summary>
+    private async Task QueuePlanCreationSms(InstallmentPlan plan, Party customer)
+    {
+        var productName = plan.Product?.ProductName ?? "N/A";
+        var firstDue = plan.Schedule
+            .OrderBy(s => s.InstallmentNo)
+            .FirstOrDefault(s => s.Status == "upcoming" || s.Status == "due");
+
+        // SMS to customer
+        if (!string.IsNullOrWhiteSpace(customer.Phone))
+        {
+            var msg = $"Assalam o Alaikum {customer.FullName},\n"
+                + $"Your installment plan has been created:\n"
+                + $"Product: {productName}\n"
+                + $"Total: Rs {plan.TotalPayable:N0}\n"
+                + $"Down Payment: Rs {plan.DownPayment:N0}\n"
+                + $"EMI: Rs {plan.EmiAmount:N0}/month x {plan.Tenure} months\n"
+                + (firstDue != null ? $"First Due: {firstDue.DueDate}\n" : "")
+                + $"Please ensure timely payments. JazakAllah!";
+
+            _db.SmsMessages.Add(new SmsMessage
+            {
+                TenantId = plan.TenantId,
+                To = customer.Phone,
+                Message = msg,
+                Channel = "sms",
+                Reference = $"PLAN-{plan.Id}",
+                Status = "pending"
+            });
+        }
+
+        // SMS to guarantors
+        var guarantors = await _db.PlanGuarantors
+            .Include(g => g.Party)
+            .Where(g => g.PlanId == plan.Id)
+            .ToListAsync();
+
+        foreach (var g in guarantors)
+        {
+            if (string.IsNullOrWhiteSpace(g.Party?.Phone)) continue;
+
+            var gMsg = $"Assalam o Alaikum {g.Party.FullName},\n"
+                + $"You have been added as a guarantor for an installment plan:\n"
+                + $"Customer: {customer.FullName}\n"
+                + $"Product: {productName}\n"
+                + $"Total: Rs {plan.TotalPayable:N0}\n"
+                + $"EMI: Rs {plan.EmiAmount:N0}/month x {plan.Tenure} months\n"
+                + $"This is for your information. JazakAllah!";
+
+            _db.SmsMessages.Add(new SmsMessage
+            {
+                TenantId = plan.TenantId,
+                To = g.Party.Phone,
+                Message = gMsg,
+                Channel = "sms",
+                Reference = $"PLAN-{plan.Id}-GUARANTOR",
+                Status = "pending"
+            });
+        }
+
+        await _db.SaveChangesAsync();
     }
 
     // ── Pay Installment ────────────────────────────────────

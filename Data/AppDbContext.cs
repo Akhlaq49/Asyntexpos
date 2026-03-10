@@ -95,6 +95,9 @@ public class AppDbContext : DbContext
     public DbSet<AccountType> AccountTypes => Set<AccountType>();
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
 
+    // SMS / Notifications
+    public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
