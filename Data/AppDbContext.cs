@@ -97,6 +97,7 @@ public class AppDbContext : DbContext
 
     // SMS / Notifications
     public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
+    public DbSet<SmsWhitelistedNumber> SmsWhitelistedNumbers => Set<SmsWhitelistedNumber>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

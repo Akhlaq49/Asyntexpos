@@ -19,6 +19,7 @@ builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IMiscellaneousRegisterService, MiscellaneousRegisterService>();
 builder.Services.AddScoped<IInstallmentService, InstallmentService>();
+builder.Services.AddSingleton<IInstallmentInvoicePdfService, InstallmentInvoicePdfService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();

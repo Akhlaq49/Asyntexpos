@@ -9,11 +9,16 @@ public class InstallmentService : IInstallmentService
 {
     private readonly AppDbContext _db;
     private readonly IFileService _fileService;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public InstallmentService(AppDbContext db, IFileService fileService)
+    public InstallmentService(AppDbContext db, IFileService fileService,
+        IServiceProvider serviceProvider, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
         _fileService = fileService;
+        _serviceProvider = serviceProvider;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     // ── Queries ────────────────────────────────────────────
@@ -153,7 +158,8 @@ public class InstallmentService : IInstallmentService
     }
 
     /// <summary>
-    /// Queue SMS to customer and all guarantors when a plan is created.
+    /// Queue SMS + WhatsApp to customer and all guarantors when a plan is created.
+    /// Generates a PDF invoice and attaches the public URL.
     /// </summary>
     private async Task QueuePlanCreationSms(InstallmentPlan plan, Party customer)
     {
@@ -162,7 +168,20 @@ public class InstallmentService : IInstallmentService
             .OrderBy(s => s.InstallmentNo)
             .FirstOrDefault(s => s.Status == "upcoming" || s.Status == "due");
 
-        // SMS to customer
+        // Generate PDF invoice (best-effort — don't break plan creation if PDF fails)
+        string? pdfUrl = null;
+        try
+        {
+            var pdfService = _serviceProvider.GetService<IInstallmentInvoicePdfService>();
+            if (pdfService != null)
+            {
+                var pdfRelativePath = pdfService.GeneratePlanCreationInvoice(plan);
+                pdfUrl = BuildPublicUrl(pdfRelativePath);
+            }
+        }
+        catch { /* PDF generation failed — continue without attachment */ }
+
+        // SMS to customer (both SMS and WhatsApp channels)
         if (!string.IsNullOrWhiteSpace(customer.Phone))
         {
             var msg = $"Assalam o Alaikum {customer.FullName},\n"
@@ -174,6 +193,7 @@ public class InstallmentService : IInstallmentService
                 + (firstDue != null ? $"First Due: {firstDue.DueDate}\n" : "")
                 + $"Please ensure timely payments. JazakAllah!";
 
+            // SMS channel
             _db.SmsMessages.Add(new SmsMessage
             {
                 TenantId = plan.TenantId,
@@ -181,11 +201,24 @@ public class InstallmentService : IInstallmentService
                 Message = msg,
                 Channel = "sms",
                 Reference = $"PLAN-{plan.Id}",
-                Status = "pending"
+                Status = "pending",
+                MediaUrl = pdfUrl
+            });
+
+            // WhatsApp channel
+            _db.SmsMessages.Add(new SmsMessage
+            {
+                TenantId = plan.TenantId,
+                To = customer.Phone,
+                Message = msg,
+                Channel = "whatsapp",
+                Reference = $"PLAN-{plan.Id}",
+                Status = "pending",
+                MediaUrl = pdfUrl
             });
         }
 
-        // SMS to guarantors
+        // SMS to guarantors (both channels)
         var guarantors = await _db.PlanGuarantors
             .Include(g => g.Party)
             .Where(g => g.PlanId == plan.Id)
@@ -203,6 +236,7 @@ public class InstallmentService : IInstallmentService
                 + $"EMI: Rs {plan.EmiAmount:N0}/month x {plan.Tenure} months\n"
                 + $"This is for your information. JazakAllah!";
 
+            // SMS channel
             _db.SmsMessages.Add(new SmsMessage
             {
                 TenantId = plan.TenantId,
@@ -210,11 +244,92 @@ public class InstallmentService : IInstallmentService
                 Message = gMsg,
                 Channel = "sms",
                 Reference = $"PLAN-{plan.Id}-GUARANTOR",
-                Status = "pending"
+                Status = "pending",
+                MediaUrl = pdfUrl
+            });
+
+            // WhatsApp channel
+            _db.SmsMessages.Add(new SmsMessage
+            {
+                TenantId = plan.TenantId,
+                To = g.Party.Phone,
+                Message = gMsg,
+                Channel = "whatsapp",
+                Reference = $"PLAN-{plan.Id}-GUARANTOR",
+                Status = "pending",
+                MediaUrl = pdfUrl
             });
         }
 
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Queue SMS + WhatsApp to customer when an installment payment is made.
+    /// Generates a PDF receipt and attaches the public URL.
+    /// </summary>
+    private async Task QueuePaymentSms(InstallmentPlan plan, RepaymentEntry entry, decimal paidAmount)
+    {
+        var customerPhone = plan.Customer?.Phone;
+        if (string.IsNullOrWhiteSpace(customerPhone)) return;
+
+        // Generate PDF receipt (best-effort — don't break payment if PDF fails)
+        string? pdfUrl = null;
+        try
+        {
+            var pdfService = _serviceProvider.GetService<IInstallmentInvoicePdfService>();
+            if (pdfService != null)
+            {
+                var pdfRelativePath = pdfService.GeneratePaymentReceipt(plan, entry, paidAmount);
+                pdfUrl = BuildPublicUrl(pdfRelativePath);
+            }
+        }
+        catch { /* PDF generation failed — continue without attachment */ }
+
+        var productName = plan.Product?.ProductName ?? "N/A";
+        var totalSettled = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
+
+        var msg = $"Assalam o Alaikum {plan.Customer!.FullName},\n"
+            + $"Payment received for installment #{entry.InstallmentNo}:\n"
+            + $"Product: {productName}\n"
+            + $"Amount Paid: Rs {paidAmount:N0}\n"
+            + $"Installment Status: {entry.Status.ToUpper()}\n"
+            + $"Paid: {plan.PaidInstallments}/{plan.Tenure} installments\n"
+            + $"JazakAllah for your payment!";
+
+        // SMS channel
+        _db.SmsMessages.Add(new SmsMessage
+        {
+            TenantId = plan.TenantId,
+            To = customerPhone,
+            Message = msg,
+            Channel = "sms",
+            Reference = $"PAYMENT-PLAN-{plan.Id}-INS-{entry.InstallmentNo}",
+            Status = "pending",
+            MediaUrl = pdfUrl
+        });
+
+        // WhatsApp channel
+        _db.SmsMessages.Add(new SmsMessage
+        {
+            TenantId = plan.TenantId,
+            To = customerPhone,
+            Message = msg,
+            Channel = "whatsapp",
+            Reference = $"PAYMENT-PLAN-{plan.Id}-INS-{entry.InstallmentNo}",
+            Status = "pending",
+            MediaUrl = pdfUrl
+        });
+
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Build public absolute URL from a relative path like /uploads/invoices/file.pdf</summary>
+    private string BuildPublicUrl(string relativePath)
+    {
+        var request = _httpContextAccessor.HttpContext?.Request;
+        if (request == null) return relativePath;
+        return $"{request.Scheme}://{request.Host}{relativePath}";
     }
 
     // ── Pay Installment ────────────────────────────────────
@@ -314,6 +429,9 @@ public class InstallmentService : IInstallmentService
         UpdatePlanStats(plan);
 
         await _db.SaveChangesAsync();
+
+        // Queue SMS + WhatsApp notifications with PDF receipt
+        await QueuePaymentSms(plan, entry, paidAmount);
 
         var totalSettled = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
         return new
