@@ -141,6 +141,16 @@ public class GuarantorDto
     public string? Address { get; set; }
     public string? Relationship { get; set; }
     public string? Picture { get; set; }
+    public List<PlanMediaDto> Pictures { get; set; } = new();
+}
+
+public class PlanMediaDto
+{
+    public int Id { get; set; }
+    public string EntityType { get; set; } = string.Empty;
+    public int? EntityId { get; set; }
+    public string MediaType { get; set; } = "image";
+    public string FilePath { get; set; } = string.Empty;
 }
 
 public class InstallmentPlanDto
@@ -172,6 +182,8 @@ public class InstallmentPlanDto
     public string CreatedAt { get; set; } = string.Empty;
     public List<RepaymentEntryDto> Schedule { get; set; } = new();
     public List<GuarantorDto> Guarantors { get; set; } = new();
+    public List<PlanMediaDto> CustomerPictures { get; set; } = new();
+    public List<PlanMediaDto> PlanMedia { get; set; } = new();
 }
 
 public class CreateInstallmentDto

@@ -9,16 +9,11 @@ public class InstallmentService : IInstallmentService
 {
     private readonly AppDbContext _db;
     private readonly IFileService _fileService;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public InstallmentService(AppDbContext db, IFileService fileService,
-        IServiceProvider serviceProvider, IHttpContextAccessor httpContextAccessor)
+    public InstallmentService(AppDbContext db, IFileService fileService)
     {
         _db = db;
         _fileService = fileService;
-        _serviceProvider = serviceProvider;
-        _httpContextAccessor = httpContextAccessor;
     }
 
     // ── Queries ────────────────────────────────────────────
@@ -50,6 +45,7 @@ public class InstallmentService : IInstallmentService
             .Include(p => p.Product).ThenInclude(pr => pr!.Images)
             .Include(p => p.Schedule.OrderBy(s => s.InstallmentNo))
             .Include(p => p.PlanGuarantors).ThenInclude(pg => pg.Party)
+            .Include(p => p.Media)
             .ToListAsync();
 
         return new PagedResult<InstallmentPlanDto>
@@ -68,6 +64,7 @@ public class InstallmentService : IInstallmentService
             .Include(p => p.Product).ThenInclude(pr => pr!.Images)
             .Include(p => p.Schedule.OrderBy(s => s.InstallmentNo))
             .Include(p => p.PlanGuarantors).ThenInclude(pg => pg.Party)
+            .Include(p => p.Media)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -81,6 +78,7 @@ public class InstallmentService : IInstallmentService
             .Include(p => p.Product).ThenInclude(pr => pr!.Images)
             .Include(p => p.Schedule.OrderBy(s => s.InstallmentNo))
             .Include(p => p.PlanGuarantors).ThenInclude(pg => pg.Party)
+            .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == id);
 
         return plan == null ? null : MapToDto(plan);
@@ -158,8 +156,7 @@ public class InstallmentService : IInstallmentService
     }
 
     /// <summary>
-    /// Queue SMS + WhatsApp to customer and all guarantors when a plan is created.
-    /// Generates a PDF invoice and attaches the public URL.
+    /// Queue SMS to customer and all guarantors when a plan is created.
     /// </summary>
     private async Task QueuePlanCreationSms(InstallmentPlan plan, Party customer)
     {
@@ -168,20 +165,7 @@ public class InstallmentService : IInstallmentService
             .OrderBy(s => s.InstallmentNo)
             .FirstOrDefault(s => s.Status == "upcoming" || s.Status == "due");
 
-        // Generate PDF invoice (best-effort — don't break plan creation if PDF fails)
-        string? pdfUrl = null;
-        try
-        {
-            var pdfService = _serviceProvider.GetService<IInstallmentInvoicePdfService>();
-            if (pdfService != null)
-            {
-                var pdfRelativePath = pdfService.GeneratePlanCreationInvoice(plan);
-                pdfUrl = BuildPublicUrl(pdfRelativePath);
-            }
-        }
-        catch { /* PDF generation failed — continue without attachment */ }
-
-        // SMS to customer (both SMS and WhatsApp channels)
+        // SMS to customer
         if (!string.IsNullOrWhiteSpace(customer.Phone))
         {
             var msg = $"Assalam o Alaikum {customer.FullName},\n"
@@ -193,7 +177,6 @@ public class InstallmentService : IInstallmentService
                 + (firstDue != null ? $"First Due: {firstDue.DueDate}\n" : "")
                 + $"Please ensure timely payments. JazakAllah!";
 
-            // SMS channel
             _db.SmsMessages.Add(new SmsMessage
             {
                 TenantId = plan.TenantId,
@@ -201,24 +184,11 @@ public class InstallmentService : IInstallmentService
                 Message = msg,
                 Channel = "sms",
                 Reference = $"PLAN-{plan.Id}",
-                Status = "pending",
-                MediaUrl = pdfUrl
-            });
-
-            // WhatsApp channel
-            _db.SmsMessages.Add(new SmsMessage
-            {
-                TenantId = plan.TenantId,
-                To = customer.Phone,
-                Message = msg,
-                Channel = "whatsapp",
-                Reference = $"PLAN-{plan.Id}",
-                Status = "pending",
-                MediaUrl = pdfUrl
+                Status = "pending"
             });
         }
 
-        // SMS to guarantors (both channels)
+        // SMS to guarantors
         var guarantors = await _db.PlanGuarantors
             .Include(g => g.Party)
             .Where(g => g.PlanId == plan.Id)
@@ -236,7 +206,6 @@ public class InstallmentService : IInstallmentService
                 + $"EMI: Rs {plan.EmiAmount:N0}/month x {plan.Tenure} months\n"
                 + $"This is for your information. JazakAllah!";
 
-            // SMS channel
             _db.SmsMessages.Add(new SmsMessage
             {
                 TenantId = plan.TenantId,
@@ -244,92 +213,11 @@ public class InstallmentService : IInstallmentService
                 Message = gMsg,
                 Channel = "sms",
                 Reference = $"PLAN-{plan.Id}-GUARANTOR",
-                Status = "pending",
-                MediaUrl = pdfUrl
-            });
-
-            // WhatsApp channel
-            _db.SmsMessages.Add(new SmsMessage
-            {
-                TenantId = plan.TenantId,
-                To = g.Party.Phone,
-                Message = gMsg,
-                Channel = "whatsapp",
-                Reference = $"PLAN-{plan.Id}-GUARANTOR",
-                Status = "pending",
-                MediaUrl = pdfUrl
+                Status = "pending"
             });
         }
 
         await _db.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// Queue SMS + WhatsApp to customer when an installment payment is made.
-    /// Generates a PDF receipt and attaches the public URL.
-    /// </summary>
-    private async Task QueuePaymentSms(InstallmentPlan plan, RepaymentEntry entry, decimal paidAmount)
-    {
-        var customerPhone = plan.Customer?.Phone;
-        if (string.IsNullOrWhiteSpace(customerPhone)) return;
-
-        // Generate PDF receipt (best-effort — don't break payment if PDF fails)
-        string? pdfUrl = null;
-        try
-        {
-            var pdfService = _serviceProvider.GetService<IInstallmentInvoicePdfService>();
-            if (pdfService != null)
-            {
-                var pdfRelativePath = pdfService.GeneratePaymentReceipt(plan, entry, paidAmount);
-                pdfUrl = BuildPublicUrl(pdfRelativePath);
-            }
-        }
-        catch { /* PDF generation failed — continue without attachment */ }
-
-        var productName = plan.Product?.ProductName ?? "N/A";
-        var totalSettled = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
-
-        var msg = $"Assalam o Alaikum {plan.Customer!.FullName},\n"
-            + $"Payment received for installment #{entry.InstallmentNo}:\n"
-            + $"Product: {productName}\n"
-            + $"Amount Paid: Rs {paidAmount:N0}\n"
-            + $"Installment Status: {entry.Status.ToUpper()}\n"
-            + $"Paid: {plan.PaidInstallments}/{plan.Tenure} installments\n"
-            + $"JazakAllah for your payment!";
-
-        // SMS channel
-        _db.SmsMessages.Add(new SmsMessage
-        {
-            TenantId = plan.TenantId,
-            To = customerPhone,
-            Message = msg,
-            Channel = "sms",
-            Reference = $"PAYMENT-PLAN-{plan.Id}-INS-{entry.InstallmentNo}",
-            Status = "pending",
-            MediaUrl = pdfUrl
-        });
-
-        // WhatsApp channel
-        _db.SmsMessages.Add(new SmsMessage
-        {
-            TenantId = plan.TenantId,
-            To = customerPhone,
-            Message = msg,
-            Channel = "whatsapp",
-            Reference = $"PAYMENT-PLAN-{plan.Id}-INS-{entry.InstallmentNo}",
-            Status = "pending",
-            MediaUrl = pdfUrl
-        });
-
-        await _db.SaveChangesAsync();
-    }
-
-    /// <summary>Build public absolute URL from a relative path like /uploads/invoices/file.pdf</summary>
-    private string BuildPublicUrl(string relativePath)
-    {
-        var request = _httpContextAccessor.HttpContext?.Request;
-        if (request == null) return relativePath;
-        return $"{request.Scheme}://{request.Host}{relativePath}";
     }
 
     // ── Pay Installment ────────────────────────────────────
@@ -429,9 +317,6 @@ public class InstallmentService : IInstallmentService
         UpdatePlanStats(plan);
 
         await _db.SaveChangesAsync();
-
-        // Queue SMS + WhatsApp notifications with PDF receipt
-        await QueuePaymentSms(plan, entry, paidAmount);
 
         var totalSettled = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
         return new
@@ -811,11 +696,17 @@ public class InstallmentService : IInstallmentService
         }).ToList(),
         Guarantors = (p.PlanGuarantors ?? new List<PlanGuarantor>())
             .Where(pg => pg.Party != null)
-            .Select(pg => MapGuarantorDto(pg, pg.Party!))
-            .ToList()
+            .Select(pg => MapGuarantorDto(pg, pg.Party!, p.Media))
+            .ToList(),
+        CustomerPictures = (p.Media ?? new List<PlanMedia>())
+            .Where(m => m.EntityType == "customer" && m.MediaType == "image")
+            .Select(MapMediaDto).ToList(),
+        PlanMedia = (p.Media ?? new List<PlanMedia>())
+            .Where(m => m.EntityType == "plan")
+            .Select(MapMediaDto).ToList()
     };
 
-    private static GuarantorDto MapGuarantorDto(PlanGuarantor pg, Party party) => new()
+    private static GuarantorDto MapGuarantorDto(PlanGuarantor pg, Party party, ICollection<PlanMedia>? media = null) => new()
     {
         Id = pg.Id,
         Name = party.FullName,
@@ -824,6 +715,68 @@ public class InstallmentService : IInstallmentService
         Cnic = party.Cnic,
         Address = party.Address,
         Relationship = pg.Relationship,
-        Picture = party.Picture
+        Picture = party.Picture,
+        Pictures = (media ?? new List<PlanMedia>())
+            .Where(m => m.EntityType == "guarantor" && m.EntityId == party.Id && m.MediaType == "image")
+            .Select(MapMediaDto).ToList()
     };
+
+    private static PlanMediaDto MapMediaDto(PlanMedia m) => new()
+    {
+        Id = m.Id,
+        EntityType = m.EntityType,
+        EntityId = m.EntityId,
+        MediaType = m.MediaType,
+        FilePath = m.FilePath
+    };
+
+    // ── Media Operations ───────────────────────────────────
+
+    public async Task<List<PlanMediaDto>> UploadMediaAsync(int planId, string entityType, int? entityId, string mediaType, List<IFormFile> files)
+    {
+        var plan = await _db.InstallmentPlans.FindAsync(planId)
+            ?? throw new KeyNotFoundException("Plan not found");
+
+        var folder = mediaType == "video" ? "plan-videos" : "plan-media";
+        var result = new List<PlanMediaDto>();
+
+        foreach (var file in files)
+        {
+            var path = await _fileService.SaveFileAsync(file, folder);
+            var media = new PlanMedia
+            {
+                PlanId = planId,
+                EntityType = entityType,
+                EntityId = entityId,
+                MediaType = mediaType,
+                FilePath = path
+            };
+            _db.PlanMedia.Add(media);
+            await _db.SaveChangesAsync();
+
+            result.Add(MapMediaDto(media));
+        }
+
+        return result;
+    }
+
+    public async Task<List<PlanMediaDto>> GetMediaAsync(int planId)
+    {
+        var media = await _db.PlanMedia
+            .Where(m => m.PlanId == planId)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync();
+
+        return media.Select(MapMediaDto).ToList();
+    }
+
+    public async Task<bool> DeleteMediaAsync(int mediaId)
+    {
+        var media = await _db.PlanMedia.FindAsync(mediaId);
+        if (media == null) return false;
+
+        _db.PlanMedia.Remove(media);
+        await _db.SaveChangesAsync();
+        return true;
+    }
 }

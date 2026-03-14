@@ -58,4 +58,6 @@ public class InstallmentPlan : ITenantEntity
     public ICollection<RepaymentEntry> Schedule { get; set; } = new List<RepaymentEntry>();
 
     public ICollection<PlanGuarantor> PlanGuarantors { get; set; } = new List<PlanGuarantor>();
+
+    public ICollection<PlanMedia> Media { get; set; } = new List<PlanMedia>();
 }

@@ -48,8 +48,7 @@ public class NotificationsController : ControllerBase
             Message = request.Message,
             Channel = request.Channel ?? "sms",
             Reference = request.Reference,
-            Status = "pending",
-            MediaUrl = request.MediaUrl
+            Status = "pending"
         };
 
         _db.SmsMessages.Add(msg);
@@ -129,7 +128,6 @@ public class NotificationsController : ControllerBase
                 m.Status,
                 m.Error,
                 m.Reference,
-                m.MediaUrl,
                 m.CreatedAt,
                 m.ProcessedAt
             })
@@ -171,10 +169,9 @@ public class NotificationsController : ControllerBase
         var result = pending.Select(m => new
         {
             id = m.Id.ToString(),
-            phone = m.To,
+            to = m.To,
             message = m.Message,
-            channel = m.Channel,
-            media_url = m.MediaUrl
+            channel = m.Channel
         });
 
         return Ok(new { messages = result });
@@ -246,7 +243,6 @@ public class QueueSmsRequest
     public string Message { get; set; } = "";
     public string? Channel { get; set; }
     public string? Reference { get; set; }
-    public string? MediaUrl { get; set; }
 }
 
 public class QueueBulkSmsRequest

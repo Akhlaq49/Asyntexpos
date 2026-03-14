@@ -20,6 +20,11 @@ public interface IInstallmentService
     Task<GuarantorDto?> UpdateGuarantorAsync(int guarantorId, string name, string? so, string? phone, string? cnic, string? address, string? relationship, IFormFile? picture);
     Task<bool> DeleteGuarantorAsync(int guarantorId);
 
+    // Media operations
+    Task<List<PlanMediaDto>> UploadMediaAsync(int planId, string entityType, int? entityId, string mediaType, List<IFormFile> files);
+    Task<List<PlanMediaDto>> GetMediaAsync(int planId);
+    Task<bool> DeleteMediaAsync(int mediaId);
+
     // Preview / calculation endpoint (no DB write)
     InstallmentPreviewDto PreviewPlan(PreviewInstallmentDto dto);
 }

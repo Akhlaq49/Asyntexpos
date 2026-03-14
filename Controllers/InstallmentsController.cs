@@ -127,4 +127,37 @@ public class InstallmentsController : ControllerBase
         if (!success) return NotFound();
         return NoContent();
     }
+
+    [HttpPost("{planId}/media")]
+    public async Task<IActionResult> UploadMedia(int planId, [FromForm] string entityType,
+        [FromForm] int? entityId, [FromForm] string mediaType, List<IFormFile> files)
+    {
+        if (files == null || files.Count == 0)
+            return BadRequest(new { message = "No files provided" });
+
+        try
+        {
+            var result = await _service.UploadMediaAsync(planId, entityType, entityId, mediaType, files);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{planId}/media")]
+    public async Task<IActionResult> GetMedia(int planId)
+    {
+        var media = await _service.GetMediaAsync(planId);
+        return Ok(media);
+    }
+
+    [HttpDelete("media/{mediaId}")]
+    public async Task<IActionResult> DeleteMedia(int mediaId)
+    {
+        var success = await _service.DeleteMediaAsync(mediaId);
+        if (!success) return NotFound();
+        return NoContent();
+    }
 }

@@ -34,10 +34,6 @@ public class SmsMessage : ITenantEntity
     [MaxLength(100)]
     public string? Reference { get; set; }
 
-    /// <summary>Optional media URL (e.g. PDF invoice link)</summary>
-    [MaxLength(500)]
-    public string? MediaUrl { get; set; }
-
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ProcessedAt { get; set; }
 }

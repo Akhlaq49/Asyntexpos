@@ -64,6 +64,7 @@ public class AppDbContext : DbContext
     // Installments
     public DbSet<InstallmentPlan> InstallmentPlans => Set<InstallmentPlan>();
     public DbSet<RepaymentEntry> RepaymentEntries => Set<RepaymentEntry>();
+    public DbSet<PlanMedia> PlanMedia => Set<PlanMedia>();
 
     // Online storefront
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
@@ -262,6 +263,15 @@ public class AppDbContext : DbContext
              .WithMany(p => p.GuaranteedPlans)
              .HasForeignKey(pg => pg.PartyId)
              .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // PlanMedia -> InstallmentPlan
+        modelBuilder.Entity<PlanMedia>(e =>
+        {
+            e.HasOne(pm => pm.Plan)
+             .WithMany(p => p.Media)
+             .HasForeignKey(pm => pm.PlanId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         // StockTransferItem -> StockTransfer
