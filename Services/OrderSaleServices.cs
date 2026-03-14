@@ -66,41 +66,51 @@ public class SaleService : ISaleService
 
     public async Task<object> CreateAsync(CreateSaleDto dto)
     {
-        var lastRef = await _db.Sales.OrderByDescending(s => s.Id).Select(s => s.Reference).FirstOrDefaultAsync();
-        int nextNum = 1;
-        if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
-        { int.TryParse(lastRef.Substring(2), out nextNum); nextNum++; }
-        var reference = $"SL{nextNum:D3}";
-
-        var sale = new Sale
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Reference = reference, OrderNumber = dto.OrderNumber,
-            CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
-            CustomerImage = dto.CustomerImage, Biller = dto.Biller, Source = dto.Source,
-            GrandTotal = dto.GrandTotal, Paid = 0, Due = dto.GrandTotal,
-            OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
-            Status = dto.Status, PaymentStatus = !string.IsNullOrEmpty(dto.ExpectedDate) ? "Pending" : "Unpaid", Notes = dto.Notes,
-            ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null,
-            SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
-            Items = dto.Items.Select(i => new SaleItem
+            var lastRef = await _db.Sales.OrderByDescending(s => s.Id).Select(s => s.Reference).FirstOrDefaultAsync();
+            int nextNum = 1;
+            if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
+            { int.TryParse(lastRef.Substring(2), out nextNum); nextNum++; }
+            var reference = $"SL{nextNum:D3}";
+
+            var sale = new Sale
             {
-                ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
-                PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
-                TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
-            }).ToList()
-        };
-        _db.Sales.Add(sale);
+                Reference = reference, OrderNumber = dto.OrderNumber,
+                CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
+                CustomerImage = dto.CustomerImage, Biller = dto.Biller, Source = dto.Source,
+                GrandTotal = dto.GrandTotal, Paid = 0, Due = dto.GrandTotal,
+                OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
+                Status = dto.Status, PaymentStatus = !string.IsNullOrEmpty(dto.ExpectedDate) ? "Pending" : "Unpaid", Notes = dto.Notes,
+                ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null,
+                SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
+                Items = dto.Items.Select(i => new SaleItem
+                {
+                    ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
+                    PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
+                    TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
+                }).ToList()
+            };
+            _db.Sales.Add(sale);
 
-        // ── Deduct product quantities from inventory ──
-        foreach (var item in sale.Items)
-        {
-            var product = await _db.Products.FindAsync(item.ProductId);
-            if (product != null)
-                product.Quantity -= item.Quantity;
+            // ── Deduct product quantities from inventory ──
+            foreach (var item in sale.Items)
+            {
+                var product = await _db.Products.FindAsync(item.ProductId);
+                if (product != null)
+                    product.Quantity -= item.Quantity;
+            }
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { sale.Id, sale.Reference };
         }
-
-        await _db.SaveChangesAsync();
-        return new { sale.Id, sale.Reference };
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<object?> UpdateAsync(int id, CreateSaleDto dto)
@@ -108,43 +118,53 @@ public class SaleService : ISaleService
         var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == id);
         if (sale == null) return null;
 
-        sale.CustomerId = dto.CustomerId; sale.CustomerName = dto.CustomerName;
-        sale.CustomerImage = dto.CustomerImage; sale.Biller = dto.Biller;
-        sale.GrandTotal = dto.GrandTotal; sale.OrderTax = dto.OrderTax;
-        sale.Discount = dto.Discount; sale.Shipping = dto.Shipping;
-        sale.Status = dto.Status; sale.Notes = dto.Notes;
-        sale.ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null;
-        sale.Due = dto.GrandTotal - sale.Paid;
-        if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-        else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
-        else { sale.PaymentStatus = "Unpaid"; }
-
-        // ── Restore old item quantities to inventory ──
-        foreach (var oldItem in sale.Items)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            var product = await _db.Products.FindAsync(oldItem.ProductId);
-            if (product != null)
-                product.Quantity += oldItem.Quantity;
+            sale.CustomerId = dto.CustomerId; sale.CustomerName = dto.CustomerName;
+            sale.CustomerImage = dto.CustomerImage; sale.Biller = dto.Biller;
+            sale.GrandTotal = dto.GrandTotal; sale.OrderTax = dto.OrderTax;
+            sale.Discount = dto.Discount; sale.Shipping = dto.Shipping;
+            sale.Status = dto.Status; sale.Notes = dto.Notes;
+            sale.ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null;
+            sale.Due = dto.GrandTotal - sale.Paid;
+            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
+            else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
+            else { sale.PaymentStatus = "Unpaid"; }
+
+            // ── Restore old item quantities to inventory ──
+            foreach (var oldItem in sale.Items)
+            {
+                var product = await _db.Products.FindAsync(oldItem.ProductId);
+                if (product != null)
+                    product.Quantity += oldItem.Quantity;
+            }
+
+            _db.SaleItems.RemoveRange(sale.Items);
+            sale.Items = dto.Items.Select(i => new SaleItem
+            {
+                SaleId = id, ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
+                PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
+                TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
+            }).ToList();
+
+            // ── Deduct new item quantities from inventory ──
+            foreach (var newItem in sale.Items)
+            {
+                var product = await _db.Products.FindAsync(newItem.ProductId);
+                if (product != null)
+                    product.Quantity -= newItem.Quantity;
+            }
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { sale.Id };
         }
-
-        _db.SaleItems.RemoveRange(sale.Items);
-        sale.Items = dto.Items.Select(i => new SaleItem
+        catch
         {
-            SaleId = id, ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
-            PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
-            TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
-        }).ToList();
-
-        // ── Deduct new item quantities from inventory ──
-        foreach (var newItem in sale.Items)
-        {
-            var product = await _db.Products.FindAsync(newItem.ProductId);
-            if (product != null)
-                product.Quantity -= newItem.Quantity;
+            await transaction.RollbackAsync();
+            throw;
         }
-
-        await _db.SaveChangesAsync();
-        return new { sale.Id };
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -152,17 +172,27 @@ public class SaleService : ISaleService
         var sale = await _db.Sales.Include(s => s.Items).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == id);
         if (sale == null) return false;
 
-        // ── Restore product quantities to inventory ──
-        foreach (var item in sale.Items)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            var product = await _db.Products.FindAsync(item.ProductId);
-            if (product != null)
-                product.Quantity += item.Quantity;
-        }
+            // ── Restore product quantities to inventory ──
+            foreach (var item in sale.Items)
+            {
+                var product = await _db.Products.FindAsync(item.ProductId);
+                if (product != null)
+                    product.Quantity += item.Quantity;
+            }
 
-        _db.Sales.Remove(sale);
-        await _db.SaveChangesAsync();
-        return true;
+            _db.Sales.Remove(sale);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<List<SalePaymentDto>?> GetPaymentsAsync(int saleId)
@@ -182,21 +212,31 @@ public class SaleService : ISaleService
         var sale = await _db.Sales.FindAsync(saleId);
         if (sale == null) return null;
 
-        var payment = new SalePayment
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            SaleId = saleId, Reference = dto.Reference, ReceivedAmount = dto.ReceivedAmount,
-            PayingAmount = dto.PayingAmount, PaymentType = dto.PaymentType,
-            Description = dto.Description, PaymentDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
-        };
-        _db.SalePayments.Add(payment);
+            var payment = new SalePayment
+            {
+                SaleId = saleId, Reference = dto.Reference, ReceivedAmount = dto.ReceivedAmount,
+                PayingAmount = dto.PayingAmount, PaymentType = dto.PaymentType,
+                Description = dto.Description, PaymentDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+            };
+            _db.SalePayments.Add(payment);
 
-        sale.Paid += dto.PayingAmount;
-        sale.Due = sale.GrandTotal - sale.Paid;
-        if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-        else { sale.PaymentStatus = "Overdue"; }
+            sale.Paid += dto.PayingAmount;
+            sale.Due = sale.GrandTotal - sale.Paid;
+            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
+            else { sale.PaymentStatus = "Overdue"; }
 
-        await _db.SaveChangesAsync();
-        return new { payment.Id };
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { payment.Id };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<object?> UpdatePaymentAsync(int saleId, int paymentId, CreateSalePaymentDto dto)
@@ -206,19 +246,29 @@ public class SaleService : ISaleService
         var payment = await _db.SalePayments.FirstOrDefaultAsync(p => p.Id == paymentId && p.SaleId == saleId);
         if (payment == null) return null;
 
-        sale.Paid -= payment.PayingAmount;
-        payment.Reference = dto.Reference; payment.ReceivedAmount = dto.ReceivedAmount;
-        payment.PayingAmount = dto.PayingAmount; payment.PaymentType = dto.PaymentType;
-        payment.Description = dto.Description;
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            sale.Paid -= payment.PayingAmount;
+            payment.Reference = dto.Reference; payment.ReceivedAmount = dto.ReceivedAmount;
+            payment.PayingAmount = dto.PayingAmount; payment.PaymentType = dto.PaymentType;
+            payment.Description = dto.Description;
 
-        sale.Paid += dto.PayingAmount;
-        sale.Due = sale.GrandTotal - sale.Paid;
-        if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-        else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
-        else { sale.PaymentStatus = "Unpaid"; }
+            sale.Paid += dto.PayingAmount;
+            sale.Due = sale.GrandTotal - sale.Paid;
+            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
+            else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
+            else { sale.PaymentStatus = "Unpaid"; }
 
-        await _db.SaveChangesAsync();
-        return new { payment.Id };
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { payment.Id };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeletePaymentAsync(int saleId, int paymentId)
@@ -228,15 +278,25 @@ public class SaleService : ISaleService
         var payment = await _db.SalePayments.FirstOrDefaultAsync(p => p.Id == paymentId && p.SaleId == saleId);
         if (payment == null) return false;
 
-        sale.Paid -= payment.PayingAmount;
-        sale.Due = sale.GrandTotal - sale.Paid;
-        if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-        else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
-        else { sale.PaymentStatus = "Unpaid"; }
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            sale.Paid -= payment.PayingAmount;
+            sale.Due = sale.GrandTotal - sale.Paid;
+            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
+            else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
+            else { sale.PaymentStatus = "Unpaid"; }
 
-        _db.SalePayments.Remove(payment);
-        await _db.SaveChangesAsync();
-        return true;
+            _db.SalePayments.Remove(payment);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private static SaleDto MapToDto(Sale s) => new()
@@ -319,28 +379,38 @@ public class InvoiceService : IInvoiceService
         var invoice = await _db.Invoices.Include(i => i.Items).FirstOrDefaultAsync(i => i.Id == id);
         if (invoice == null) return null;
 
-        invoice.CustomerId = dto.CustomerId; invoice.CustomerName = dto.CustomerName;
-        invoice.CustomerImage = dto.CustomerImage; invoice.CustomerAddress = dto.CustomerAddress;
-        invoice.CustomerEmail = dto.CustomerEmail; invoice.CustomerPhone = dto.CustomerPhone;
-        invoice.FromName = dto.FromName; invoice.FromAddress = dto.FromAddress;
-        invoice.FromEmail = dto.FromEmail; invoice.FromPhone = dto.FromPhone;
-        invoice.InvoiceFor = dto.InvoiceFor; invoice.SubTotal = dto.SubTotal;
-        invoice.Discount = dto.Discount; invoice.DiscountPercent = dto.DiscountPercent;
-        invoice.Tax = dto.Tax; invoice.TaxPercent = dto.TaxPercent;
-        invoice.TotalAmount = dto.TotalAmount; invoice.Paid = dto.Paid;
-        invoice.AmountDue = dto.AmountDue; invoice.Status = dto.Status;
-        invoice.Notes = dto.Notes; invoice.Terms = dto.Terms;
-        if (dto.DueDate != null) invoice.DueDate = DateTime.Parse(dto.DueDate);
-
-        _db.InvoiceItems.RemoveRange(invoice.Items);
-        invoice.Items = dto.Items.Select(it => new InvoiceItem
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            InvoiceId = id, Description = it.Description, Quantity = it.Quantity,
-            Cost = it.Cost, Discount = it.Discount, Total = it.Total
-        }).ToList();
+            invoice.CustomerId = dto.CustomerId; invoice.CustomerName = dto.CustomerName;
+            invoice.CustomerImage = dto.CustomerImage; invoice.CustomerAddress = dto.CustomerAddress;
+            invoice.CustomerEmail = dto.CustomerEmail; invoice.CustomerPhone = dto.CustomerPhone;
+            invoice.FromName = dto.FromName; invoice.FromAddress = dto.FromAddress;
+            invoice.FromEmail = dto.FromEmail; invoice.FromPhone = dto.FromPhone;
+            invoice.InvoiceFor = dto.InvoiceFor; invoice.SubTotal = dto.SubTotal;
+            invoice.Discount = dto.Discount; invoice.DiscountPercent = dto.DiscountPercent;
+            invoice.Tax = dto.Tax; invoice.TaxPercent = dto.TaxPercent;
+            invoice.TotalAmount = dto.TotalAmount; invoice.Paid = dto.Paid;
+            invoice.AmountDue = dto.AmountDue; invoice.Status = dto.Status;
+            invoice.Notes = dto.Notes; invoice.Terms = dto.Terms;
+            if (dto.DueDate != null) invoice.DueDate = DateTime.Parse(dto.DueDate);
 
-        await _db.SaveChangesAsync();
-        return new { invoice.Id };
+            _db.InvoiceItems.RemoveRange(invoice.Items);
+            invoice.Items = dto.Items.Select(it => new InvoiceItem
+            {
+                InvoiceId = id, Description = it.Description, Quantity = it.Quantity,
+                Cost = it.Cost, Discount = it.Discount, Total = it.Total
+            }).ToList();
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { invoice.Id };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -503,25 +573,35 @@ public class SalesReturnService : ISalesReturnService
         var entity = await _db.SalesReturns.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == id);
         if (entity == null) return null;
 
-        entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
-        entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
-        entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
-        entity.OrderTax = dto.OrderTax; entity.Discount = dto.Discount;
-        entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
-        entity.Paid = dto.Paid; entity.Due = dto.Due;
-        entity.Status = dto.Status; entity.PaymentStatus = dto.PaymentStatus;
-        if (dto.ReturnDate != null) entity.ReturnDate = DateTime.Parse(dto.ReturnDate);
-
-        _db.SalesReturnItems.RemoveRange(entity.Items);
-        entity.Items = dto.Items.Select(i => new SalesReturnItem
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            SalesReturnId = id, ProductName = i.ProductName, NetUnitPrice = i.NetUnitPrice,
-            Stock = i.Stock, Quantity = i.Quantity, Discount = i.Discount,
-            TaxPercent = i.TaxPercent, Subtotal = i.Subtotal
-        }).ToList();
+            entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
+            entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
+            entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
+            entity.OrderTax = dto.OrderTax; entity.Discount = dto.Discount;
+            entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
+            entity.Paid = dto.Paid; entity.Due = dto.Due;
+            entity.Status = dto.Status; entity.PaymentStatus = dto.PaymentStatus;
+            if (dto.ReturnDate != null) entity.ReturnDate = DateTime.Parse(dto.ReturnDate);
 
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
+            _db.SalesReturnItems.RemoveRange(entity.Items);
+            entity.Items = dto.Items.Select(i => new SalesReturnItem
+            {
+                SalesReturnId = id, ProductName = i.ProductName, NetUnitPrice = i.NetUnitPrice,
+                Stock = i.Stock, Quantity = i.Quantity, Discount = i.Discount,
+                TaxPercent = i.TaxPercent, Subtotal = i.Subtotal
+            }).ToList();
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { entity.Id };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -660,26 +740,36 @@ public class QuotationService : IQuotationService
         var entity = await _db.Quotations.Include(q => q.Items).FirstOrDefaultAsync(q => q.Id == id);
         if (entity == null) return null;
 
-        entity.Reference = dto.Reference ?? entity.Reference;
-        entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
-        entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
-        entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
-        entity.OrderTax = dto.OrderTax; entity.Discount = dto.Discount;
-        entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
-        entity.Status = dto.Status; entity.Description = dto.Description;
-        if (dto.QuotationDate != null) entity.QuotationDate = DateTime.Parse(dto.QuotationDate);
-
-        _db.QuotationItems.RemoveRange(entity.Items);
-        entity.Items = dto.Items.Select(i => new QuotationItem
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            QuotationId = id, ProductId = i.ProductId, ProductName = i.ProductName,
-            Quantity = i.Quantity, PurchasePrice = i.PurchasePrice, Discount = i.Discount,
-            TaxPercent = i.TaxPercent, TaxAmount = i.TaxAmount,
-            UnitCost = i.UnitCost, TotalCost = i.TotalCost
-        }).ToList();
+            entity.Reference = dto.Reference ?? entity.Reference;
+            entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
+            entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
+            entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
+            entity.OrderTax = dto.OrderTax; entity.Discount = dto.Discount;
+            entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
+            entity.Status = dto.Status; entity.Description = dto.Description;
+            if (dto.QuotationDate != null) entity.QuotationDate = DateTime.Parse(dto.QuotationDate);
 
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
+            _db.QuotationItems.RemoveRange(entity.Items);
+            entity.Items = dto.Items.Select(i => new QuotationItem
+            {
+                QuotationId = id, ProductId = i.ProductId, ProductName = i.ProductName,
+                Quantity = i.Quantity, PurchasePrice = i.PurchasePrice, Discount = i.Discount,
+                TaxPercent = i.TaxPercent, TaxAmount = i.TaxAmount,
+                UnitCost = i.UnitCost, TotalCost = i.TotalCost
+            }).ToList();
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { entity.Id };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)

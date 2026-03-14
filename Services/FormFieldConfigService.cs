@@ -67,29 +67,39 @@ public class FormFieldConfigService : IFormFieldConfigService
     {
         var result = new List<FormFieldConfig>();
 
-        foreach (var cfg in configs)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            var existing = await _db.FormFieldConfigs
-                .FirstOrDefaultAsync(f => f.FormName == cfg.FormName && f.FieldName == cfg.FieldName);
+            foreach (var cfg in configs)
+            {
+                var existing = await _db.FormFieldConfigs
+                    .FirstOrDefaultAsync(f => f.FormName == cfg.FormName && f.FieldName == cfg.FieldName);
 
-            if (existing != null)
-            {
-                existing.IsVisible = cfg.IsVisible;
-                existing.FieldLabel = cfg.FieldLabel;
-                existing.UpdatedAt = DateTime.UtcNow;
-                result.Add(existing);
+                if (existing != null)
+                {
+                    existing.IsVisible = cfg.IsVisible;
+                    existing.FieldLabel = cfg.FieldLabel;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    result.Add(existing);
+                }
+                else
+                {
+                    cfg.CreatedAt = DateTime.UtcNow;
+                    cfg.UpdatedAt = DateTime.UtcNow;
+                    _db.FormFieldConfigs.Add(cfg);
+                    result.Add(cfg);
+                }
             }
-            else
-            {
-                cfg.CreatedAt = DateTime.UtcNow;
-                cfg.UpdatedAt = DateTime.UtcNow;
-                _db.FormFieldConfigs.Add(cfg);
-                result.Add(cfg);
-            }
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return result;
         }
-
-        await _db.SaveChangesAsync();
-        return result;
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)

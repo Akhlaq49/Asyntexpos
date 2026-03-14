@@ -183,25 +183,35 @@ public class ProductService : IProductService
             ExpiryDate = form.ExpiryDate
         };
 
-        _db.Products.Add(entity);
-        await _db.SaveChangesAsync();
-
-        if (form.Images != null && form.Images.Count > 0)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            foreach (var file in form.Images)
-            {
-                var path = await _fileService.SaveFileAsync(file, "products");
-                _db.ProductImages.Add(new ProductImage
-                {
-                    ProductId = entity.Id,
-                    ImagePath = path
-                });
-            }
+            _db.Products.Add(entity);
             await _db.SaveChangesAsync();
-        }
 
-        await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
-        return MapToDto(entity);
+            if (form.Images != null && form.Images.Count > 0)
+            {
+                foreach (var file in form.Images)
+                {
+                    var path = await _fileService.SaveFileAsync(file, "products");
+                    _db.ProductImages.Add(new ProductImage
+                    {
+                        ProductId = entity.Id,
+                        ImagePath = path
+                    });
+                }
+                await _db.SaveChangesAsync();
+            }
+
+            await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
+            await transaction.CommitAsync();
+            return MapToDto(entity);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<ProductDto?> UpdateAsync(int id, ProductFormModel form)
@@ -209,50 +219,60 @@ public class ProductService : IProductService
         var entity = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
         if (entity == null) return null;
 
-        entity.Store = form.Store;
-        entity.Warehouse = form.Warehouse;
-        entity.ProductName = form.ProductName ?? entity.ProductName;
-        entity.Slug = form.Slug;
-        entity.SKU = form.Sku;
-        entity.SellingType = form.SellingType;
-        entity.Category = form.Category;
-        entity.SubCategory = form.SubCategory;
-        entity.Brand = form.Brand;
-        entity.Unit = form.Unit;
-        entity.BarcodeSymbology = form.BarcodeSymbology;
-        entity.ItemBarcode = form.ItemBarcode;
-        entity.Description = form.Description;
-        entity.ProductType = form.ProductType ?? entity.ProductType;
-        entity.Quantity = form.Quantity;
-        entity.Price = form.Price;
-        entity.TaxType = form.TaxType;
-        entity.Tax = form.Tax;
-        entity.DiscountType = form.DiscountType;
-        entity.DiscountValue = form.DiscountValue;
-        entity.QuantityAlert = form.QuantityAlert;
-        entity.Warranty = form.Warranty;
-        entity.Manufacturer = form.Manufacturer;
-        entity.ManufacturedDate = form.ManufacturedDate;
-        entity.ExpiryDate = form.ExpiryDate;
-        entity.UpdatedAt = DateTime.UtcNow;
-
-        if (form.Images != null && form.Images.Count > 0)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            _db.ProductImages.RemoveRange(entity.Images);
-            foreach (var file in form.Images)
-            {
-                var path = await _fileService.SaveFileAsync(file, "products");
-                _db.ProductImages.Add(new ProductImage
-                {
-                    ProductId = entity.Id,
-                    ImagePath = path
-                });
-            }
-        }
+            entity.Store = form.Store;
+            entity.Warehouse = form.Warehouse;
+            entity.ProductName = form.ProductName ?? entity.ProductName;
+            entity.Slug = form.Slug;
+            entity.SKU = form.Sku;
+            entity.SellingType = form.SellingType;
+            entity.Category = form.Category;
+            entity.SubCategory = form.SubCategory;
+            entity.Brand = form.Brand;
+            entity.Unit = form.Unit;
+            entity.BarcodeSymbology = form.BarcodeSymbology;
+            entity.ItemBarcode = form.ItemBarcode;
+            entity.Description = form.Description;
+            entity.ProductType = form.ProductType ?? entity.ProductType;
+            entity.Quantity = form.Quantity;
+            entity.Price = form.Price;
+            entity.TaxType = form.TaxType;
+            entity.Tax = form.Tax;
+            entity.DiscountType = form.DiscountType;
+            entity.DiscountValue = form.DiscountValue;
+            entity.QuantityAlert = form.QuantityAlert;
+            entity.Warranty = form.Warranty;
+            entity.Manufacturer = form.Manufacturer;
+            entity.ManufacturedDate = form.ManufacturedDate;
+            entity.ExpiryDate = form.ExpiryDate;
+            entity.UpdatedAt = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
-        await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
-        return MapToDto(entity);
+            if (form.Images != null && form.Images.Count > 0)
+            {
+                _db.ProductImages.RemoveRange(entity.Images);
+                foreach (var file in form.Images)
+                {
+                    var path = await _fileService.SaveFileAsync(file, "products");
+                    _db.ProductImages.Add(new ProductImage
+                    {
+                        ProductId = entity.Id,
+                        ImagePath = path
+                    });
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
+            await transaction.CommitAsync();
+            return MapToDto(entity);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<(bool success, string? error)> DeleteAsync(int id)

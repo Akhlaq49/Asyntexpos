@@ -43,35 +43,46 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Email is already registered.");
 
         // ── MULTI-TENANCY: Registration creates a SuperAdmin with a new tenant ──
-        var tenant = new Tenant
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Name = dto.FullName.Trim(),
-            Email = dto.Email.ToLower().Trim(),
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-        _db.Tenants.Add(tenant);
-        await _db.SaveChangesAsync(); // Get the tenant Id
+            var tenant = new Tenant
+            {
+                Name = dto.FullName.Trim(),
+                Email = dto.Email.ToLower().Trim(),
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Tenants.Add(tenant);
+            await _db.SaveChangesAsync(); // Get the tenant Id
 
-        var party = new Party
+            var party = new Party
+            {
+                FullName = dto.FullName.Trim(),
+                Email = dto.Email.ToLower().Trim(),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                Role = "SuperAdmin",  // Registering user becomes SuperAdmin (tenant owner)
+                IsActive = true,
+                TenantId = tenant.Id,  // Explicitly set — bypass auto-set since no JWT yet
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Parties.Add(party);
+            await _db.SaveChangesAsync();
+
+            // Seed default form field configs for the new tenant
+            await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+
+            await transaction.CommitAsync();
+
+            var token = GenerateJwtToken(party);
+            return new AuthResponseDto { Token = token, User = MapToDto(party) };
+        }
+        catch
         {
-            FullName = dto.FullName.Trim(),
-            Email = dto.Email.ToLower().Trim(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = "SuperAdmin",  // Registering user becomes SuperAdmin (tenant owner)
-            IsActive = true,
-            TenantId = tenant.Id,  // Explicitly set — bypass auto-set since no JWT yet
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _db.Parties.Add(party);
-        await _db.SaveChangesAsync();
-
-        // Seed default form field configs for the new tenant
-        await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
-
-        var token = GenerateJwtToken(party);
-        return new AuthResponseDto { Token = token, User = MapToDto(party) };
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<AuthResponseDto> LoginAsync(LoginDto dto)

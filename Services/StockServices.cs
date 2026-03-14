@@ -35,22 +35,32 @@ public class StockEntryService : IStockEntryService
         var product = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == dto.ProductId);
         if (product == null) return null;
 
-        product.Quantity += dto.Quantity;
-        var entity = new StockEntry
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Warehouse = dto.Warehouse, Store = dto.Store, ProductId = dto.ProductId,
-            Person = dto.Person, Quantity = dto.Quantity, Date = DateTime.UtcNow
-        };
-        _db.StockEntries.Add(entity);
-        await _db.SaveChangesAsync();
+            product.Quantity += dto.Quantity;
+            var entity = new StockEntry
+            {
+                Warehouse = dto.Warehouse, Store = dto.Store, ProductId = dto.ProductId,
+                Person = dto.Person, Quantity = dto.Quantity, Date = DateTime.UtcNow
+            };
+            _db.StockEntries.Add(entity);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-        return new StockEntryDto
+            return new StockEntryDto
+            {
+                Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
+                ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
+                Sku = product.SKU ?? "", Category = product.Category ?? "",
+                Person = entity.Person, Quantity = entity.Quantity, Date = entity.Date.ToString("dd MMM yyyy")
+            };
+        }
+        catch
         {
-            Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
-            ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
-            Sku = product.SKU ?? "", Category = product.Category ?? "",
-            Person = entity.Person, Quantity = entity.Quantity, Date = entity.Date.ToString("dd MMM yyyy")
-        };
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<StockEntryDto?> UpdateAsync(int id, CreateStockEntryDto dto)
@@ -61,24 +71,34 @@ public class StockEntryService : IStockEntryService
         var product = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == dto.ProductId);
         if (product == null) return null;
 
-        var oldProduct = await _db.Products.FindAsync(entity.ProductId);
-        if (oldProduct != null) oldProduct.Quantity -= entity.Quantity;
-        product.Quantity += dto.Quantity;
-
-        entity.Warehouse = dto.Warehouse;
-        entity.Store = dto.Store;
-        entity.ProductId = dto.ProductId;
-        entity.Person = dto.Person;
-        entity.Quantity = dto.Quantity;
-        await _db.SaveChangesAsync();
-
-        return new StockEntryDto
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
-            ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
-            Sku = product.SKU ?? "", Category = product.Category ?? "",
-            Person = entity.Person, Quantity = entity.Quantity, Date = entity.Date.ToString("dd MMM yyyy")
-        };
+            var oldProduct = await _db.Products.FindAsync(entity.ProductId);
+            if (oldProduct != null) oldProduct.Quantity -= entity.Quantity;
+            product.Quantity += dto.Quantity;
+
+            entity.Warehouse = dto.Warehouse;
+            entity.Store = dto.Store;
+            entity.ProductId = dto.ProductId;
+            entity.Person = dto.Person;
+            entity.Quantity = dto.Quantity;
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return new StockEntryDto
+            {
+                Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
+                ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
+                Sku = product.SKU ?? "", Category = product.Category ?? "",
+                Person = entity.Person, Quantity = entity.Quantity, Date = entity.Date.ToString("dd MMM yyyy")
+            };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -86,12 +106,22 @@ public class StockEntryService : IStockEntryService
         var entity = await _db.StockEntries.FindAsync(id);
         if (entity == null) return false;
 
-        var product = await _db.Products.FindAsync(entity.ProductId);
-        if (product != null) product.Quantity -= entity.Quantity;
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var product = await _db.Products.FindAsync(entity.ProductId);
+            if (product != null) product.Quantity -= entity.Quantity;
 
-        _db.StockEntries.Remove(entity);
-        await _db.SaveChangesAsync();
-        return true;
+            _db.StockEntries.Remove(entity);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 }
 
@@ -148,19 +178,29 @@ public class StockTransferService : IStockTransferService
         var entity = await _db.StockTransfers.Include(t => t.Items).FirstOrDefaultAsync(t => t.Id == id);
         if (entity == null) return null;
 
-        entity.WarehouseFrom = dto.WarehouseFrom;
-        entity.WarehouseTo = dto.WarehouseTo;
-        entity.ReferenceNumber = dto.ReferenceNumber;
-        entity.Notes = dto.Notes;
-
-        _db.StockTransferItems.RemoveRange(entity.Items);
-        entity.Items = dto.Items.Select(i => new StockTransferItem
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            StockTransferId = id, ProductId = i.ProductId, Quantity = i.Quantity
-        }).ToList();
+            entity.WarehouseFrom = dto.WarehouseFrom;
+            entity.WarehouseTo = dto.WarehouseTo;
+            entity.ReferenceNumber = dto.ReferenceNumber;
+            entity.Notes = dto.Notes;
 
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
+            _db.StockTransferItems.RemoveRange(entity.Items);
+            entity.Items = dto.Items.Select(i => new StockTransferItem
+            {
+                StockTransferId = id, ProductId = i.ProductId, Quantity = i.Quantity
+            }).ToList();
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return new { entity.Id };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -204,24 +244,34 @@ public class StockAdjustmentService : IStockAdjustmentService
         var product = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == dto.ProductId);
         if (product == null) return null;
 
-        product.Quantity += dto.Quantity;
-        var entity = new StockAdjustment
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Warehouse = dto.Warehouse, Store = dto.Store, ProductId = dto.ProductId,
-            ReferenceNumber = dto.ReferenceNumber, Person = dto.Person,
-            Quantity = dto.Quantity, Notes = dto.Notes, Date = DateTime.UtcNow
-        };
-        _db.StockAdjustments.Add(entity);
-        await _db.SaveChangesAsync();
+            product.Quantity += dto.Quantity;
+            var entity = new StockAdjustment
+            {
+                Warehouse = dto.Warehouse, Store = dto.Store, ProductId = dto.ProductId,
+                ReferenceNumber = dto.ReferenceNumber, Person = dto.Person,
+                Quantity = dto.Quantity, Notes = dto.Notes, Date = DateTime.UtcNow
+            };
+            _db.StockAdjustments.Add(entity);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-        return new StockAdjustmentDto
+            return new StockAdjustmentDto
+            {
+                Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
+                ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
+                Sku = product.SKU ?? "", Category = product.Category ?? "",
+                ReferenceNumber = entity.ReferenceNumber, Person = entity.Person,
+                Quantity = entity.Quantity, Notes = entity.Notes, Date = entity.Date.ToString("dd MMM yyyy")
+            };
+        }
+        catch
         {
-            Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
-            ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
-            Sku = product.SKU ?? "", Category = product.Category ?? "",
-            ReferenceNumber = entity.ReferenceNumber, Person = entity.Person,
-            Quantity = entity.Quantity, Notes = entity.Notes, Date = entity.Date.ToString("dd MMM yyyy")
-        };
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<StockAdjustmentDto?> UpdateAsync(int id, CreateStockAdjustmentDto dto)
@@ -232,27 +282,37 @@ public class StockAdjustmentService : IStockAdjustmentService
         var product = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == dto.ProductId);
         if (product == null) return null;
 
-        var oldProduct = await _db.Products.FindAsync(entity.ProductId);
-        if (oldProduct != null) oldProduct.Quantity -= entity.Quantity;
-        product.Quantity += dto.Quantity;
-
-        entity.Warehouse = dto.Warehouse;
-        entity.Store = dto.Store;
-        entity.ProductId = dto.ProductId;
-        entity.ReferenceNumber = dto.ReferenceNumber;
-        entity.Person = dto.Person;
-        entity.Quantity = dto.Quantity;
-        entity.Notes = dto.Notes;
-        await _db.SaveChangesAsync();
-
-        return new StockAdjustmentDto
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
-            ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
-            Sku = product.SKU ?? "", Category = product.Category ?? "",
-            ReferenceNumber = entity.ReferenceNumber, Person = entity.Person,
-            Quantity = entity.Quantity, Notes = entity.Notes, Date = entity.Date.ToString("dd MMM yyyy")
-        };
+            var oldProduct = await _db.Products.FindAsync(entity.ProductId);
+            if (oldProduct != null) oldProduct.Quantity -= entity.Quantity;
+            product.Quantity += dto.Quantity;
+
+            entity.Warehouse = dto.Warehouse;
+            entity.Store = dto.Store;
+            entity.ProductId = dto.ProductId;
+            entity.ReferenceNumber = dto.ReferenceNumber;
+            entity.Person = dto.Person;
+            entity.Quantity = dto.Quantity;
+            entity.Notes = dto.Notes;
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return new StockAdjustmentDto
+            {
+                Id = entity.Id, Warehouse = entity.Warehouse, Store = entity.Store, ProductId = entity.ProductId,
+                ProductName = product.ProductName, ProductImage = product.Images.FirstOrDefault()?.ImagePath ?? "",
+                Sku = product.SKU ?? "", Category = product.Category ?? "",
+                ReferenceNumber = entity.ReferenceNumber, Person = entity.Person,
+                Quantity = entity.Quantity, Notes = entity.Notes, Date = entity.Date.ToString("dd MMM yyyy")
+            };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -260,11 +320,21 @@ public class StockAdjustmentService : IStockAdjustmentService
         var entity = await _db.StockAdjustments.FindAsync(id);
         if (entity == null) return false;
 
-        var product = await _db.Products.FindAsync(entity.ProductId);
-        if (product != null) product.Quantity -= entity.Quantity;
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var product = await _db.Products.FindAsync(entity.ProductId);
+            if (product != null) product.Quantity -= entity.Quantity;
 
-        _db.StockAdjustments.Remove(entity);
-        await _db.SaveChangesAsync();
-        return true;
+            _db.StockAdjustments.Remove(entity);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 }

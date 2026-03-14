@@ -112,170 +112,180 @@ public class StorefrontService : IStorefrontService
 
     public async Task<StorefrontOrderResultDto> CreateOrderAsync(StorefrontOrderDto dto)
     {
-        // 1. Find or create Party (customer)
-        Party? party = null;
-        if (dto.CustomerId.HasValue)
-            party = await _db.Parties.FindAsync(dto.CustomerId.Value);
-
-        if (party == null && !string.IsNullOrWhiteSpace(dto.CustomerEmail))
-            party = await _db.Parties.FirstOrDefaultAsync(p => p.Email == dto.CustomerEmail && p.Role == "Customer");
-
-        if (party == null)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            party = new Party
+            // 1. Find or create Party (customer)
+            Party? party = null;
+            if (dto.CustomerId.HasValue)
+                party = await _db.Parties.FindAsync(dto.CustomerId.Value);
+
+            if (party == null && !string.IsNullOrWhiteSpace(dto.CustomerEmail))
+                party = await _db.Parties.FirstOrDefaultAsync(p => p.Email == dto.CustomerEmail && p.Role == "Customer");
+
+            if (party == null)
             {
-                FullName = dto.CustomerName,
-                Email = dto.CustomerEmail,
-                Phone = dto.CustomerPhone,
-                Role = "Customer",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            };
+                party = new Party
+                {
+                    FullName = dto.CustomerName,
+                    Email = dto.CustomerEmail,
+                    Phone = dto.CustomerPhone,
+                    Role = "Customer",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
 
-            if (dto.CreateAccount && !string.IsNullOrWhiteSpace(dto.AccountPassword))
-                party.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.AccountPassword);
+                if (dto.CreateAccount && !string.IsNullOrWhiteSpace(dto.AccountPassword))
+                    party.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.AccountPassword);
 
-            _db.Parties.Add(party);
-            await _db.SaveChangesAsync();
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(party.Phone) && !string.IsNullOrWhiteSpace(dto.CustomerPhone))
-                party.Phone = dto.CustomerPhone;
-        }
-
-        // 2. Create PartyAddress records
-        PartyAddress? billingAddr = null;
-        if (dto.BillingAddress != null)
-        {
-            billingAddr = new PartyAddress
-            {
-                PartyId = party.Id,
-                AddressType = "Billing",
-                FirstName = dto.BillingAddress.FirstName,
-                LastName = dto.BillingAddress.LastName,
-                AddressLine1 = dto.BillingAddress.AddressLine1,
-                AddressLine2 = dto.BillingAddress.AddressLine2,
-                City = dto.BillingAddress.City,
-                State = dto.BillingAddress.State,
-                PostalCode = dto.BillingAddress.PostalCode,
-                Country = dto.BillingAddress.Country,
-                CompanyName = dto.BillingAddress.CompanyName,
-                Email = dto.BillingAddress.Email,
-                Phone = dto.BillingAddress.Phone,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _db.PartyAddresses.Add(billingAddr);
-        }
-
-        PartyAddress? shippingAddr = null;
-        if (dto.ShippingAddress != null)
-        {
-            shippingAddr = new PartyAddress
-            {
-                PartyId = party.Id,
-                AddressType = "Shipping",
-                FirstName = dto.ShippingAddress.FirstName,
-                LastName = dto.ShippingAddress.LastName,
-                AddressLine1 = dto.ShippingAddress.AddressLine1,
-                AddressLine2 = dto.ShippingAddress.AddressLine2,
-                City = dto.ShippingAddress.City,
-                State = dto.ShippingAddress.State,
-                PostalCode = dto.ShippingAddress.PostalCode,
-                Country = dto.ShippingAddress.Country,
-                CompanyName = dto.ShippingAddress.CompanyName,
-                Email = dto.ShippingAddress.Email,
-                Phone = dto.ShippingAddress.Phone,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _db.PartyAddresses.Add(shippingAddr);
-        }
-
-        if (billingAddr != null || shippingAddr != null)
-            await _db.SaveChangesAsync();
-
-        // 3. Generate next Sale reference
-        var lastRef = await _db.Sales
-            .OrderByDescending(s => s.Id)
-            .Select(s => s.Reference)
-            .FirstOrDefaultAsync();
-
-        int nextNum = 1;
-        if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
-        {
-            int.TryParse(lastRef.Substring(2), out nextNum);
-            nextNum++;
-        }
-        var reference = $"SL{nextNum:D3}";
-
-        var orderNumber = $"ONL-{Guid.NewGuid().ToString("N")[..7].ToUpper()}";
-
-        // 4. Build SaleItems
-        var saleItems = new List<SaleItem>();
-        foreach (var i in dto.Items)
-        {
-            var productName = i.ProductName ?? "";
-            if (string.IsNullOrEmpty(productName))
-            {
-                var product = await _db.Products.FindAsync(i.ProductId);
-                if (product != null) productName = product.ProductName;
+                _db.Parties.Add(party);
+                await _db.SaveChangesAsync();
             }
-            saleItems.Add(new SaleItem
+            else
             {
-                ProductId = i.ProductId,
-                ProductName = productName,
-                Quantity = i.Quantity,
-                PurchasePrice = i.Price,
-                Discount = 0,
-                TaxPercent = dto.Tax > 0 && dto.SubTotal > 0
-                    ? Math.Round((dto.Tax / dto.SubTotal) * 100, 2) : 0,
-                TaxAmount = dto.Items.Count > 0
-                    ? Math.Round(dto.Tax / dto.Items.Count, 2) : 0,
-                UnitCost = i.Price,
-                TotalCost = i.Price * i.Quantity
-            });
+                if (string.IsNullOrWhiteSpace(party.Phone) && !string.IsNullOrWhiteSpace(dto.CustomerPhone))
+                    party.Phone = dto.CustomerPhone;
+            }
+
+            // 2. Create PartyAddress records
+            PartyAddress? billingAddr = null;
+            if (dto.BillingAddress != null)
+            {
+                billingAddr = new PartyAddress
+                {
+                    PartyId = party.Id,
+                    AddressType = "Billing",
+                    FirstName = dto.BillingAddress.FirstName,
+                    LastName = dto.BillingAddress.LastName,
+                    AddressLine1 = dto.BillingAddress.AddressLine1,
+                    AddressLine2 = dto.BillingAddress.AddressLine2,
+                    City = dto.BillingAddress.City,
+                    State = dto.BillingAddress.State,
+                    PostalCode = dto.BillingAddress.PostalCode,
+                    Country = dto.BillingAddress.Country,
+                    CompanyName = dto.BillingAddress.CompanyName,
+                    Email = dto.BillingAddress.Email,
+                    Phone = dto.BillingAddress.Phone,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _db.PartyAddresses.Add(billingAddr);
+            }
+
+            PartyAddress? shippingAddr = null;
+            if (dto.ShippingAddress != null)
+            {
+                shippingAddr = new PartyAddress
+                {
+                    PartyId = party.Id,
+                    AddressType = "Shipping",
+                    FirstName = dto.ShippingAddress.FirstName,
+                    LastName = dto.ShippingAddress.LastName,
+                    AddressLine1 = dto.ShippingAddress.AddressLine1,
+                    AddressLine2 = dto.ShippingAddress.AddressLine2,
+                    City = dto.ShippingAddress.City,
+                    State = dto.ShippingAddress.State,
+                    PostalCode = dto.ShippingAddress.PostalCode,
+                    Country = dto.ShippingAddress.Country,
+                    CompanyName = dto.ShippingAddress.CompanyName,
+                    Email = dto.ShippingAddress.Email,
+                    Phone = dto.ShippingAddress.Phone,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _db.PartyAddresses.Add(shippingAddr);
+            }
+
+            if (billingAddr != null || shippingAddr != null)
+                await _db.SaveChangesAsync();
+
+            // 3. Generate next Sale reference
+            var lastRef = await _db.Sales
+                .OrderByDescending(s => s.Id)
+                .Select(s => s.Reference)
+                .FirstOrDefaultAsync();
+
+            int nextNum = 1;
+            if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
+            {
+                int.TryParse(lastRef.Substring(2), out nextNum);
+                nextNum++;
+            }
+            var reference = $"SL{nextNum:D3}";
+
+            var orderNumber = $"ONL-{Guid.NewGuid().ToString("N")[..7].ToUpper()}";
+
+            // 4. Build SaleItems
+            var saleItems = new List<SaleItem>();
+            foreach (var i in dto.Items)
+            {
+                var productName = i.ProductName ?? "";
+                if (string.IsNullOrEmpty(productName))
+                {
+                    var product = await _db.Products.FindAsync(i.ProductId);
+                    if (product != null) productName = product.ProductName;
+                }
+                saleItems.Add(new SaleItem
+                {
+                    ProductId = i.ProductId,
+                    ProductName = productName,
+                    Quantity = i.Quantity,
+                    PurchasePrice = i.Price,
+                    Discount = 0,
+                    TaxPercent = dto.Tax > 0 && dto.SubTotal > 0
+                        ? Math.Round((dto.Tax / dto.SubTotal) * 100, 2) : 0,
+                    TaxAmount = dto.Items.Count > 0
+                        ? Math.Round(dto.Tax / dto.Items.Count, 2) : 0,
+                    UnitCost = i.Price,
+                    TotalCost = i.Price * i.Quantity
+                });
+            }
+
+            // 5. Create Sale (Source = "online")
+            var sale = new Sale
+            {
+                Reference = reference,
+                OrderNumber = orderNumber,
+                CustomerId = party.Id,
+                CustomerName = party.FullName,
+                Biller = "Online Store",
+                Source = "online",
+                GrandTotal = dto.GrandTotal,
+                Paid = 0,
+                Due = dto.GrandTotal,
+                OrderTax = dto.Tax,
+                Discount = dto.Discount,
+                Shipping = dto.Shipping,
+                Status = "Pending",
+                PaymentStatus = "Unpaid",
+                Notes = dto.Notes,
+                BillingAddressId = billingAddr?.Id,
+                ShippingAddressId = shippingAddr?.Id,
+                SaleDate = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                Items = saleItems
+            };
+
+            _db.Sales.Add(sale);
+
+            // Deduct product quantities
+            foreach (var item in saleItems)
+            {
+                var prod = await _db.Products.FindAsync(item.ProductId);
+                if (prod != null)
+                    prod.Quantity -= item.Quantity;
+            }
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return new StorefrontOrderResultDto { Id = sale.Id, OrderNumber = sale.OrderNumber ?? reference };
         }
-
-        // 5. Create Sale (Source = "online")
-        var sale = new Sale
+        catch
         {
-            Reference = reference,
-            OrderNumber = orderNumber,
-            CustomerId = party.Id,
-            CustomerName = party.FullName,
-            Biller = "Online Store",
-            Source = "online",
-            GrandTotal = dto.GrandTotal,
-            Paid = 0,
-            Due = dto.GrandTotal,
-            OrderTax = dto.Tax,
-            Discount = dto.Discount,
-            Shipping = dto.Shipping,
-            Status = "Pending",
-            PaymentStatus = "Unpaid",
-            Notes = dto.Notes,
-            BillingAddressId = billingAddr?.Id,
-            ShippingAddressId = shippingAddr?.Id,
-            SaleDate = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            Items = saleItems
-        };
-
-        _db.Sales.Add(sale);
-
-        // Deduct product quantities
-        foreach (var item in saleItems)
-        {
-            var prod = await _db.Products.FindAsync(item.ProductId);
-            if (prod != null)
-                prod.Quantity -= item.Quantity;
+            await transaction.RollbackAsync();
+            throw;
         }
-
-        await _db.SaveChangesAsync();
-
-        return new StorefrontOrderResultDto { Id = sale.Id, OrderNumber = sale.OrderNumber ?? reference };
     }
 
     public async Task<List<StorefrontOrderSummaryDto>> GetOrdersByEmailAsync(string email)

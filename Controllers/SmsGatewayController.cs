@@ -35,25 +35,35 @@ public class SmsGatewayController : ControllerBase
         if (request.Numbers == null)
             return BadRequest(new { error = "Numbers list is required." });
 
-        // Remove existing whitelisted numbers
-        var existing = await _db.SmsWhitelistedNumbers.ToListAsync();
-        _db.SmsWhitelistedNumbers.RemoveRange(existing);
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            // Remove existing whitelisted numbers
+            var existing = await _db.SmsWhitelistedNumbers.ToListAsync();
+            _db.SmsWhitelistedNumbers.RemoveRange(existing);
 
-        // Add the new list
-        var entries = request.Numbers
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct()
-            .Select(n => new SmsWhitelistedNumber
-            {
-                PhoneNumber = n.Trim(),
-                CreatedAt = DateTime.UtcNow
-            })
-            .ToList();
+            // Add the new list
+            var entries = request.Numbers
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct()
+                .Select(n => new SmsWhitelistedNumber
+                {
+                    PhoneNumber = n.Trim(),
+                    CreatedAt = DateTime.UtcNow
+                })
+                .ToList();
 
-        _db.SmsWhitelistedNumbers.AddRange(entries);
-        await _db.SaveChangesAsync();
+            _db.SmsWhitelistedNumbers.AddRange(entries);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-        return Ok(new { success = true, message = $"{entries.Count} whitelisted number(s) saved." });
+            return Ok(new { success = true, message = $"{entries.Count} whitelisted number(s) saved." });
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 }
 

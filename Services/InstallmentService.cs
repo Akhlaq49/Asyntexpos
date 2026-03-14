@@ -132,27 +132,37 @@ public class InstallmentService : IInstallmentService
         var schedule = GenerateSchedule(financedAmount, dto.InterestRate, dto.Tenure, dto.StartDate);
         plan.NextDueDate = schedule.FirstOrDefault(s => s.Status == "due" || s.Status == "upcoming")?.DueDate ?? "";
 
-        _db.InstallmentPlans.Add(plan);
-        await _db.SaveChangesAsync();
-
-        foreach (var entry in schedule)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            entry.PlanId = plan.Id;
-            _db.RepaymentEntries.Add(entry);
+            _db.InstallmentPlans.Add(plan);
+            await _db.SaveChangesAsync();
+
+            foreach (var entry in schedule)
+            {
+                entry.PlanId = plan.Id;
+                _db.RepaymentEntries.Add(entry);
+            }
+            await _db.SaveChangesAsync();
+
+            // Reload navigations
+            await _db.Entry(plan).Collection(p => p.Schedule).LoadAsync();
+            await _db.Entry(plan).Reference(p => p.Customer).LoadAsync();
+            await _db.Entry(plan).Reference(p => p.Product).LoadAsync();
+            if (plan.Product != null)
+                await _db.Entry(plan.Product).Collection(pr => pr.Images).LoadAsync();
+
+            // ── Queue SMS notifications for plan creation ──
+            await QueuePlanCreationSms(plan, customer);
+
+            await transaction.CommitAsync();
+            return MapToDto(plan);
         }
-        await _db.SaveChangesAsync();
-
-        // Reload navigations
-        await _db.Entry(plan).Collection(p => p.Schedule).LoadAsync();
-        await _db.Entry(plan).Reference(p => p.Customer).LoadAsync();
-        await _db.Entry(plan).Reference(p => p.Product).LoadAsync();
-        if (plan.Product != null)
-            await _db.Entry(plan.Product).Collection(pr => pr.Images).LoadAsync();
-
-        // ── Queue SMS notifications for plan creation ──
-        await QueuePlanCreationSms(plan, customer);
-
-        return MapToDto(plan);
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     /// <summary>
@@ -237,99 +247,109 @@ public class InstallmentService : IInstallmentService
         if (entry.Status == "paid")
             throw new InvalidOperationException("Already paid");
 
-        var paidAmount = paymentDto.Amount;
-        var emiAmount = entry.EmiAmount;
-
-        var previouslyPaid = (entry.ActualPaidAmount ?? 0m) + (entry.MiscAdjustedAmount ?? 0m);
-        var totalPaidForEntry = previouslyPaid + paidAmount;
-
-        decimal overpayment = 0;
-
-        if (totalPaidForEntry >= emiAmount)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            entry.Status = "paid";
-            entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
+            var paidAmount = paymentDto.Amount;
+            var emiAmount = entry.EmiAmount;
 
-            overpayment = totalPaidForEntry - emiAmount;
+            var previouslyPaid = (entry.ActualPaidAmount ?? 0m) + (entry.MiscAdjustedAmount ?? 0m);
+            var totalPaidForEntry = previouslyPaid + paidAmount;
 
-            // Distribute overpayment directly to future installments
-            if (overpayment > 0)
+            decimal overpayment = 0;
+
+            if (totalPaidForEntry >= emiAmount)
             {
-                var futureInstallments = plan.Schedule
-                    .Where(s => s.InstallmentNo > installmentNo && s.Status != "paid")
-                    .OrderBy(s => s.InstallmentNo)
-                    .ToList();
+                entry.Status = "paid";
+                entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
 
-                var remaining = overpayment;
-                foreach (var future in futureInstallments)
+                overpayment = totalPaidForEntry - emiAmount;
+
+                // Distribute overpayment directly to future installments
+                if (overpayment > 0)
                 {
-                    if (remaining <= 0) break;
+                    var futureInstallments = plan.Schedule
+                        .Where(s => s.InstallmentNo > installmentNo && s.Status != "paid")
+                        .OrderBy(s => s.InstallmentNo)
+                        .ToList();
 
-                    var futurePreviouslyPaid = (future.ActualPaidAmount ?? 0m) + (future.MiscAdjustedAmount ?? 0m);
-                    var futureRemaining = future.EmiAmount - futurePreviouslyPaid;
-
-                    if (remaining >= futureRemaining)
+                    var remaining = overpayment;
+                    foreach (var future in futureInstallments)
                     {
-                        future.Status = "paid";
-                        future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
-                        future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + futureRemaining;
-                        remaining -= futureRemaining;
+                        if (remaining <= 0) break;
+
+                        var futurePreviouslyPaid = (future.ActualPaidAmount ?? 0m) + (future.MiscAdjustedAmount ?? 0m);
+                        var futureRemaining = future.EmiAmount - futurePreviouslyPaid;
+
+                        if (remaining >= futureRemaining)
+                        {
+                            future.Status = "paid";
+                            future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                            future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + futureRemaining;
+                            remaining -= futureRemaining;
+                        }
+                        else
+                        {
+                            future.Status = "partial";
+                            future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                            future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + remaining;
+                            remaining = 0;
+                        }
                     }
-                    else
-                    {
-                        future.Status = "partial";
-                        future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
-                        future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + remaining;
-                        remaining = 0;
-                    }
-                }
 
-                // Only store in misc register if all installments are exhausted and there's still leftover
-                if (remaining > 0)
-                {
-                    _db.MiscellaneousRegisters.Add(new MiscellaneousRegister
+                    // Only store in misc register if all installments are exhausted and there's still leftover
+                    if (remaining > 0)
                     {
-                        CustomerId = plan.Customer!.Id,
-                        TransactionType = "Credit",
-                        Amount = remaining,
-                        Description = $"Excess after all installments paid for Plan #{planId} (Original overpayment: {overpayment:C})",
-                        ReferenceId = planId.ToString(),
-                        ReferenceType = "InstallmentPayment",
-                        CreatedBy = "System"
-                    });
+                        _db.MiscellaneousRegisters.Add(new MiscellaneousRegister
+                        {
+                            CustomerId = plan.Customer!.Id,
+                            TransactionType = "Credit",
+                            Amount = remaining,
+                            Description = $"Excess after all installments paid for Plan #{planId} (Original overpayment: {overpayment:C})",
+                            ReferenceId = planId.ToString(),
+                            ReferenceType = "InstallmentPayment",
+                            CreatedBy = "System"
+                        });
+                    }
                 }
             }
+            else
+            {
+                entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                entry.Status = "partial";
+                entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
+            }
+
+            // Apply misc balance to future installments if requested
+            if (paymentDto.UseMiscBalance && plan.Customer != null)
+            {
+                await ApplyMiscBalanceToInstallments(planId, plan.Customer.Id);
+            }
+
+            UpdatePlanStats(plan);
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            var totalSettled = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
+            return new
+            {
+                message = entry.Status == "partial"
+                    ? $"Partial payment recorded. Remaining: {(emiAmount - totalSettled):C}"
+                    : "Payment processed successfully",
+                overpayment = overpayment > 0 ? overpayment : 0,
+                status = entry.Status,
+                actualPaidAmount = entry.ActualPaidAmount,
+                miscAdjustedAmount = entry.MiscAdjustedAmount ?? 0,
+                remainingForEntry = entry.Status == "partial" ? emiAmount - totalSettled : 0
+            };
         }
-        else
+        catch
         {
-            entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            entry.Status = "partial";
-            entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
+            await transaction.RollbackAsync();
+            throw;
         }
-
-        // Apply misc balance to future installments if requested
-        if (paymentDto.UseMiscBalance && plan.Customer != null)
-        {
-            await ApplyMiscBalanceToInstallments(planId, plan.Customer.Id);
-        }
-
-        UpdatePlanStats(plan);
-
-        await _db.SaveChangesAsync();
-
-        var totalSettled = (entry.ActualPaidAmount ?? 0) + (entry.MiscAdjustedAmount ?? 0);
-        return new
-        {
-            message = entry.Status == "partial"
-                ? $"Partial payment recorded. Remaining: {(emiAmount - totalSettled):C}"
-                : "Payment processed successfully",
-            overpayment = overpayment > 0 ? overpayment : 0,
-            status = entry.Status,
-            actualPaidAmount = entry.ActualPaidAmount,
-            miscAdjustedAmount = entry.MiscAdjustedAmount ?? 0,
-            remainingForEntry = entry.Status == "partial" ? emiAmount - totalSettled : 0
-        };
     }
 
     // ── Cancel ─────────────────────────────────────────────
@@ -384,46 +404,56 @@ public class InstallmentService : IInstallmentService
         var plan = await _db.InstallmentPlans.FindAsync(planId)
             ?? throw new KeyNotFoundException("Plan not found");
 
-        Party party;
-
-        if (existingPartyId.HasValue && existingPartyId.Value > 0)
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            // Use existing party
-            party = await _db.Parties.FindAsync(existingPartyId.Value)
-                ?? throw new KeyNotFoundException("Party not found");
-        }
-        else
-        {
-            // Create a new Party with role "Guarantor"
-            string? picturePath = null;
-            if (picture != null)
-                picturePath = await _fileService.SaveFileAsync(picture, "guarantors");
+            Party party;
 
-            party = new Party
+            if (existingPartyId.HasValue && existingPartyId.Value > 0)
             {
-                FullName = name,
-                SO = so,
-                Phone = phone,
-                Cnic = cnic,
-                Address = address,
-                Picture = picturePath,
-                Role = "Guarantor"
+                // Use existing party
+                party = await _db.Parties.FindAsync(existingPartyId.Value)
+                    ?? throw new KeyNotFoundException("Party not found");
+            }
+            else
+            {
+                // Create a new Party with role "Guarantor"
+                string? picturePath = null;
+                if (picture != null)
+                    picturePath = await _fileService.SaveFileAsync(picture, "guarantors");
+
+                party = new Party
+                {
+                    FullName = name,
+                    SO = so,
+                    Phone = phone,
+                    Cnic = cnic,
+                    Address = address,
+                    Picture = picturePath,
+                    Role = "Guarantor"
+                };
+                _db.Parties.Add(party);
+                await _db.SaveChangesAsync();
+            }
+
+            // Link to plan via join table
+            var planGuarantor = new PlanGuarantor
+            {
+                PlanId = planId,
+                PartyId = party.Id,
+                Relationship = relationship
             };
-            _db.Parties.Add(party);
+            _db.PlanGuarantors.Add(planGuarantor);
             await _db.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+            return MapGuarantorDto(planGuarantor, party);
         }
-
-        // Link to plan via join table
-        var planGuarantor = new PlanGuarantor
+        catch
         {
-            PlanId = planId,
-            PartyId = party.Id,
-            Relationship = relationship
-        };
-        _db.PlanGuarantors.Add(planGuarantor);
-        await _db.SaveChangesAsync();
-
-        return MapGuarantorDto(planGuarantor, party);
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<GuarantorDto?> UpdateGuarantorAsync(int guarantorId, string name, string? so, string? phone,

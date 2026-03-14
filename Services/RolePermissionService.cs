@@ -41,16 +41,27 @@ public class RolePermissionService : IRolePermissionService
         var existing = await _db.RolePermissions
             .Where(rp => rp.Role == role)
             .ToListAsync();
-        _db.RolePermissions.RemoveRange(existing);
 
-        var newPerms = menuKeys
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Distinct()
-            .Select(k => new RolePermission { Role = role, MenuKey = k })
-            .ToList();
-        _db.RolePermissions.AddRange(newPerms);
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            _db.RolePermissions.RemoveRange(existing);
 
-        await _db.SaveChangesAsync();
-        return (true, newPerms.Count, null);
+            var newPerms = menuKeys
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Distinct()
+                .Select(k => new RolePermission { Role = role, MenuKey = k })
+                .ToList();
+            _db.RolePermissions.AddRange(newPerms);
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return (true, newPerms.Count, null);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 }

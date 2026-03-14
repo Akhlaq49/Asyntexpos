@@ -113,22 +113,33 @@ public class UserService : IUserService
         // ── MULTI-TENANCY: If SuperAdmin, create a new tenant for this user ──
         if (role == "SuperAdmin")
         {
-            var tenant = new Tenant
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
             {
-                Name = dto.FullName.Trim(),
-                Email = dto.Email.ToLower().Trim(),
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            };
-            _db.Tenants.Add(tenant);
-            await _db.SaveChangesAsync(); // Get tenant Id
+                var tenant = new Tenant
+                {
+                    Name = dto.FullName.Trim(),
+                    Email = dto.Email.ToLower().Trim(),
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.Tenants.Add(tenant);
+                await _db.SaveChangesAsync(); // Get tenant Id
 
-            party.TenantId = tenant.Id; // Explicitly assign new tenant
-            _db.Parties.Add(party);
-            await _db.SaveChangesAsync();
+                party.TenantId = tenant.Id; // Explicitly assign new tenant
+                _db.Parties.Add(party);
+                await _db.SaveChangesAsync();
 
-            // Seed default form field configs for the new tenant
-            await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+                // Seed default form field configs for the new tenant
+                await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
         else
         {
@@ -170,18 +181,40 @@ public class UserService : IUserService
         // If promoting to SuperAdmin and user doesn't already own a tenant, create one
         if (newRole == "SuperAdmin" && party.Role != "SuperAdmin")
         {
-            var tenant = new Tenant
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
             {
-                Name = dto.FullName.Trim(),
-                Email = emailLower,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            };
-            _db.Tenants.Add(tenant);
-            await _db.SaveChangesAsync();
+                var tenant = new Tenant
+                {
+                    Name = dto.FullName.Trim(),
+                    Email = emailLower,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.Tenants.Add(tenant);
+                await _db.SaveChangesAsync();
 
-            party.TenantId = tenant.Id;
-            await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+                party.TenantId = tenant.Id;
+                await _formFieldConfigService.SeedDefaultsAsync(tenant.Id);
+
+                party.Role = newRole;
+
+                if (!string.IsNullOrWhiteSpace(dto.Password))
+                {
+                    if (dto.Password.Length < 6)
+                        throw new ArgumentException("Password must be at least 6 characters.");
+                    party.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+                }
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return MapToDto(party);
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         party.Role = newRole;
