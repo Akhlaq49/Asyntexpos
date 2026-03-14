@@ -6,6 +6,11 @@ public class LoginDto
     public string Password { get; set; } = string.Empty;
 }
 
+public class VerifyAdminPasswordDto
+{
+    public string Password { get; set; } = string.Empty;
+}
+
 public class RegisterDto
 {
     public string FullName { get; set; } = string.Empty;

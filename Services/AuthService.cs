@@ -149,4 +149,21 @@ public class AuthService : IAuthService
         IsActive = p.IsActive,
         CreatedAt = p.CreatedAt
     };
+
+    private static readonly string[] AdminRoles = { "SuperAdmin", "Admin" };
+
+    public async Task<bool> VerifyAdminPasswordAsync(int tenantId, string password)
+    {
+        if (string.IsNullOrWhiteSpace(password))
+            return false;
+
+        var admins = await _db.Parties
+            .IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId
+                     && AdminRoles.Contains(p.Role)
+                     && p.PasswordHash != null)
+            .ToListAsync();
+
+        return admins.Any(a => BCrypt.Net.BCrypt.Verify(password, a.PasswordHash!));
+    }
 }

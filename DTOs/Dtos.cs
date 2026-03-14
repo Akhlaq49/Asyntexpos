@@ -134,6 +134,7 @@ public class RepaymentEntryDto
 public class GuarantorDto
 {
     public int Id { get; set; }
+    public int PartyId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? SO { get; set; }
     public string? Phone { get; set; }

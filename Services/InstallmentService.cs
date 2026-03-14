@@ -739,6 +739,7 @@ public class InstallmentService : IInstallmentService
     private static GuarantorDto MapGuarantorDto(PlanGuarantor pg, Party party, ICollection<PlanMedia>? media = null) => new()
     {
         Id = pg.Id,
+        PartyId = party.Id,
         Name = party.FullName,
         SO = party.SO,
         Phone = party.Phone,

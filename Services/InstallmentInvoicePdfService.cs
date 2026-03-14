@@ -78,13 +78,11 @@ public class InstallmentInvoicePdfService : IInstallmentInvoicePdfService
         pdf.SetFont("Helvetica", 9);
         y -= 20;
 
+        var salePrice = plan.FinanceAmount ?? plan.ProductPrice;
         var rows = new List<(string desc, string amount)>
         {
-            ($"Product: {productName}", $"{plan.ProductPrice:N0}")
+            ($"Product: {productName}", $"{salePrice:N0}")
         };
-
-        if (plan.FinanceAmount.HasValue && plan.FinanceAmount.Value != plan.ProductPrice)
-            rows.Add(("Finance Amount", $"{plan.FinanceAmount.Value:N0}"));
 
         rows.Add(("Down Payment", $"{plan.DownPayment:N0}"));
         rows.Add(("Financed Amount", $"{plan.FinancedAmount:N0}"));

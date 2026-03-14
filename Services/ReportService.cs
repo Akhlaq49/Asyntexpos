@@ -900,6 +900,7 @@ public class ReportService : IReportService
 
         var items = plans.Select(p =>
         {
+            var salePrice = p.FinanceAmount ?? p.ProductPrice;
             var profit = p.TotalPayable - p.ProductPrice;
             var profitPct = p.ProductPrice > 0 ? Math.Round((profit / p.ProductPrice) * 100, 2) : 0;
             var image = p.Product?.Images?.FirstOrDefault()?.ImagePath;
@@ -911,6 +912,7 @@ public class ReportService : IReportService
                 ProductName = p.Product?.ProductName ?? "Unknown",
                 ProductImage = image,
                 ProductPrice = p.ProductPrice,
+                SalePrice = salePrice,
                 FinancedAmount = p.FinancedAmount,
                 TotalPayable = p.TotalPayable,
                 DownPayment = p.DownPayment,

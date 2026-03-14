@@ -48,4 +48,14 @@ public class AuthController : ControllerBase
         if (user == null) return NotFound();
         return Ok(user);
     }
+
+    [HttpPost("verify-admin-password")]
+    [Authorize]
+    public async Task<IActionResult> VerifyAdminPassword(VerifyAdminPasswordDto dto)
+    {
+        var tenantId = int.Parse(User.FindFirstValue("TenantId")!);
+        var ok = await _service.VerifyAdminPasswordAsync(tenantId, dto.Password);
+        if (!ok) return Unauthorized(new { message = "Invalid admin password." });
+        return Ok(new { verified = true });
+    }
 }
