@@ -137,6 +137,109 @@ public class NotificationsController : ControllerBase
     }
 
     // ════════════════════════════════════════════════════════════════
+    //  CONTACT US (public, no auth required)
+    // ════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Public contact-us form. Sends an e-mail to the configured address
+    /// and queues both SMS + WhatsApp notifications to the owner number.
+    /// POST /api/notifications/contact
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("contact")]
+    public async Task<IActionResult> ContactUs([FromBody] ContactUsRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { error = "name is required." });
+
+        if (string.IsNullOrWhiteSpace(request.Email) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(request.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            return BadRequest(new { error = "A valid email is required." });
+
+        if (string.IsNullOrWhiteSpace(request.Subject))
+            return BadRequest(new { error = "subject is required." });
+
+        if (string.IsNullOrWhiteSpace(request.Sms))
+            return BadRequest(new { error = "sms (message) is required." });
+
+        if (request.Sms.Length > 1600)
+            return BadRequest(new { error = "Message too long. Maximum 1600 characters." });
+
+        var ownerNumber = _config["ContactUs:OwnerPhone"] ?? "03070758992";
+        var recipientEmail = _config["ContactUs:RecipientEmail"];
+        var formattedMessage =
+            $"Contact from: {request.Name} ({request.Email})\n" +
+            $"Subject: {request.Subject}\n" +
+            $"Message: {request.Sms}";
+
+        // Queue SMS notification
+        var smsMsg = new SmsMessage
+        {
+            TenantId = _db.CurrentTenantId,
+            To = ownerNumber,
+            Message = formattedMessage,
+            Channel = "sms",
+            Reference = request.Email,
+            Status = "pending"
+        };
+
+        // Queue WhatsApp notification
+        var waMsg = new SmsMessage
+        {
+            TenantId = _db.CurrentTenantId,
+            To = ownerNumber,
+            Message = formattedMessage,
+            Channel = "whatsapp",
+            Reference = request.Email,
+            Status = "pending"
+        };
+
+        _db.SmsMessages.AddRange(smsMsg, waMsg);
+        await _db.SaveChangesAsync();
+
+        // Send email if SMTP is configured
+        if (!string.IsNullOrWhiteSpace(recipientEmail))
+        {
+            try
+            {
+                var smtpHost = _config["ContactUs:Smtp:Host"] ?? "smtp.gmail.com";
+                var smtpPort = int.TryParse(_config["ContactUs:Smtp:Port"], out var p) ? p : 587;
+                var smtpUser = _config["ContactUs:Smtp:Username"] ?? "";
+                var smtpPass = _config["ContactUs:Smtp:Password"] ?? "";
+                var smtpSsl  = !string.Equals(_config["ContactUs:Smtp:EnableSsl"], "false", StringComparison.OrdinalIgnoreCase);
+
+                using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
+                {
+                    Credentials = new System.Net.NetworkCredential(smtpUser, smtpPass),
+                    EnableSsl = smtpSsl
+                };
+
+                var mail = new System.Net.Mail.MailMessage
+                {
+                    From = new System.Net.Mail.MailAddress(smtpUser, "Contact Form"),
+                    Subject = $"[Contact Us] {request.Subject}",
+                    Body =
+                        $"Name:    {request.Name}\n" +
+                        $"Email:   {request.Email}\n" +
+                        $"Subject: {request.Subject}\n\n" +
+                        $"{request.Sms}",
+                    IsBodyHtml = false
+                };
+                mail.To.Add(recipientEmail);
+                mail.ReplyToList.Add(new System.Net.Mail.MailAddress(request.Email, request.Name));
+
+                await client.SendMailAsync(mail);
+            }
+            catch
+            {
+                // Email failure is non-fatal; SMS/WhatsApp already queued
+            }
+        }
+
+        return Ok(new { success = true, message = "Your message has been received. We will get back to you soon." });
+    }
+
+    // ════════════════════════════════════════════════════════════════
     //  ANDROID GATEWAY POLL ENDPOINTS (API-key auth, no tenant filter)
     // ════════════════════════════════════════════════════════════════
 
@@ -258,4 +361,12 @@ public class StatusUpdateRequest
     public string Id { get; set; } = "";
     public string? Status { get; set; }
     public string? Error { get; set; }
+}
+
+public class ContactUsRequest
+{
+    public string Name { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Subject { get; set; } = "";
+    public string Sms { get; set; } = "";
 }
