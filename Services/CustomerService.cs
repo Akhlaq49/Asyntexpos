@@ -30,7 +30,8 @@ public class CustomerService : ICustomerService
                              (p.Email != null && p.Email.ToLower().Contains(s)) ||
                              (p.Cnic != null && p.Cnic.Contains(s)) ||
                              (p.SO != null && p.SO.ToLower().Contains(s)) ||
-                             (p.City != null && p.City.ToLower().Contains(s)));
+                             (p.City != null && p.City.ToLower().Contains(s)) ||
+                             (p.Address != null && p.Address.ToLower().Contains(s)));
         }
 
         if (!string.IsNullOrEmpty(query.Status))

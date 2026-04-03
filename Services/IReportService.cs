@@ -50,5 +50,5 @@ public interface IReportService
     Task<AnnualReportDto> GetAnnualReportAsync(int year);
 
     // DPD (Days Past Due) Report
-    Task<DpdReportDto> GetDpdReportAsync();
+    Task<DpdReportDto> GetDpdReportAsync(string? search = null);
 }

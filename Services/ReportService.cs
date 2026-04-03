@@ -1257,7 +1257,7 @@ public class ReportService : IReportService
     // DPD (Days Past Due) REPORT - Based on Sale ExpectedDate
     // ═══════════════════════════════════════════════════════════
 
-    public async Task<DpdReportDto> GetDpdReportAsync()
+    public async Task<DpdReportDto> GetDpdReportAsync(string? search = null)
     {
         var today = DateTime.UtcNow.Date;
 
@@ -1306,24 +1306,59 @@ public class ReportService : IReportService
             .OrderByDescending(c => c.MaxDpd)
             .ToList();
 
-        // Populate phone from Parties table
+        // Populate phone and address from Parties table (for display and search)
         var customerIds = grouped.Select(c => c.CustomerId).ToList();
         var parties = await _db.Parties
             .Where(p => customerIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Phone })
+            .Select(p => new { p.Id, p.Phone, p.Address })
             .ToListAsync();
-        var phoneMap = parties.ToDictionary(p => p.Id, p => p.Phone);
+        var partyMap = parties.ToDictionary(p => p.Id);
         foreach (var c in grouped)
-            c.Phone = phoneMap.GetValueOrDefault(c.CustomerId);
+        {
+            if (partyMap.TryGetValue(c.CustomerId, out var p))
+            {
+                c.Phone = p.Phone;
+                c.Address = p.Address;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            grouped = grouped.Where(c =>
+                c.CustomerName.ToLowerInvariant().Contains(term)
+                || (!string.IsNullOrEmpty(c.Phone) && c.Phone.ToLowerInvariant().Contains(term))
+                || (!string.IsNullOrEmpty(c.Address) && c.Address.ToLowerInvariant().Contains(term))
+            ).ToList();
+        }
+
+        decimal totalOverdueAmount;
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            totalOverdueAmount = sales
+                .Where(s => s.ExpectedDate!.Value.Date < today)
+                .Sum(s => s.Due);
+        }
+        else if (grouped.Count == 0)
+        {
+            totalOverdueAmount = 0;
+        }
+        else
+        {
+            var filteredIds = grouped.Select(c => c.CustomerId).ToHashSet();
+            totalOverdueAmount = sales
+                .Where(s => s.ExpectedDate!.Value.Date < today
+                            && s.CustomerId.HasValue
+                            && filteredIds.Contains(s.CustomerId.Value))
+                .Sum(s => s.Due);
+        }
 
         return new DpdReportDto
         {
             TotalDueAmount = grouped.Sum(c => c.DueAmount),
             TotalCustomers = grouped.Count,
             TotalOverdueOrders = grouped.Sum(c => c.OverdueOrders),
-            TotalOverdueAmount = sales
-                .Where(s => s.ExpectedDate!.Value.Date < today)
-                .Sum(s => s.Due),
+            TotalOverdueAmount = totalOverdueAmount,
             Customers = grouped
         };
     }

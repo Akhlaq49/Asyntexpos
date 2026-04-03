@@ -376,7 +376,8 @@ public class InstallmentService : IInstallmentService
             q = q.Where(p => p.FullName.ToLower().Contains(term)
                 || (p.Phone != null && p.Phone.Contains(term))
                 || (p.Cnic != null && p.Cnic.Contains(term))
-                || (p.Email != null && p.Email.ToLower().Contains(term)));
+                || (p.Email != null && p.Email.ToLower().Contains(term))
+                || (p.Address != null && p.Address.ToLower().Contains(term)));
         }
 
         var parties = await q.OrderByDescending(p => p.CreatedAt).Take(50).ToListAsync();
