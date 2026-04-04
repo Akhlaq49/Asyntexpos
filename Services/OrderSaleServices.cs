@@ -127,10 +127,7 @@ public class SaleService : ISaleService
             sale.Discount = dto.Discount; sale.Shipping = dto.Shipping;
             sale.Status = dto.Status; sale.Notes = dto.Notes;
             sale.ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null;
-            sale.Due = dto.GrandTotal - sale.Paid;
-            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-            else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
-            else { sale.PaymentStatus = "Unpaid"; }
+            RecalculateSalePaymentState(sale);
 
             // ── Restore old item quantities to inventory ──
             foreach (var oldItem in sale.Items)
@@ -224,9 +221,7 @@ public class SaleService : ISaleService
             _db.SalePayments.Add(payment);
 
             sale.Paid += dto.PayingAmount;
-            sale.Due = sale.GrandTotal - sale.Paid;
-            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-            else { sale.PaymentStatus = "Overdue"; }
+            RecalculateSalePaymentState(sale);
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -255,10 +250,7 @@ public class SaleService : ISaleService
             payment.Description = dto.Description;
 
             sale.Paid += dto.PayingAmount;
-            sale.Due = sale.GrandTotal - sale.Paid;
-            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-            else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
-            else { sale.PaymentStatus = "Unpaid"; }
+            RecalculateSalePaymentState(sale);
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -282,10 +274,7 @@ public class SaleService : ISaleService
         try
         {
             sale.Paid -= payment.PayingAmount;
-            sale.Due = sale.GrandTotal - sale.Paid;
-            if (sale.Due <= 0) { sale.Due = 0; sale.PaymentStatus = "Paid"; }
-            else if (sale.Paid > 0) { sale.PaymentStatus = "Overdue"; }
-            else { sale.PaymentStatus = "Unpaid"; }
+            RecalculateSalePaymentState(sale);
 
             _db.SalePayments.Remove(payment);
             await _db.SaveChangesAsync();
@@ -299,6 +288,136 @@ public class SaleService : ISaleService
         }
     }
 
+    public async Task<(CustomerFifoPaymentResponseDto? Result, string? Error)> ApplyCustomerFifoPaymentAsync(CustomerFifoPaymentRequestDto dto)
+    {
+        if (dto.Amount <= 0)
+            return (null, "Amount must be greater than zero.");
+
+        var source = string.IsNullOrWhiteSpace(dto.Source) ? "pos" : dto.Source.Trim();
+
+        IQueryable<Sale> q = _db.Sales.Where(s => s.Source == source && s.Due > 0);
+
+        if (dto.CustomerId.HasValue)
+            q = q.Where(s => s.CustomerId == dto.CustomerId.Value);
+        else
+        {
+            var name = (dto.CustomerName ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(name))
+                return (null, "CustomerName is required when CustomerId is not set.");
+            var nameLower = name.ToLowerInvariant();
+            q = q.Where(s => s.CustomerId == null && s.CustomerName.ToLower() == nameLower);
+        }
+
+        var sales = await q.OrderBy(s => s.SaleDate).ThenBy(s => s.Id).ToListAsync();
+
+        var totalDue = sales.Sum(s => s.Due);
+        if (totalDue <= 0)
+            return (null, "No outstanding balance for this customer.");
+
+        if (dto.Amount > totalDue + 0.01m)
+            return (null, "Amount exceeds total due for this customer.");
+
+        var response = new CustomerFifoPaymentResponseDto();
+        decimal remaining = dto.Amount;
+        var baseRef = string.IsNullOrWhiteSpace(dto.Reference)
+            ? $"FIFO-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
+            : dto.Reference.Trim();
+
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            foreach (var sale in sales)
+            {
+                if (remaining <= 0) break;
+                if (sale.Due <= 0) continue;
+
+                var pay = decimal.Round(Math.Min(remaining, sale.Due), 2, MidpointRounding.AwayFromZero);
+                if (pay <= 0) continue;
+
+                var payRef = $"{baseRef}-SL{sale.Id}";
+                var payment = new SalePayment
+                {
+                    SaleId = sale.Id,
+                    Reference = payRef,
+                    ReceivedAmount = pay,
+                    PayingAmount = pay,
+                    PaymentType = dto.PaymentType,
+                    Description = dto.Description ?? $"Bulk payment (FIFO) — {sale.CustomerName}",
+                    PaymentDate = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.SalePayments.Add(payment);
+
+                sale.Paid += pay;
+                RecalculateSalePaymentState(sale);
+
+                remaining = decimal.Round(remaining - pay, 2, MidpointRounding.AwayFromZero);
+                response.Allocations.Add(new FifoAllocationDto
+                {
+                    SaleId = sale.Id,
+                    SaleReference = sale.Reference,
+                    AmountApplied = pay,
+                    PaymentReference = payRef
+                });
+            }
+
+            response.TotalApplied = dto.Amount - remaining;
+            if (response.TotalApplied <= 0)
+            {
+                await transaction.RollbackAsync();
+                return (null, "No payment could be applied.");
+            }
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return (response, null);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return (null, ex.Message);
+        }
+    }
+
+    private const decimal SaleMoneyEpsilon = 0.01m;
+
+    /// <summary>Sets Due and PaymentStatus from GrandTotal/Paid. When fully paid, promotes order Status from Pending to Completed.</summary>
+    private static void RecalculateSalePaymentState(Sale sale)
+    {
+        sale.Due = sale.GrandTotal - sale.Paid;
+        if (sale.Due <= SaleMoneyEpsilon)
+        {
+            sale.Due = 0;
+            sale.PaymentStatus = "Paid";
+            var st = (sale.Status ?? string.Empty).Trim();
+            if (string.Equals(st, "Pending", StringComparison.OrdinalIgnoreCase))
+                sale.Status = "Completed";
+        }
+        else if (sale.Paid > 0)
+            sale.PaymentStatus = "Overdue";
+        else
+            sale.PaymentStatus = "Unpaid";
+    }
+
+    /// <summary>
+    /// API display: fully settled POS-style bills should show order status Completed, even if older rows were never backfilled after payment.
+    /// </summary>
+    private static string NormalizeOrderStatusForDto(Sale s)
+    {
+        var st = (s.Status ?? string.Empty).Trim();
+        if (!string.Equals(st, "Pending", StringComparison.OrdinalIgnoreCase))
+            return string.IsNullOrEmpty(st) ? "Pending" : st;
+
+        var dueClear = s.Due <= SaleMoneyEpsilon;
+        var paidInFull = s.GrandTotal > 0 && s.Paid >= s.GrandTotal - SaleMoneyEpsilon;
+        var paymentPaid = string.Equals((s.PaymentStatus ?? string.Empty).Trim(), "Paid", StringComparison.OrdinalIgnoreCase);
+
+        if (dueClear && (paidInFull || paymentPaid))
+            return "Completed";
+
+        return st;
+    }
+
     private static SaleDto MapToDto(Sale s) => new()
     {
         Id = s.Id, Reference = s.Reference, OrderNumber = s.OrderNumber,
@@ -306,7 +425,7 @@ public class SaleService : ISaleService
         CustomerName = s.CustomerName, CustomerImage = s.CustomerImage, Biller = s.Biller,
         GrandTotal = s.GrandTotal, Paid = s.Paid, Due = s.Due,
         OrderTax = s.OrderTax, Discount = s.Discount, Shipping = s.Shipping,
-        Status = s.Status, PaymentStatus = s.PaymentStatus, Notes = s.Notes, Source = s.Source,
+        Status = NormalizeOrderStatusForDto(s), PaymentStatus = s.PaymentStatus, Notes = s.Notes, Source = s.Source,
         ExpectedDate = s.ExpectedDate?.ToString("yyyy-MM-dd"),
         SaleDate = s.SaleDate.ToString("dd MMM yyyy"),
         Items = s.Items.Select(i => new SaleItemDto

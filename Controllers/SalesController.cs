@@ -61,11 +61,21 @@ public class SalesController : ControllerBase
         return Ok(payments);
     }
 
+    /// <summary>Apply payment to one sale (unchanged). For cross-order FIFO use POST customer-fifo-payment.</summary>
     [HttpPost("{id}/payments")]
     public async Task<IActionResult> CreatePayment(int id, [FromBody] CreateSalePaymentDto dto)
     {
         var result = await _service.CreatePaymentAsync(id, dto);
         if (result == null) return NotFound();
+        return Ok(result);
+    }
+
+    /// <summary>Apply one payment across all outstanding sales for a customer, oldest bill first (FIFO). POS Orders grouped view.</summary>
+    [HttpPost("customer-fifo-payment")]
+    public async Task<IActionResult> ApplyCustomerFifoPayment([FromBody] CustomerFifoPaymentRequestDto dto)
+    {
+        var (result, error) = await _service.ApplyCustomerFifoPaymentAsync(dto);
+        if (error != null) return BadRequest(new { message = error });
         return Ok(result);
     }
 

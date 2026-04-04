@@ -14,6 +14,8 @@ public interface ISaleService
     Task<object?> CreatePaymentAsync(int saleId, CreateSalePaymentDto dto);
     Task<object?> UpdatePaymentAsync(int saleId, int paymentId, CreateSalePaymentDto dto);
     Task<bool> DeletePaymentAsync(int saleId, int paymentId);
+    /// <summary>Split payment across customer's outstanding sales (FIFO). Per-sale POST /payments remains available.</summary>
+    Task<(CustomerFifoPaymentResponseDto? Result, string? Error)> ApplyCustomerFifoPaymentAsync(CustomerFifoPaymentRequestDto dto);
 }
 
 public interface IInvoiceService

@@ -542,6 +542,34 @@ public class CreateSalePaymentDto
     public string? Description { get; set; }
 }
 
+/// <summary>Apply one payment across all outstanding POS (or other source) sales for a customer, oldest first (FIFO).</summary>
+public class CustomerFifoPaymentRequestDto
+{
+    public int? CustomerId { get; set; }
+    /// <summary>Required when CustomerId is null (walk-in / name-only match).</summary>
+    public string CustomerName { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string PaymentType { get; set; } = "Cash";
+    public string Reference { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    /// <summary>Defaults to "pos". Only sales with this Source are included.</summary>
+    public string Source { get; set; } = "pos";
+}
+
+public class FifoAllocationDto
+{
+    public int SaleId { get; set; }
+    public string SaleReference { get; set; } = string.Empty;
+    public decimal AmountApplied { get; set; }
+    public string PaymentReference { get; set; } = string.Empty;
+}
+
+public class CustomerFifoPaymentResponseDto
+{
+    public decimal TotalApplied { get; set; }
+    public List<FifoAllocationDto> Allocations { get; set; } = new();
+}
+
 // ============================
 // Invoice
 // ============================
