@@ -9,11 +9,13 @@ public class InstallmentService : IInstallmentService
 {
     private readonly AppDbContext _db;
     private readonly IFileService _fileService;
+    private readonly IInstallmentInvoicePdfService _pdfService;
 
-    public InstallmentService(AppDbContext db, IFileService fileService)
+    public InstallmentService(AppDbContext db, IFileService fileService, IInstallmentInvoicePdfService pdfService)
     {
         _db = db;
         _fileService = fileService;
+        _pdfService = pdfService;
     }
 
     // ── Queries ────────────────────────────────────────────
@@ -175,17 +177,25 @@ public class InstallmentService : IInstallmentService
             .OrderBy(s => s.InstallmentNo)
             .FirstOrDefault(s => s.Status == "upcoming" || s.Status == "due");
 
+        // Generate PDF invoice for the plan
+        var pdfUrl = _pdfService.GeneratePlanCreationInvoice(plan);
+
         // SMS to customer
         if (!string.IsNullOrWhiteSpace(customer.Phone))
         {
-            var msg = $"Assalam o Alaikum {customer.FullName},\n"
-                + $"Your installment plan has been created:\n"
-                + $"Product: {productName}\n"
-                + $"Total: Rs {plan.TotalPayable:N0}\n"
-                + $"Down Payment: Rs {plan.DownPayment:N0}\n"
-                + $"EMI: Rs {plan.EmiAmount:N0}/month x {plan.Tenure} months\n"
-                + (firstDue != null ? $"First Due: {firstDue.DueDate}\n" : "")
-                + $"Please ensure timely payments. JazakAllah!";
+            var msg = $"محترم کسٹمر {customer.FullName} صاحب\n"
+                + $"آپ کا انسٹالمینٹ اکاؤنٹ بن چکا ہے\n"
+                + $"اکاؤنٹ نمبر: PLAN-{plan.Id}\n"
+                + $"پروڈکٹ: {productName}\n"
+                + $"کل قیمت: Rs {plan.TotalPayable:N0}\n"
+                + $"ڈاؤن پیمنٹ: Rs {plan.DownPayment:N0}\n"
+                + $"بقایا رقم: Rs {plan.FinancedAmount:N0}\n"
+                + $"ماہانہ قسط: Rs {plan.EmiAmount:N0}\n"
+                + $"کل اقساط: {plan.Tenure}\n"
+                + $"براہ کرم اقساط بر وقت ادا کریں ۔شکریہ\n"
+                + $"رانا آصف علی\n"
+                + $"معیز کارپوریشن ڈانوراں\n"
+                + $"03008694092";
 
             _db.SmsMessages.Add(new SmsMessage
             {
@@ -194,6 +204,16 @@ public class InstallmentService : IInstallmentService
                 Message = msg,
                 Channel = "sms",
                 Reference = $"PLAN-{plan.Id}",
+                Status = "pending"
+            });
+            _db.SmsMessages.Add(new SmsMessage
+            {
+                TenantId = plan.TenantId,
+                To = customer.Phone,
+                Message = msg,
+                Channel = "whatsapp",
+                Reference = $"PLAN-{plan.Id}",
+                MediaUrl = pdfUrl,
                 Status = "pending"
             });
         }
@@ -328,6 +348,54 @@ public class InstallmentService : IInstallmentService
             }
 
             UpdatePlanStats(plan);
+
+            // SMS to customer on payment
+            if (!string.IsNullOrWhiteSpace(plan.Customer?.Phone))
+            {
+                var totalPaidSoFar = plan.Schedule
+                    .Sum(s => (s.ActualPaidAmount ?? 0m) + (s.MiscAdjustedAmount ?? 0m));
+                var remainingAmount = plan.TotalPayable - totalPaidSoFar;
+                var productName = plan.Product?.ProductName ?? "N/A";
+
+                // Generate payment receipt PDF
+                var receiptUrl = _pdfService.GeneratePaymentReceipt(plan, entry, paymentDto.Amount);
+
+                var paymentMsg = $"محترم کسٹمر {plan.Customer.FullName} صاحب\n"
+                    + $"آپ کی قسط وصول ہو گئ ہے تفصیل درج ذیل ہے\n"
+                    + $"اکاؤنٹ نمبر: PLAN-{plan.Id}\n"
+                    + $"پروڈکٹ: {productName}\n"
+                    + $"کل قیمت: Rs {plan.TotalPayable:N0}\n"
+                    + $"جمع شدہ رقم: Rs {totalPaidSoFar:N0}\n"
+                    + $"بقایا رقم: Rs {(remainingAmount > 0 ? remainingAmount : 0):N0}\n"
+                    + $"کل اقساط: {plan.Tenure}\n"
+                    + $"جمع شدہ اقساط: {plan.PaidInstallments}\n"
+                    + $"بقایا اقساط: {plan.RemainingInstallments}\n"
+                    + $"آپ کے تعاون کا شکریہ ۔\n"
+                    + $"معیز کارپوریشن ڈانوراں\n"
+                    + $"رانا آصف علی\n"
+                    + $"03008694092";
+
+                _db.SmsMessages.Add(new SmsMessage
+                {
+                    TenantId = plan.TenantId,
+                    To = plan.Customer.Phone,
+                    Message = paymentMsg,
+                    Channel = "sms",
+                    Reference = $"PLAN-{plan.Id}-PAY-{installmentNo}",
+                    Status = "pending"
+                });
+                _db.SmsMessages.Add(new SmsMessage
+                {
+                    TenantId = plan.TenantId,
+                    To = plan.Customer.Phone,
+                    Message = paymentMsg,
+                    Channel = "whatsapp",
+                    Reference = $"PLAN-{plan.Id}-PAY-{installmentNo}",
+                    MediaUrl = receiptUrl,
+                    Status = "pending"
+                });
+                
+            }
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();

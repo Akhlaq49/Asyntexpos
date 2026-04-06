@@ -274,7 +274,8 @@ public class NotificationsController : ControllerBase
             id = m.Id.ToString(),
             to = m.To,
             message = m.Message,
-            channel = m.Channel
+            channel = m.Channel,
+            mediaUrl = m.MediaUrl
         });
 
         return Ok(new { messages = result });

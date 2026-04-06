@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS `SmsMessages` (
     `Status`      VARCHAR(20)    NOT NULL DEFAULT 'pending',
     `Error`       VARCHAR(500)   NULL,
     `Reference`   VARCHAR(100)   NULL,
+    `MediaUrl`    VARCHAR(500)   NULL,
     `CreatedAt`   DATETIME(6)    NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     `ProcessedAt` DATETIME(6)    NULL,
     PRIMARY KEY (`Id`),
