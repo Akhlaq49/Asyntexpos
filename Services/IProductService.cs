@@ -6,8 +6,8 @@ namespace ReactPosApi.Services;
 
 public interface IProductService
 {
-    Task<List<ProductDto>> GetAllAsync();
-    Task<PagedResult<ProductDto>> GetAllPagedAsync(PaginationQuery query);
+    Task<List<ProductDto>> GetAllAsync(bool? rawOnly = null, bool? excludeRaw = null);
+    Task<PagedResult<ProductDto>> GetAllPagedAsync(PaginationQuery query, bool? rawOnly = null, bool? excludeRaw = null);
     Task<ProductDto?> GetByIdAsync(int id);
     Task<List<ProductDto>> GetExpiredAsync();
     Task<ProductDto?> UpdateExpiredAsync(int id, UpdateExpiredDto dto);

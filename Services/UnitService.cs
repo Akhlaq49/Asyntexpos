@@ -13,7 +13,7 @@ public class UnitService : IUnitService
     public async Task<List<DropdownOptionDto>> GetAllDropdownAsync()
     {
         return await _db.Units
-            .Select(u => new DropdownOptionDto(u.Value, u.Label))
+            .Select(u => new DropdownOptionDto(u.Value, u.Label, (int?)null))
             .ToListAsync();
     }
 

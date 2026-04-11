@@ -62,6 +62,7 @@ public class CreatePurchaseItemDto
 /// </summary>
 public class CreatePurchaseDto
 {
+    public int? SupplierId { get; set; }
     public string SupplierName { get; set; } = string.Empty;
     public string? SupplierRef { get; set; }
     public string Reference { get; set; } = string.Empty;
@@ -81,6 +82,7 @@ public class CreatePurchaseDto
 /// </summary>
 public class UpdatePurchaseDto
 {
+    public int? SupplierId { get; set; }
     public string SupplierName { get; set; } = string.Empty;
     public string? SupplierRef { get; set; }
     public string Reference { get; set; } = string.Empty;

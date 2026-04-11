@@ -153,6 +153,30 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
 
+    // Auto-add new columns that EnsureCreated won't add to existing tables
+    try
+    {
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE `Products` ADD COLUMN `IsRawMaterial` tinyint(1) NOT NULL DEFAULT 0");
+    }
+    catch { /* Column already exists */ }
+
+    // Add inline product fields to BillOfMaterials
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `BillOfMaterials` ADD COLUMN `FinishedProductName` varchar(300) NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `BillOfMaterials` ADD COLUMN `FinishedProductCategory` varchar(200) NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `BillOfMaterials` ADD COLUMN `FinishedProductSubCategory` varchar(200) NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `BillOfMaterials` ADD COLUMN `SalePrice` decimal(18,2) NOT NULL DEFAULT 0"); } catch { }
+    // Make FinishedProductId nullable on BillOfMaterials and ManufacturingOrders
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `BillOfMaterials` MODIFY COLUMN `FinishedProductId` int NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `ManufacturingOrders` MODIFY COLUMN `FinishedProductId` int NULL"); } catch { }
+    // Add SupplierId to BomItems
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `BomItems` ADD COLUMN `SupplierId` int NULL"); } catch { }
+    // Add SupplierId + SupplierName to Products (for raw materials)
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `SupplierId` int NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `SupplierName` varchar(200) NULL"); } catch { }
+    // Add SupplierId to Purchases
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE `Purchases` ADD COLUMN `SupplierId` int NULL"); } catch { }
+
     // ── MULTI-TENANCY: Seed default tenant + SuperAdmin ──
     // Use IgnoreQueryFilters() because there's no authenticated user at startup
     var existingAdmin = db.Parties
@@ -221,7 +245,13 @@ using (var scope = app.Services.CreateScope())
     {
         var formFieldConfigService = scope.ServiceProvider.GetRequiredService<IFormFieldConfigService>();
         formFieldConfigService.SeedDefaultsAsync(seedTenant.Id).GetAwaiter().GetResult();
+
+        // Seed demo data (stores, products, customers, suppliers, etc.)
+        DatabaseSeeder.SeedDemoData(db, seedTenant.Id);
     }
 }
 
 app.Run();
+
+// Make the implicit Program class accessible for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

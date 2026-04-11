@@ -13,6 +13,8 @@ public class Purchase : ITenantEntity
 
     public int TenantId { get; set; }
 
+    public int? SupplierId { get; set; }
+
     [MaxLength(100)]
     [Required]
     public string SupplierName { get; set; } = string.Empty;

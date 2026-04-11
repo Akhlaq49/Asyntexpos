@@ -79,6 +79,13 @@ public class Product : ITenantEntity
     [MaxLength(50)]
     public string? ExpiryDate { get; set; }
 
+    public bool IsRawMaterial { get; set; }
+
+    public int? SupplierId { get; set; }
+
+    [MaxLength(200)]
+    public string? SupplierName { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

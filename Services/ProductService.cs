@@ -17,9 +17,14 @@ public class ProductService : IProductService
         _fileService = fileService;
     }
 
-    public async Task<PagedResult<ProductDto>> GetAllPagedAsync(PaginationQuery query)
+    public async Task<PagedResult<ProductDto>> GetAllPagedAsync(PaginationQuery query, bool? rawOnly = null, bool? excludeRaw = null)
     {
         var q = _db.Products.AsQueryable();
+
+        if (rawOnly == true)
+            q = q.Where(p => p.IsRawMaterial);
+        else if (excludeRaw == true)
+            q = q.Where(p => !p.IsRawMaterial);
 
         if (!string.IsNullOrEmpty(query.Search))
         {
@@ -48,9 +53,16 @@ public class ProductService : IProductService
         };
     }
 
-    public async Task<List<ProductDto>> GetAllAsync()
+    public async Task<List<ProductDto>> GetAllAsync(bool? rawOnly = null, bool? excludeRaw = null)
     {
-        var products = await _db.Products
+        var q = _db.Products.AsQueryable();
+
+        if (rawOnly == true)
+            q = q.Where(p => p.IsRawMaterial);
+        else if (excludeRaw == true)
+            q = q.Where(p => !p.IsRawMaterial);
+
+        var products = await q
             .Include(p => p.Images)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
@@ -180,7 +192,10 @@ public class ProductService : IProductService
             Warranty = form.Warranty,
             Manufacturer = form.Manufacturer,
             ManufacturedDate = form.ManufacturedDate,
-            ExpiryDate = form.ExpiryDate
+            ExpiryDate = form.ExpiryDate,
+            IsRawMaterial = form.IsRawMaterial,
+            SupplierId = form.SupplierId,
+            SupplierName = form.SupplierName
         };
 
         using var transaction = await _db.Database.BeginTransactionAsync();
@@ -188,6 +203,21 @@ public class ProductService : IProductService
         {
             _db.Products.Add(entity);
             await _db.SaveChangesAsync();
+
+            // Create a stock entry so the Manage Stock page reflects initial quantity
+            if (entity.Quantity > 0)
+            {
+                _db.StockEntries.Add(new StockEntry
+                {
+                    Warehouse = entity.Warehouse ?? "",
+                    Store = entity.Store ?? "",
+                    ProductId = entity.Id,
+                    Person = "System",
+                    Quantity = entity.Quantity,
+                    Date = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+            }
 
             if (form.Images != null && form.Images.Count > 0)
             {
@@ -247,6 +277,9 @@ public class ProductService : IProductService
             entity.Manufacturer = form.Manufacturer;
             entity.ManufacturedDate = form.ManufacturedDate;
             entity.ExpiryDate = form.ExpiryDate;
+            entity.IsRawMaterial = form.IsRawMaterial;
+            entity.SupplierId = form.SupplierId;
+            entity.SupplierName = form.SupplierName;
             entity.UpdatedAt = DateTime.UtcNow;
 
             if (form.Images != null && form.Images.Count > 0)
@@ -317,6 +350,9 @@ public class ProductService : IProductService
         Manufacturer = p.Manufacturer ?? "",
         ManufacturedDate = p.ManufacturedDate ?? "",
         ExpiryDate = p.ExpiryDate ?? "",
+        IsRawMaterial = p.IsRawMaterial,
+        SupplierId = p.SupplierId,
+        SupplierName = p.SupplierName ?? "",
         Images = p.Images.Select(i => i.ImagePath).ToArray(),
         CreatedAt = p.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"),
         UpdatedAt = p.UpdatedAt.ToString("yyyy-MM-ddTHH:mm:ss")

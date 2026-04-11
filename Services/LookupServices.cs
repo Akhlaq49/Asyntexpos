@@ -12,7 +12,7 @@ public class StoreService : IStoreService
     public async Task<List<DropdownOptionDto>> GetAllAsync()
     {
         return await _db.Stores
-            .Select(s => new DropdownOptionDto(s.Value, s.Label))
+            .Select(s => new DropdownOptionDto(s.Value, s.Label, s.Id))
             .ToListAsync();
     }
 }
@@ -25,7 +25,7 @@ public class WarehouseService : IWarehouseService
     public async Task<List<DropdownOptionDto>> GetAllAsync()
     {
         return await _db.Warehouses
-            .Select(w => new DropdownOptionDto(w.Value, w.Label))
+            .Select(w => new DropdownOptionDto(w.Value, w.Label, (int?)null))
             .ToListAsync();
     }
 }

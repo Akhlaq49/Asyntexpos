@@ -14,14 +14,14 @@ public class ProductsController : ControllerBase
     public ProductsController(IProductService service) => _service = service;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? search)
+    public async Task<IActionResult> GetAll([FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? search, [FromQuery] bool? rawOnly, [FromQuery] bool? excludeRaw)
     {
         if (page.HasValue)
         {
             var query = new PaginationQuery { Page = page.Value, PageSize = pageSize ?? 10, Search = search };
-            return Ok(await _service.GetAllPagedAsync(query));
+            return Ok(await _service.GetAllPagedAsync(query, rawOnly, excludeRaw));
         }
-        return Ok(await _service.GetAllAsync());
+        return Ok(await _service.GetAllAsync(rawOnly, excludeRaw));
     }
 
     [HttpGet("expired")]
@@ -122,5 +122,8 @@ public class ProductFormModel
     public string? Manufacturer { get; set; }
     public string? ManufacturedDate { get; set; }
     public string? ExpiryDate { get; set; }
+    public bool IsRawMaterial { get; set; }
+    public int? SupplierId { get; set; }
+    public string? SupplierName { get; set; }
     public List<IFormFile>? Images { get; set; }
 }

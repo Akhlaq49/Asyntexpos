@@ -100,6 +100,14 @@ public class AppDbContext : DbContext
     public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
     public DbSet<SmsWhitelistedNumber> SmsWhitelistedNumbers => Set<SmsWhitelistedNumber>();
 
+    // Manufacturing
+    public DbSet<BillOfMaterials> BillOfMaterials => Set<BillOfMaterials>();
+    public DbSet<BomItem> BomItems => Set<BomItem>();
+    public DbSet<ManufacturingOrder> ManufacturingOrders => Set<ManufacturingOrder>();
+    public DbSet<ManufacturingOrderItem> ManufacturingOrderItems => Set<ManufacturingOrderItem>();
+    public DbSet<SupplierLedgerEntry> SupplierLedgerEntries => Set<SupplierLedgerEntry>();
+    public DbSet<SupplierPayment> SupplierPayments => Set<SupplierPayment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -483,6 +491,60 @@ public class AppDbContext : DbContext
         {
             e.HasOne(x => x.AccountType).WithMany(t => t.BankAccounts).HasForeignKey(x => x.AccountTypeId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.OpeningBalance).HasColumnType("decimal(18,2)");
+        });
+
+        // Manufacturing
+        modelBuilder.Entity<BillOfMaterials>(e =>
+        {
+            e.HasOne(b => b.FinishedProduct).WithMany().HasForeignKey(b => b.FinishedProductId).IsRequired(false).OnDelete(DeleteBehavior.SetNull);
+            e.Property(b => b.LaborCost).HasColumnType("decimal(18,2)");
+            e.Property(b => b.OverheadCost).HasColumnType("decimal(18,2)");
+            e.Property(b => b.SalePrice).HasColumnType("decimal(18,2)");
+            e.Property(b => b.Status).HasDefaultValue("active");
+        });
+
+        modelBuilder.Entity<BomItem>(e =>
+        {
+            e.HasOne(bi => bi.Bom).WithMany(b => b.Items).HasForeignKey(bi => bi.BomId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(bi => bi.RawMaterial).WithMany().HasForeignKey(bi => bi.RawMaterialId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(bi => bi.Supplier).WithMany().HasForeignKey(bi => bi.SupplierId).IsRequired(false).OnDelete(DeleteBehavior.SetNull);
+            e.Property(bi => bi.Quantity).HasColumnType("decimal(18,4)");
+            e.Property(bi => bi.UnitCost).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<ManufacturingOrder>(e =>
+        {
+            e.HasOne(mo => mo.Bom).WithMany().HasForeignKey(mo => mo.BomId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(mo => mo.FinishedProduct).WithMany().HasForeignKey(mo => mo.FinishedProductId).IsRequired(false).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(mo => mo.TargetStore).WithMany().HasForeignKey(mo => mo.TargetStoreId).OnDelete(DeleteBehavior.SetNull);
+            e.Property(mo => mo.LaborCost).HasColumnType("decimal(18,2)");
+            e.Property(mo => mo.OverheadCost).HasColumnType("decimal(18,2)");
+            e.Property(mo => mo.TotalMaterialCost).HasColumnType("decimal(18,2)");
+            e.Property(mo => mo.TotalCost).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<ManufacturingOrderItem>(e =>
+        {
+            e.HasOne(moi => moi.ManufacturingOrder).WithMany(mo => mo.Items).HasForeignKey(moi => moi.ManufacturingOrderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(moi => moi.RawMaterial).WithMany().HasForeignKey(moi => moi.RawMaterialId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(moi => moi.Supplier).WithMany().HasForeignKey(moi => moi.SupplierId).OnDelete(DeleteBehavior.SetNull);
+            e.Property(moi => moi.RequiredQuantity).HasColumnType("decimal(18,4)");
+            e.Property(moi => moi.ConsumedQuantity).HasColumnType("decimal(18,4)");
+            e.Property(moi => moi.UnitCost).HasColumnType("decimal(18,2)");
+            e.Property(moi => moi.TotalCost).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<SupplierLedgerEntry>(e =>
+        {
+            e.HasOne(sl => sl.Supplier).WithMany().HasForeignKey(sl => sl.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(sl => sl.Amount).HasColumnType("decimal(18,2)");
+            e.Property(sl => sl.RunningBalance).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<SupplierPayment>(e =>
+        {
+            e.HasOne(sp => sp.Supplier).WithMany().HasForeignKey(sp => sp.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(sp => sp.Amount).HasColumnType("decimal(18,2)");
         });
 
         // ═══════════════════════════════════════════════════════════

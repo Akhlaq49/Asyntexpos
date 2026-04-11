@@ -3,7 +3,7 @@ namespace ReactPosApi.DTOs;
 // ============================
 // Dropdown
 // ============================
-public record DropdownOptionDto(string Value, string Label);
+public record DropdownOptionDto(string Value, string Label, int? Id = null);
 
 // ============================
 // Category
@@ -79,6 +79,9 @@ public class ProductDto
     public string Manufacturer { get; set; } = string.Empty;
     public string ManufacturedDate { get; set; } = string.Empty;
     public string ExpiryDate { get; set; } = string.Empty;
+    public bool IsRawMaterial { get; set; }
+    public int? SupplierId { get; set; }
+    public string SupplierName { get; set; }
     public string[] Images { get; set; } = Array.Empty<string>();
     public string CreatedAt { get; set; } = string.Empty;
     public string UpdatedAt { get; set; } = string.Empty;

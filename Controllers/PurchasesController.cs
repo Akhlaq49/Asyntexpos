@@ -72,6 +72,7 @@ public class PurchasesController : ControllerBase
 
             var purchase = new Purchase
             {
+                SupplierId = dto.SupplierId,
                 SupplierName = dto.SupplierName,
                 SupplierRef = dto.SupplierRef,
                 Reference = dto.Reference,
@@ -128,6 +129,32 @@ public class PurchasesController : ControllerBase
 
             await transaction.CommitAsync();
 
+            // Record supplier ledger entry
+            if (dto.SupplierId.HasValue && dto.SupplierId.Value > 0)
+            {
+                var lastEntry = await _context.SupplierLedgerEntries
+                    .Where(e => e.SupplierId == dto.SupplierId.Value)
+                    .OrderByDescending(e => e.Date)
+                    .ThenByDescending(e => e.Id)
+                    .FirstOrDefaultAsync();
+
+                var runningBalance = (lastEntry?.RunningBalance ?? 0) + purchase.Total;
+
+                _context.SupplierLedgerEntries.Add(new SupplierLedgerEntry
+                {
+                    SupplierId = dto.SupplierId.Value,
+                    TransactionType = "Purchase",
+                    ReferenceType = "Purchase",
+                    ReferenceId = purchase.Id,
+                    Amount = purchase.Total,
+                    RunningBalance = runningBalance,
+                    Description = $"Purchase #{purchase.Reference} - {purchase.SupplierName}",
+                    Date = purchase.Date,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
+
             // Re-fetch with items included
             var createdPurchase = await _context.Purchases
                 .Include(p => p.Items)
@@ -181,6 +208,7 @@ public class PurchasesController : ControllerBase
             }
 
             purchase.SupplierName = dto.SupplierName;
+            purchase.SupplierId = dto.SupplierId;
             purchase.SupplierRef = dto.SupplierRef;
             purchase.Reference = dto.Reference;
             purchase.Date = dto.Date;
@@ -235,6 +263,58 @@ public class PurchasesController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            // Adjust supplier ledger for updated purchase
+            if (dto.SupplierId.HasValue && dto.SupplierId.Value > 0)
+            {
+                // Reverse old ledger entry for this purchase
+                var oldLedgerEntry = await _context.SupplierLedgerEntries
+                    .FirstOrDefaultAsync(e => e.ReferenceType == "Purchase" && e.ReferenceId == id && e.TransactionType == "Purchase");
+
+                if (oldLedgerEntry != null)
+                {
+                    var lastAfterReverse = await _context.SupplierLedgerEntries
+                        .Where(e => e.SupplierId == oldLedgerEntry.SupplierId)
+                        .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
+                        .FirstOrDefaultAsync();
+                    var balAfterReverse = (lastAfterReverse?.RunningBalance ?? 0) - oldLedgerEntry.Amount;
+
+                    _context.SupplierLedgerEntries.Add(new SupplierLedgerEntry
+                    {
+                        SupplierId = oldLedgerEntry.SupplierId,
+                        TransactionType = "Credit",
+                        ReferenceType = "PurchaseUpdated",
+                        ReferenceId = id,
+                        Amount = oldLedgerEntry.Amount,
+                        RunningBalance = balAfterReverse,
+                        Description = $"Reversed Purchase #{purchase.Reference} (updated)",
+                        Date = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _context.SaveChangesAsync();
+                }
+
+                // Record new purchase amount
+                var lastEntry = await _context.SupplierLedgerEntries
+                    .Where(e => e.SupplierId == dto.SupplierId.Value)
+                    .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
+                    .FirstOrDefaultAsync();
+                var runBal = (lastEntry?.RunningBalance ?? 0) + purchase.Total;
+
+                _context.SupplierLedgerEntries.Add(new SupplierLedgerEntry
+                {
+                    SupplierId = dto.SupplierId.Value,
+                    TransactionType = "Purchase",
+                    ReferenceType = "Purchase",
+                    ReferenceId = id,
+                    Amount = purchase.Total,
+                    RunningBalance = runBal,
+                    Description = $"Purchase #{purchase.Reference} - {purchase.SupplierName} (updated)",
+                    Date = purchase.Date,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
+
             // Re-fetch with items
             var updatedPurchase = await _context.Purchases
                 .Include(p => p.Items)
@@ -288,6 +368,29 @@ public class PurchasesController : ControllerBase
             // Delete related items
             if (purchase.Items != null)
                 _context.PurchaseItems.RemoveRange(purchase.Items);
+
+            // Reverse supplier ledger entry for this purchase
+            if (purchase.SupplierId.HasValue && purchase.SupplierId.Value > 0)
+            {
+                var lastEntry = await _context.SupplierLedgerEntries
+                    .Where(e => e.SupplierId == purchase.SupplierId.Value)
+                    .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
+                    .FirstOrDefaultAsync();
+                var runningBalance = (lastEntry?.RunningBalance ?? 0) - purchase.Total;
+
+                _context.SupplierLedgerEntries.Add(new SupplierLedgerEntry
+                {
+                    SupplierId = purchase.SupplierId.Value,
+                    TransactionType = "Credit",
+                    ReferenceType = "PurchaseDeleted",
+                    ReferenceId = purchase.Id,
+                    Amount = purchase.Total,
+                    RunningBalance = runningBalance,
+                    Description = $"Deleted Purchase #{purchase.Reference} - {purchase.SupplierName}",
+                    Date = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
 
             _context.Purchases.Remove(purchase);
             await _context.SaveChangesAsync();

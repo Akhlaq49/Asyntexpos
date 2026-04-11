@@ -20,7 +20,7 @@ public class BrandService : IBrandService
     public async Task<List<DropdownOptionDto>> GetAllDropdownAsync()
     {
         return await _db.Brands
-            .Select(b => new DropdownOptionDto(b.Value, b.Label))
+            .Select(b => new DropdownOptionDto(b.Value, b.Label, (int?)null))
             .ToListAsync();
     }
 

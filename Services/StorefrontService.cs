@@ -43,7 +43,7 @@ public class StorefrontService : IStorefrontService
     {
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.Quantity > 0)
+            .Where(p => p.Quantity > 0 && !p.IsRawMaterial)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -66,7 +66,7 @@ public class StorefrontService : IStorefrontService
 
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.Category == category.Name && p.Quantity > 0)
+            .Where(p => p.Category == category.Name && p.Quantity > 0 && !p.IsRawMaterial)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -80,7 +80,7 @@ public class StorefrontService : IStorefrontService
 
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.SubCategory == subCategory.SubCategoryName && p.Quantity > 0)
+            .Where(p => p.SubCategory == subCategory.SubCategoryName && p.Quantity > 0 && !p.IsRawMaterial)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -93,7 +93,7 @@ public class StorefrontService : IStorefrontService
 
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.Quantity > 0 && (
+            .Where(p => p.Quantity > 0 && !p.IsRawMaterial && (
                 p.ProductName.ToLower().Contains(lowerQuery) ||
                 (p.Description != null && p.Description.ToLower().Contains(lowerQuery)) ||
                 (p.Brand != null && p.Brand.ToLower().Contains(lowerQuery)) ||
