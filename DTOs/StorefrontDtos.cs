@@ -234,3 +234,46 @@ public class StorefrontAddressResultDto
     public string? Phone { get; set; }
     public bool IsDefault { get; set; }
 }
+
+// ──────────────────────────────────────────
+// WEB CONTENT (Dynamic page sections)
+// ──────────────────────────────────────────
+
+public class WebContentDto
+{
+    public int Id { get; set; }
+    public string Section { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string? Subtitle { get; set; }
+    public string? Content { get; set; }
+    public string? ImageUrl { get; set; }
+    public string? LinkUrl { get; set; }
+    public string? ButtonText { get; set; }
+    public int SortOrder { get; set; }
+    public string Status { get; set; } = "active";
+    public string CreatedAt { get; set; } = string.Empty;
+}
+
+public class CreateWebContentDto
+{
+    public string Section { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string? Subtitle { get; set; }
+    public string? Content { get; set; }
+    public string? LinkUrl { get; set; }
+    public string? ButtonText { get; set; }
+    public int SortOrder { get; set; }
+    public string Status { get; set; } = "active";
+}
+
+/// <summary>
+/// Storefront response — active content grouped by section.
+/// </summary>
+public class StorefrontWebContentResponse
+{
+    public List<WebContentDto> Header { get; set; } = new();
+    public List<WebContentDto> Banner { get; set; } = new();
+    public List<WebContentDto> Slider { get; set; } = new();
+    public List<WebContentDto> NearSlider { get; set; } = new();
+    public List<WebContentDto> Footer { get; set; } = new();
+}

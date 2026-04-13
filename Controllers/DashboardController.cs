@@ -125,13 +125,13 @@ var totalOutstanding = allPlans
             monthlyCollections.Add(new { month = monthLabel, collected, expected = plansDue });
         }
 
-        // ── Upcoming dues (next 7 days) ──
-        var next7Days = todayStr;
-        var next7DaysEnd = today.AddDays(7).ToString("yyyy-MM-dd");
+        // ── Current month dues (due + overdue) ──
+        var monthStartStr = thisMonthStart.ToString("yyyy-MM-dd");
+        var monthEndStr = thisMonthStart.AddMonths(1).AddDays(-1).ToString("yyyy-MM-dd");
         var upcomingDues = allEntries
-            .Where(e => (e.Status == "due" || e.Status == "upcoming" || e.Status == "overdue")
-                && string.Compare(e.DueDate, todayStr) >= 0
-                && string.Compare(e.DueDate, next7DaysEnd) <= 0)
+            .Where(e => (e.Status == "due" || e.Status == "overdue")
+                && string.Compare(e.DueDate, monthStartStr) >= 0
+                && string.Compare(e.DueDate, monthEndStr) <= 0)
             .OrderBy(e => e.DueDate)
             .Take(10)
             .Select(e =>

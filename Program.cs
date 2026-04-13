@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddMemoryCache();
 
 // Register application services
 builder.Services.AddHttpContextAccessor();
@@ -46,6 +47,9 @@ builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
 
 // Storefront (public online store)
 builder.Services.AddScoped<IStorefrontService, StorefrontService>();
+
+// Web Content (dynamic storefront sections with caching)
+builder.Services.AddScoped<IWebContentService, WebContentService>();
 
 // Tenant Menu Configuration
 builder.Services.AddScoped<ITenantMenuService, TenantMenuService>();
@@ -118,7 +122,9 @@ builder.Services.AddCors(options =>
                 "http://reactapp.asyntexconsultancy.com",
                 "https://reactapp.asyntexconsultancy.com",
                 "https://frontapp.asyntexconsultancy.com",
-                "http://frontapp.asyntexconsultancy.com"
+                "http://frontapp.asyntexconsultancy.com",
+                "https://aanduwholesellerllc.com",
+                "http://aanduwholesellerllc.com"
             )
             .AllowAnyHeader()
             .AllowAnyMethod();

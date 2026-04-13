@@ -14,8 +14,24 @@ namespace ReactPosApi.Controllers;
 public class StorefrontController : ControllerBase
 {
     private readonly IStorefrontService _svc;
+    private readonly IWebContentService _webContentSvc;
 
-    public StorefrontController(IStorefrontService svc) => _svc = svc;
+    public StorefrontController(IStorefrontService svc, IWebContentService webContentSvc)
+    {
+        _svc = svc;
+        _webContentSvc = webContentSvc;
+    }
+
+    // ──────────────────────────────────────────
+    // WEB CONTENT (cached, public)
+    // ──────────────────────────────────────────
+
+    [HttpGet("webcontent")]
+    public async Task<IActionResult> GetWebContent()
+    {
+        var data = await _webContentSvc.GetStorefrontContentAsync();
+        return Ok(new { success = true, data });
+    }
 
     // ──────────────────────────────────────────
     // CATEGORIES

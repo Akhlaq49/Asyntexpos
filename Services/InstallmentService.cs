@@ -535,7 +535,7 @@ public class InstallmentService : IInstallmentService
         var r = annualRate == 0 ? 0 : (double)(annualRate / 12 / 100);
         var balance = (double)financedAmount;
         var start = DateTime.Parse(startDate);
-        var today = DateTime.UtcNow;
+        var todayDate = DateTime.UtcNow.Date;
 
         for (int i = 1; i <= tenure; i++)
         {
@@ -545,8 +545,8 @@ public class InstallmentService : IInstallmentService
             balance = Math.Max(0, balance - principal);
 
             string status = "upcoming";
-            if (dueDate < today) status = "overdue";
-            else if (dueDate.Month == today.Month && dueDate.Year == today.Year) status = "due";
+            if (dueDate.Date < todayDate) status = "overdue";
+            else if (dueDate.Date == todayDate) status = "due";
 
             schedule.Add(new RepaymentEntry
             {
@@ -569,7 +569,7 @@ public class InstallmentService : IInstallmentService
         var r = annualRate == 0 ? 0 : (double)(annualRate / 12 / 100);
         var balance = (double)financedAmount;
         var start = DateTime.Parse(startDate);
-        var today = DateTime.UtcNow;
+        var todayDate = DateTime.UtcNow.Date;
 
         for (int i = 1; i <= tenure; i++)
         {
@@ -579,8 +579,8 @@ public class InstallmentService : IInstallmentService
             balance = Math.Max(0, balance - principal);
 
             string status = "upcoming";
-            if (dueDate < today) status = "overdue";
-            else if (dueDate.Month == today.Month && dueDate.Year == today.Year) status = "due";
+            if (dueDate.Date < todayDate) status = "overdue";
+            else if (dueDate.Date == todayDate) status = "due";
 
             schedule.Add(new RepaymentEntryDto
             {
@@ -712,18 +712,29 @@ public class InstallmentService : IInstallmentService
         RemainingInstallments = p.RemainingInstallments,
         NextDueDate = p.NextDueDate ?? "",
         CreatedAt = p.CreatedAt.ToString("yyyy-MM-dd"),
-        Schedule = p.Schedule.OrderBy(s => s.InstallmentNo).Select(s => new RepaymentEntryDto
-        {
-            InstallmentNo = s.InstallmentNo,
-            DueDate = s.DueDate,
-            EmiAmount = s.EmiAmount,
-            Principal = s.Principal,
-            Interest = s.Interest,
-            Balance = s.Balance,
-            Status = s.Status,
-            PaidDate = s.PaidDate,
-            ActualPaidAmount = s.ActualPaidAmount,
-            MiscAdjustedAmount = s.MiscAdjustedAmount
+        Schedule = p.Schedule.OrderBy(s => s.InstallmentNo).Select(s => {
+            // Dynamically recalculate status for non-settled entries based on current date
+            var entryStatus = s.Status;
+            if (entryStatus != "paid" && entryStatus != "partial" && DateTime.TryParse(s.DueDate, out var dd))
+            {
+                var todayDate = DateTime.UtcNow.Date;
+                if (dd.Date < todayDate) entryStatus = "overdue";
+                else if (dd.Date == todayDate) entryStatus = "due";
+                else entryStatus = "upcoming";
+            }
+            return new RepaymentEntryDto
+            {
+                InstallmentNo = s.InstallmentNo,
+                DueDate = s.DueDate,
+                EmiAmount = s.EmiAmount,
+                Principal = s.Principal,
+                Interest = s.Interest,
+                Balance = s.Balance,
+                Status = entryStatus,
+                PaidDate = s.PaidDate,
+                ActualPaidAmount = s.ActualPaidAmount,
+                MiscAdjustedAmount = s.MiscAdjustedAmount
+            };
         }).ToList(),
         Guarantors = (p.PlanGuarantors ?? new List<PlanGuarantor>())
             .Where(pg => pg.Party != null)

@@ -100,6 +100,9 @@ public class AppDbContext : DbContext
     public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
     public DbSet<SmsWhitelistedNumber> SmsWhitelistedNumbers => Set<SmsWhitelistedNumber>();
 
+    // Web Content (dynamic storefront sections)
+    public DbSet<WebContent> WebContents => Set<WebContent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -483,6 +486,13 @@ public class AppDbContext : DbContext
         {
             e.HasOne(x => x.AccountType).WithMany(t => t.BankAccounts).HasForeignKey(x => x.AccountTypeId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.OpeningBalance).HasColumnType("decimal(18,2)");
+        });
+
+        // WebContent
+        modelBuilder.Entity<WebContent>(e =>
+        {
+            e.HasIndex(w => new { w.TenantId, w.Section, w.SortOrder });
+            e.Property(w => w.Status).HasDefaultValue("active");
         });
 
         // ═══════════════════════════════════════════════════════════
