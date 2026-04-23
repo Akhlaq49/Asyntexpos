@@ -12,3 +12,6 @@ publish/
 .env
 /wwwroot/uploads/products
 /.gitignore
+/.vs
+/.gitignore
+/.gitignore
