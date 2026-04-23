@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReactPosApi.Data;
+using System.Globalization;
 
 namespace ReactPosApi.Controllers;
 
@@ -50,10 +51,39 @@ public class DashboardController : ControllerBase
         // ── Repayment Entries (installments) ──
         var allEntries = await _db.RepaymentEntries.ToListAsync();
 
-        var paidEntries = allEntries.Where(e => e.Status == "paid").ToList();
-        var partialEntries = allEntries.Where(e => e.Status == "partial").ToList();
-        var overdueEntries = allEntries.Where(e => e.Status == "overdue").ToList();
-        var dueEntries = allEntries.Where(e => e.Status == "due").ToList();
+        bool TryParseDueDate(string? dueDate, out DateTime parsedDate)
+        {
+            parsedDate = default;
+            if (string.IsNullOrWhiteSpace(dueDate)) return false;
+
+            var trimmed = dueDate.Trim();
+            return DateTime.TryParseExact(trimmed, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out parsedDate)
+                || DateTime.TryParse(trimmed, out parsedDate);
+        }
+
+        string ResolveEntryStatus(Models.RepaymentEntry entry)
+        {
+            if (string.Equals(entry.Status, "paid", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(entry.Status, "partial", StringComparison.OrdinalIgnoreCase))
+            {
+                return entry.Status?.ToLowerInvariant() ?? "upcoming";
+            }
+
+            if (TryParseDueDate(entry.DueDate, out var dueDate))
+            {
+                if (dueDate.Date < today.Date) return "overdue";
+                if (dueDate.Date == today.Date) return "due";
+                return "upcoming";
+            }
+
+            return entry.Status?.ToLowerInvariant() ?? "upcoming";
+        }
+
+        var paidEntries = allEntries.Where(e => ResolveEntryStatus(e) == "paid").ToList();
+        var partialEntries = allEntries.Where(e => ResolveEntryStatus(e) == "partial").ToList();
+        var overdueEntries = allEntries.Where(e => ResolveEntryStatus(e) == "overdue").ToList();
+        var dueEntries = allEntries.Where(e => ResolveEntryStatus(e) == "due").ToList();
+        var upcomingEntries = allEntries.Where(e => ResolveEntryStatus(e) == "upcoming").ToList();
 
         var totalCollected = paidEntries.Sum(e => (e.EmiAmount)) +
                      partialEntries.Sum(e => (e.ActualPaidAmount ?? 0)) +
@@ -125,17 +155,19 @@ var totalOutstanding = allPlans
             monthlyCollections.Add(new { month = monthLabel, collected, expected = plansDue });
         }
 
-        // ── Current month dues (due + overdue) ──
-        var monthStartStr = thisMonthStart.ToString("yyyy-MM-dd");
-        var monthEndStr = thisMonthStart.AddMonths(1).AddDays(-1).ToString("yyyy-MM-dd");
+        // ── Due today list (strictly current date only) ──
         var upcomingDues = allEntries
-            .Where(e => (e.Status == "due" || e.Status == "overdue")
-                && string.Compare(e.DueDate, monthStartStr) >= 0
-                && string.Compare(e.DueDate, monthEndStr) <= 0)
+            .Where(e =>
+            {
+                var status = ResolveEntryStatus(e);
+                if (status != "due") return false;
+                return TryParseDueDate(e.DueDate, out var dd) && dd.Date == today.Date;
+            })
             .OrderBy(e => e.DueDate)
             .Take(10)
             .Select(e =>
             {
+                var resolvedStatus = ResolveEntryStatus(e);
                 var plan = allPlans.FirstOrDefault(p => p.Id == e.PlanId);
                 return new
                 {
@@ -146,13 +178,15 @@ var totalOutstanding = allPlans
                     customerName = plan?.Customer?.FullName ?? "Unknown",
                     customerPhone = plan?.Customer?.Phone ?? "",
                     productName = plan?.Product?.ProductName ?? "Unknown",
-                    status = e.Status
+                    status = resolvedStatus
                 };
-            }).ToList();
+            })
+            .Where(e => e.status == "due")
+            .ToList();
 
         // ── Overdue installments ──
         var overdueList = allEntries
-            .Where(e => e.Status == "overdue")
+            .Where(e => ResolveEntryStatus(e) == "overdue")
             .OrderBy(e => e.DueDate)
             .Take(10)
             .Select(e =>
@@ -252,6 +286,7 @@ var totalOutstanding = allPlans
             overdueAmount,
             overdueCount = overdueEntries.Count,
             dueCount = dueEntries.Count,
+            upcomingCount = upcomingEntries.Count,
 
             // Trends
             plansThisMonth,
