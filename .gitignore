@@ -10,3 +10,5 @@ publish/
 
 # environment files
 .env
+/wwwroot/uploads/products
+/.gitignore
