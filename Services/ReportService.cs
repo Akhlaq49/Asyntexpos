@@ -6,11 +6,37 @@ namespace ReactPosApi.Services;
 
 public class ReportService : IReportService
 {
+    private static readonly TimeZoneInfo PakistanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pakistan Standard Time");
+
     private readonly AppDbContext _db;
 
     public ReportService(AppDbContext db)
     {
         _db = db;
+    }
+
+    private static DateTime GetPakistanTodayDate() =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).Date;
+
+    private static string GetPakistanTodayString() =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).ToString("yyyy-MM-dd");
+
+    private static string ResolveInstallmentStatus(Models.RepaymentEntry entry, DateTime todayDate)
+    {
+        if (string.Equals(entry.Status, "paid", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entry.Status, "partial", StringComparison.OrdinalIgnoreCase))
+        {
+            return entry.Status?.ToLowerInvariant() ?? "upcoming";
+        }
+
+        if (DateTime.TryParse(entry.DueDate, out var dueDate))
+        {
+            if (dueDate.Date < todayDate) return "overdue";
+            if (dueDate.Date == todayDate) return "due";
+            return "upcoming";
+        }
+
+        return entry.Status?.ToLowerInvariant() ?? "upcoming";
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -19,7 +45,7 @@ public class ReportService : IReportService
 
     public async Task<InstallmentCollectionReportDto> GetInstallmentCollectionReportAsync(DateTime? from, DateTime? to)
     {
-        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        var todayDate = GetPakistanTodayDate();
         var entries = await _db.RepaymentEntries
             .Include(e => e.Plan)
             .Where(e => e.Plan!.Status != "cancelled")
@@ -42,10 +68,10 @@ public class ReportService : IReportService
             }).ToList();
         }
 
-        var paidEntries = filteredEntries.Where(e => e.Status == "paid").ToList();
-        var paidEntriesPartial = filteredEntries.Where(e => e.Status == "partial").ToList();
-        var dueEntries = entries.Where(e => e.Status == "due" || e.Status == "overdue").ToList();
-        var overdueEntries = entries.Where(e => e.Status == "overdue").ToList();
+        var paidEntries = filteredEntries.Where(e => ResolveInstallmentStatus(e, todayDate) == "paid").ToList();
+        var paidEntriesPartial = filteredEntries.Where(e => ResolveInstallmentStatus(e, todayDate) == "partial").ToList();
+        var dueEntries = entries.Where(e => ResolveInstallmentStatus(e, todayDate) == "due").ToList();
+        var overdueEntries = entries.Where(e => ResolveInstallmentStatus(e, todayDate) == "overdue").ToList();
 
         // Collection by date
         var collectionByDate = paidEntries
@@ -94,7 +120,7 @@ public class ReportService : IReportService
 
     public async Task<OutstandingBalanceReportDto> GetOutstandingBalanceReportAsync()
     {
-        var today = DateTime.UtcNow;
+        var todayDate = GetPakistanTodayDate();
         var plans = await _db.InstallmentPlans
             .Include(p => p.Customer)
             .Include(p => p.Product)
@@ -111,7 +137,7 @@ public class ReportService : IReportService
         {
             var unpaid = plan.Schedule.Where(e => e.Status != "paid").ToList();
             var remaining = unpaid.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0));
-            var overdueEntries = unpaid.Where(e => e.Status == "overdue").ToList();
+            var overdueEntries = unpaid.Where(e => ResolveInstallmentStatus(e, todayDate) == "overdue").ToList();
             var overdueAmt = overdueEntries.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0));
             var maxDays = 0;
 
@@ -119,7 +145,7 @@ public class ReportService : IReportService
             {
                 if (DateTime.TryParse(oe.DueDate, out var dueDate))
                 {
-                    var days = (int)(today - dueDate).TotalDays;
+                    var days = (int)(todayDate - dueDate.Date).TotalDays;
                     if (days > maxDays) maxDays = days;
 
                     var entryAmt = oe.EmiAmount - (oe.ActualPaidAmount ?? 0) - (oe.MiscAdjustedAmount ?? 0);
@@ -399,7 +425,7 @@ public class ReportService : IReportService
 
     public async Task<DefaultersReportDto> GetDefaultersReportAsync()
     {
-        var today = DateTime.UtcNow;
+        var todayDate = GetPakistanTodayDate();
         var plans = await _db.InstallmentPlans
             .Include(p => p.Customer)
             .Include(p => p.Product)
@@ -411,7 +437,7 @@ public class ReportService : IReportService
 
         foreach (var plan in plans)
         {
-            var overdueEntries = plan.Schedule.Where(e => e.Status == "overdue").ToList();
+            var overdueEntries = plan.Schedule.Where(e => ResolveInstallmentStatus(e, todayDate) == "overdue").ToList();
             if (overdueEntries.Count == 0) continue;
 
             var overdueAmt = overdueEntries.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0));
@@ -420,7 +446,7 @@ public class ReportService : IReportService
             {
                 if (DateTime.TryParse(oe.DueDate, out var dueDate))
                 {
-                    var days = (int)(today - dueDate).TotalDays;
+                    var days = (int)(todayDate - dueDate.Date).TotalDays;
                     if (days > maxDays) maxDays = days;
                 }
             }
@@ -613,7 +639,7 @@ public class ReportService : IReportService
 
     public async Task<DefaultRateReportDto> GetDefaultRateReportAsync()
     {
-        var today = DateTime.UtcNow;
+        var todayDate = GetPakistanTodayDate();
         var plans = await _db.InstallmentPlans
             .Include(p => p.Schedule)
             .Where(p => p.Status != "cancelled")
@@ -621,13 +647,13 @@ public class ReportService : IReportService
 
         var totalFinanced = plans.Count;
         var plansWithOverdue = plans.Where(p =>
-            p.Schedule.Any(e => e.Status == "overdue")).ToList();
+            p.Schedule.Any(e => ResolveInstallmentStatus(e, todayDate) == "overdue")).ToList();
         var defaulters = plansWithOverdue.Count;
         var defaultPct = totalFinanced > 0 ? Math.Round((decimal)defaulters / totalFinanced * 100, 2) : 0;
 
         var totalFinancedAmt = plans.Sum(p => p.FinancedAmount);
         var defaultedAmt = plansWithOverdue.Sum(p =>
-            p.Schedule.Where(e => e.Status == "overdue")
+            p.Schedule.Where(e => ResolveInstallmentStatus(e, todayDate) == "overdue")
                 .Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0)));
 
         // Monthly trend
@@ -636,7 +662,7 @@ public class ReportService : IReportService
             .Select(g =>
             {
                 var active = g.Count();
-                var defaults = g.Count(p => p.Schedule.Any(e => e.Status == "overdue"));
+                var defaults = g.Count(p => p.Schedule.Any(e => ResolveInstallmentStatus(e, todayDate) == "overdue"));
                 return new DefaultTrendDto
                 {
                     Month = g.Key,
@@ -661,18 +687,24 @@ public class ReportService : IReportService
 
     public async Task<RecoveryPerformanceDto> GetRecoveryPerformanceAsync(DateTime? from, DateTime? to)
     {
+        var todayDate = GetPakistanTodayDate();
         var entries = await _db.RepaymentEntries
             .Include(e => e.Plan)
             .Where(e => e.Plan!.Status != "cancelled")
             .ToListAsync();
 
         // All entries that were/are overdue
-        var overdueEntries = entries.Where(e => e.Status == "overdue" || e.Status == "paid" || e.Status == "partial").ToList();
+        var overdueEntries = entries.Where(e =>
+        {
+            var status = ResolveInstallmentStatus(e, todayDate);
+            return status == "overdue" || status == "paid" || status == "partial";
+        }).ToList();
 
         // Entries that were overdue but got paid (recovered) — paid after due date
         var recoveredEntries = entries.Where(e =>
         {
-            if (e.Status != "paid" && e.Status != "partial") return false;
+            var status = ResolveInstallmentStatus(e, todayDate);
+            if (status != "paid" && status != "partial") return false;
             if (string.IsNullOrEmpty(e.PaidDate) || string.IsNullOrEmpty(e.DueDate)) return false;
             if (!DateTime.TryParse(e.PaidDate, out var pd) || !DateTime.TryParse(e.DueDate, out var dd)) return false;
             return pd > dd; // paid after due date = was overdue
@@ -689,7 +721,7 @@ public class ReportService : IReportService
             }).ToList();
         }
 
-        var currentlyOverdue = entries.Where(e => e.Status == "overdue").ToList();
+        var currentlyOverdue = entries.Where(e => ResolveInstallmentStatus(e, todayDate) == "overdue").ToList();
         var totalOverdueAmt = currentlyOverdue.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0));
         var recoveredAmt = recoveredEntries.Sum(e => e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
         var totalTarget = totalOverdueAmt + recoveredAmt;
@@ -729,20 +761,33 @@ public class ReportService : IReportService
 
     public async Task<DueTodayReportDto> GetDueTodayReportAsync()
     {
-        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        var today = GetPakistanTodayString();
+        var todayDate = GetPakistanTodayDate();
 
         var entries = await _db.RepaymentEntries
             .Include(e => e.Plan).ThenInclude(p => p!.Customer)
             .Include(e => e.Plan).ThenInclude(p => p!.Product)
-            .Where(e => e.DueDate == today && e.Status != "paid" && e.Plan!.Status == "active")
+            .Where(e => e.DueDate == today && e.Plan!.Status == "active")
             .ToListAsync();
+
+        entries = entries
+            .Where(e =>
+            {
+                var status = ResolveInstallmentStatus(e, todayDate);
+                return status != "paid" && status != "partial";
+            })
+            .ToList();
 
         // Also include overdue entries
         var overdueEntries = await _db.RepaymentEntries
             .Include(e => e.Plan).ThenInclude(p => p!.Customer)
             .Include(e => e.Plan).ThenInclude(p => p!.Product)
-            .Where(e => e.Status == "overdue" && e.Plan!.Status == "active")
+            .Where(e => e.Plan!.Status == "active")
             .ToListAsync();
+
+        overdueEntries = overdueEntries
+            .Where(e => ResolveInstallmentStatus(e, todayDate) == "overdue")
+            .ToList();
 
         var allItems = entries.Concat(overdueEntries)
             .GroupBy(e => new { e.PlanId, e.InstallmentNo })
@@ -773,19 +818,19 @@ public class ReportService : IReportService
 
     public async Task<UpcomingDueReportDto> GetUpcomingDueReportAsync(int days = 7)
     {
-        var today = DateTime.UtcNow;
+        var today = GetPakistanTodayDate();
         var endDate = today.AddDays(days);
-        var todayStr = today.ToString("yyyy-MM-dd");
-        var endStr = endDate.ToString("yyyy-MM-dd");
 
         var entries = await _db.RepaymentEntries
             .Include(e => e.Plan).ThenInclude(p => p!.Customer)
             .Include(e => e.Plan).ThenInclude(p => p!.Product)
-            .Where(e => e.Status != "paid" && e.Plan!.Status == "active")
+            .Where(e => e.Plan!.Status == "active")
             .ToListAsync();
 
         var upcoming = entries.Where(e =>
         {
+            var status = ResolveInstallmentStatus(e, today);
+            if (status == "paid" || status == "partial" || status == "overdue") return false;
             if (!DateTime.TryParse(e.DueDate, out var dd)) return false;
             return dd >= today.Date && dd <= endDate.Date;
         }).ToList();
@@ -814,6 +859,7 @@ public class ReportService : IReportService
 
     public async Task<LateFeeReportDto> GetLateFeeReportAsync(DateTime? from, DateTime? to)
     {
+        var todayDate = GetPakistanTodayDate();
         var entries = await _db.RepaymentEntries
             .Include(e => e.Plan).ThenInclude(p => p!.Customer)
             .Where(e => e.Plan!.Status != "cancelled")
@@ -822,8 +868,9 @@ public class ReportService : IReportService
         // Find entries paid late or still overdue
         var lateEntries = entries.Where(e =>
         {
-            if (e.Status == "overdue") return true;
-            if ((e.Status == "paid" || e.Status == "partial") && !string.IsNullOrEmpty(e.PaidDate) && !string.IsNullOrEmpty(e.DueDate))
+            var status = ResolveInstallmentStatus(e, todayDate);
+            if (status == "overdue") return true;
+            if ((status == "paid" || status == "partial") && !string.IsNullOrEmpty(e.PaidDate) && !string.IsNullOrEmpty(e.DueDate))
             {
                 if (DateTime.TryParse(e.PaidDate, out var pd) && DateTime.TryParse(e.DueDate, out var dd))
                     return pd.Date > dd.Date;
@@ -848,7 +895,7 @@ public class ReportService : IReportService
             var daysLate = 0;
             if (DateTime.TryParse(e.DueDate, out var dd))
             {
-                var compareDate = e.PaidDate != null && DateTime.TryParse(e.PaidDate, out var pd) ? pd : DateTime.UtcNow;
+                var compareDate = e.PaidDate != null && DateTime.TryParse(e.PaidDate, out var pd) ? pd : todayDate;
                 daysLate = Math.Max(0, (int)(compareDate - dd).TotalDays);
             }
 
@@ -1259,7 +1306,7 @@ public class ReportService : IReportService
 
     public async Task<DpdReportDto> GetDpdReportAsync(string? search = null)
     {
-        var today = DateTime.UtcNow.Date;
+        var today = GetPakistanTodayDate();
 
         // Get all sales that have due > 0 and an ExpectedDate (POS pending orders)
         var sales = await _db.Sales

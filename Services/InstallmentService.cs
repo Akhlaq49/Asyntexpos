@@ -7,6 +7,8 @@ namespace ReactPosApi.Services;
 
 public class InstallmentService : IInstallmentService
 {
+    private static readonly TimeZoneInfo PakistanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pakistan Standard Time");
+
     private readonly AppDbContext _db;
     private readonly IFileService _fileService;
 
@@ -261,7 +263,7 @@ public class InstallmentService : IInstallmentService
             if (totalPaidForEntry >= emiAmount)
             {
                 entry.Status = "paid";
-                entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                entry.PaidDate = GetPakistanTodayString();
                 entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
 
                 overpayment = totalPaidForEntry - emiAmount;
@@ -285,14 +287,14 @@ public class InstallmentService : IInstallmentService
                         if (remaining >= futureRemaining)
                         {
                             future.Status = "paid";
-                            future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                            future.PaidDate = GetPakistanTodayString();
                             future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + futureRemaining;
                             remaining -= futureRemaining;
                         }
                         else
                         {
                             future.Status = "partial";
-                            future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                            future.PaidDate = GetPakistanTodayString();
                             future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + remaining;
                             remaining = 0;
                         }
@@ -316,7 +318,7 @@ public class InstallmentService : IInstallmentService
             }
             else
             {
-                entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                entry.PaidDate = GetPakistanTodayString();
                 entry.Status = "partial";
                 entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
             }
@@ -528,6 +530,9 @@ public class InstallmentService : IInstallmentService
         return (decimal)((p * r * factor) / (factor - 1));
     }
 
+    private static DateTime GetPakistanTodayDate() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).Date;
+    private static string GetPakistanTodayString() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).ToString("yyyy-MM-dd");
+
     private static List<RepaymentEntry> GenerateSchedule(decimal financedAmount, decimal annualRate, int tenure, string startDate)
     {
         var schedule = new List<RepaymentEntry>();
@@ -535,7 +540,7 @@ public class InstallmentService : IInstallmentService
         var r = annualRate == 0 ? 0 : (double)(annualRate / 12 / 100);
         var balance = (double)financedAmount;
         var start = DateTime.Parse(startDate);
-        var todayDate = DateTime.UtcNow.Date;
+        var todayDate = GetPakistanTodayDate();
 
         for (int i = 1; i <= tenure; i++)
         {
@@ -569,7 +574,7 @@ public class InstallmentService : IInstallmentService
         var r = annualRate == 0 ? 0 : (double)(annualRate / 12 / 100);
         var balance = (double)financedAmount;
         var start = DateTime.Parse(startDate);
-        var todayDate = DateTime.UtcNow.Date;
+        var todayDate = GetPakistanTodayDate();
 
         for (int i = 1; i <= tenure; i++)
         {
@@ -631,7 +636,7 @@ public class InstallmentService : IInstallmentService
             if (amountToApply >= remainingForEntry)
             {
                 installment.Status = "paid";
-                installment.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                installment.PaidDate = GetPakistanTodayString();
                 installment.MiscAdjustedAmount = (installment.MiscAdjustedAmount ?? 0m) + remainingForEntry;
 
                 _db.MiscellaneousRegisters.Add(new MiscellaneousRegister
@@ -717,7 +722,7 @@ public class InstallmentService : IInstallmentService
             var entryStatus = s.Status;
             if (entryStatus != "paid" && entryStatus != "partial" && DateTime.TryParse(s.DueDate, out var dd))
             {
-                var todayDate = DateTime.UtcNow.Date;
+                var todayDate = GetPakistanTodayDate();
                 if (dd.Date < todayDate) entryStatus = "overdue";
                 else if (dd.Date == todayDate) entryStatus = "due";
                 else entryStatus = "upcoming";

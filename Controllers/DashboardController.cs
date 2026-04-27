@@ -11,6 +11,8 @@ namespace ReactPosApi.Controllers;
 [Route("api/dashboard")]
 public class DashboardController : ControllerBase
 {
+    private static readonly TimeZoneInfo PakistanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pakistan Standard Time");
+
     private readonly AppDbContext _db;
 
     public DashboardController(AppDbContext db)
@@ -18,10 +20,12 @@ public class DashboardController : ControllerBase
         _db = db;
     }
 
+    private static DateTime GetPakistanNow() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone);
+
     [HttpGet]
     public async Task<IActionResult> GetDashboardData()
     {
-        var today = DateTime.UtcNow;
+        var today = GetPakistanNow();
         var todayStr = today.ToString("yyyy-MM-dd");
         var thisMonthStart = new DateTime(today.Year, today.Month, 1);
         var lastMonthStart = thisMonthStart.AddMonths(-1);
@@ -188,7 +192,6 @@ var totalOutstanding = allPlans
         var overdueList = allEntries
             .Where(e => ResolveEntryStatus(e) == "overdue")
             .OrderBy(e => e.DueDate)
-            .Take(10)
             .Select(e =>
             {
                 var plan = allPlans.FirstOrDefault(p => p.Id == e.PlanId);
