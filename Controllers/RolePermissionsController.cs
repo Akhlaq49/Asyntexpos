@@ -26,7 +26,16 @@ public class RolePermissionsController : ControllerBase
 
     [HttpGet("by-role/{role}")]
     public async Task<ActionResult<List<string>>> GetByRole(string role)
-        => Ok(await _service.GetPermissionsByRoleAsync(role));
+    {
+        try
+        {
+            return Ok(await _service.GetPermissionsByRoleAsync(role));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Failed to load permissions", error = ex.Message });
+        }
+    }
 
     [HttpPut("by-role/{role}")]
     public async Task<IActionResult> UpdateRole(string role, [FromBody] List<string> menuKeys)
