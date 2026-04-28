@@ -533,6 +533,20 @@ public class InstallmentService : IInstallmentService
     private static DateTime GetPakistanTodayDate() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).Date;
     private static string GetPakistanTodayString() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).ToString("yyyy-MM-dd");
 
+    // Computes installment entry status from DueDate at runtime — DB-stored status is never used for unpaid entries.
+    // overdue  → due date has passed and entry is unpaid
+    // due      → due date is today
+    // upcoming → due tomorrow or day after tomorrow (within 2 days)
+    // upcoming → due more than 2 days away (also upcoming, not yet critical)
+    private static string ComputeEntryStatus(string? dueDate, DateTime todayDate)
+    {
+        if (!DateTime.TryParse(dueDate, out var dd)) return "upcoming";
+        if (dd.Date < todayDate) return "overdue";
+        if (dd.Date == todayDate) return "due";
+        // tomorrow or day after tomorrow → upcoming; anything beyond is also upcoming
+        return "upcoming";
+    }
+
     private static List<RepaymentEntry> GenerateSchedule(decimal financedAmount, decimal annualRate, int tenure, string startDate)
     {
         var schedule = new List<RepaymentEntry>();
@@ -549,10 +563,6 @@ public class InstallmentService : IInstallmentService
             var principal = (double)emi - interest;
             balance = Math.Max(0, balance - principal);
 
-            string status = "upcoming";
-            if (dueDate.Date < todayDate) status = "overdue";
-            else if (dueDate.Date == todayDate) status = "due";
-
             schedule.Add(new RepaymentEntry
             {
                 InstallmentNo = i,
@@ -561,7 +571,7 @@ public class InstallmentService : IInstallmentService
                 Principal = Math.Round((decimal)principal, 2),
                 Interest = Math.Round((decimal)interest, 2),
                 Balance = Math.Round((decimal)balance, 2),
-                Status = status
+                Status = ComputeEntryStatus(dueDate.ToString("yyyy-MM-dd"), todayDate)
             });
         }
         return schedule;
@@ -583,10 +593,6 @@ public class InstallmentService : IInstallmentService
             var principal = (double)emi - interest;
             balance = Math.Max(0, balance - principal);
 
-            string status = "upcoming";
-            if (dueDate.Date < todayDate) status = "overdue";
-            else if (dueDate.Date == todayDate) status = "due";
-
             schedule.Add(new RepaymentEntryDto
             {
                 InstallmentNo = i,
@@ -595,7 +601,7 @@ public class InstallmentService : IInstallmentService
                 Principal = Math.Round((decimal)principal, 2),
                 Interest = Math.Round((decimal)interest, 2),
                 Balance = Math.Round((decimal)balance, 2),
-                Status = status
+                Status = ComputeEntryStatus(dueDate.ToString("yyyy-MM-dd"), todayDate)
             });
         }
         return schedule;
@@ -718,15 +724,11 @@ public class InstallmentService : IInstallmentService
         NextDueDate = p.NextDueDate ?? "",
         CreatedAt = p.CreatedAt.ToString("yyyy-MM-dd"),
         Schedule = p.Schedule.OrderBy(s => s.InstallmentNo).Select(s => {
-            // Dynamically recalculate status for non-settled entries based on current date
-            var entryStatus = s.Status;
-            if (entryStatus != "paid" && entryStatus != "partial" && DateTime.TryParse(s.DueDate, out var dd))
-            {
-                var todayDate = GetPakistanTodayDate();
-                if (dd.Date < todayDate) entryStatus = "overdue";
-                else if (dd.Date == todayDate) entryStatus = "due";
-                else entryStatus = "upcoming";
-            }
+            var todayDate = GetPakistanTodayDate();
+            // "paid" and "partial" are settled states stored in DB; everything else is computed from DueDate
+            var entryStatus = (s.Status == "paid" || s.Status == "partial")
+                ? s.Status
+                : ComputeEntryStatus(s.DueDate, todayDate);
             return new RepaymentEntryDto
             {
                 InstallmentNo = s.InstallmentNo,

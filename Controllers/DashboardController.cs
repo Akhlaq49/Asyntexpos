@@ -65,22 +65,26 @@ public class DashboardController : ControllerBase
                 || DateTime.TryParse(trimmed, out parsedDate);
         }
 
+        // "paid" and "partial" are settled states kept from DB; all others are derived from DueDate at runtime.
+        // overdue  → due date has passed and entry is unpaid
+        // due      → due date is today
+        // upcoming → due tomorrow, day after tomorrow, or further in the future
         string ResolveEntryStatus(Models.RepaymentEntry entry)
         {
             if (string.Equals(entry.Status, "paid", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(entry.Status, "partial", StringComparison.OrdinalIgnoreCase))
             {
-                return entry.Status?.ToLowerInvariant() ?? "upcoming";
+                return entry.Status!.ToLowerInvariant();
             }
 
             if (TryParseDueDate(entry.DueDate, out var dueDate))
             {
                 if (dueDate.Date < today.Date) return "overdue";
                 if (dueDate.Date == today.Date) return "due";
-                return "upcoming";
+                return "upcoming"; // tomorrow, day after tomorrow, or any future date
             }
 
-            return entry.Status?.ToLowerInvariant() ?? "upcoming";
+            return "upcoming";
         }
 
         var paidEntries = allEntries.Where(e => ResolveEntryStatus(e) == "paid").ToList();

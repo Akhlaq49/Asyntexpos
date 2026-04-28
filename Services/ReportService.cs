@@ -21,22 +21,26 @@ public class ReportService : IReportService
     private static string GetPakistanTodayString() =>
         TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).ToString("yyyy-MM-dd");
 
+    // "paid" and "partial" are settled states kept from DB; all others are derived from DueDate at runtime.
+    // overdue  → due date has passed and entry is unpaid
+    // due      → due date is today
+    // upcoming → due tomorrow, day after tomorrow, or further in the future
     private static string ResolveInstallmentStatus(Models.RepaymentEntry entry, DateTime todayDate)
     {
         if (string.Equals(entry.Status, "paid", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(entry.Status, "partial", StringComparison.OrdinalIgnoreCase))
         {
-            return entry.Status?.ToLowerInvariant() ?? "upcoming";
+            return entry.Status!.ToLowerInvariant();
         }
 
         if (DateTime.TryParse(entry.DueDate, out var dueDate))
         {
             if (dueDate.Date < todayDate) return "overdue";
             if (dueDate.Date == todayDate) return "due";
-            return "upcoming";
+            return "upcoming"; // tomorrow, day after tomorrow, or any future date
         }
 
-        return entry.Status?.ToLowerInvariant() ?? "upcoming";
+        return "upcoming";
     }
 
     // ═══════════════════════════════════════════════════════════
