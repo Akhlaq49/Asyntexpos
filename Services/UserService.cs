@@ -9,7 +9,20 @@ public class UserService : IUserService
 {
     private readonly AppDbContext _db;
     private readonly IFormFieldConfigService _formFieldConfigService;
-    private static readonly string[] UserRoles = { "SuperAdmin", "Admin", "Manager", "User" };
+
+    /// <summary>
+    /// Must stay in sync with <c>Users.tsx</c> role dropdown plus <c>SuperAdmin</c> (tenant owners).
+    /// </summary>
+    private static readonly string[] UserRoles =
+    {
+        "SuperAdmin", "Admin", "Manager", "Salesman", "Supervisor",
+        "Store Keeper", "Delivery Biker", "Maintenance", "Quality Analyst",
+        "Accountant", "Purchase", "User"
+    };
+
+    private static bool IsUserRole(string? role)
+        => !string.IsNullOrWhiteSpace(role)
+           && UserRoles.Contains(role.Trim(), StringComparer.OrdinalIgnoreCase);
 
     public UserService(AppDbContext db, IFormFieldConfigService formFieldConfigService)
     {
@@ -19,7 +32,11 @@ public class UserService : IUserService
 
     public async Task<PagedResult<UserDto>> GetAllPagedAsync(PaginationQuery query)
     {
-        var q = _db.Parties.Where(p => UserRoles.Contains(p.Role)).AsQueryable();
+        // Filter by valid user roles using case-insensitive comparison
+        var q = _db.Parties
+            .Where(p => p.Role != null && 
+                   UserRoles.Any(r => r.Equals(p.Role, StringComparison.OrdinalIgnoreCase)))
+            .AsQueryable();
 
         if (!string.IsNullOrEmpty(query.Search))
         {
@@ -59,7 +76,8 @@ public class UserService : IUserService
     public async Task<List<UserDto>> GetAllAsync()
     {
         return await _db.Parties
-            .Where(p => UserRoles.Contains(p.Role))
+            .Where(p => p.Role != null && 
+                   UserRoles.Any(r => r.Equals(p.Role, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(p => p.CreatedAt)
             .Select(p => new UserDto
             {
@@ -77,7 +95,7 @@ public class UserService : IUserService
     public async Task<UserDto?> GetByIdAsync(int id)
     {
         var p = await _db.Parties.FindAsync(id);
-        if (p == null || !UserRoles.Contains(p.Role)) return null;
+        if (p == null || !IsUserRole(p.Role)) return null;
         return MapToDto(p);
     }
 
@@ -98,6 +116,13 @@ public class UserService : IUserService
             throw new InvalidOperationException("Email is already registered.");
 
         var role = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
+
+        // Validate role is in the allowed list
+        if (!IsUserRole(role))
+            throw new ArgumentException($"Invalid role: {role}. Must be one of: {string.Join(", ", UserRoles)}");
+
+        // Normalize role to match exact casing from UserRoles array
+        role = UserRoles.First(r => r.Equals(role, StringComparison.OrdinalIgnoreCase));
 
         var party = new Party
         {
@@ -154,7 +179,7 @@ public class UserService : IUserService
     public async Task<UserDto?> UpdateAsync(int id, UpdateUserDto dto)
     {
         var party = await _db.Parties.FindAsync(id);
-        if (party == null || !UserRoles.Contains(party.Role)) return null;
+        if (party == null || !IsUserRole(party.Role)) return null;
 
         if (string.IsNullOrWhiteSpace(dto.FullName))
             throw new ArgumentException("Full name is required.");
@@ -176,6 +201,14 @@ public class UserService : IUserService
         party.Email = emailLower;
         party.Phone = dto.Phone?.Trim();
         var newRole = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
+
+        // Validate role is in the allowed list
+        if (!IsUserRole(newRole))
+            throw new ArgumentException($"Invalid role: {newRole}. Must be one of: {string.Join(", ", UserRoles)}");
+
+        // Normalize role to match exact casing from UserRoles array
+        newRole = UserRoles.First(r => r.Equals(newRole, StringComparison.OrdinalIgnoreCase));
+
         party.IsActive = dto.IsActive;
 
         // If promoting to SuperAdmin and user doesn't already own a tenant, create one
@@ -233,7 +266,7 @@ public class UserService : IUserService
     public async Task<bool> DeleteAsync(int id)
     {
         var party = await _db.Parties.FindAsync(id);
-        if (party == null || !UserRoles.Contains(party.Role)) return false;
+        if (party == null || !IsUserRole(party.Role)) return false;
         _db.Parties.Remove(party);
         await _db.SaveChangesAsync();
         return true;

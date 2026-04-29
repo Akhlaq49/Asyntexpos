@@ -22,7 +22,13 @@ public class AuthService : IAuthService
         _formFieldConfigService = formFieldConfigService;
     }
 
-    private static readonly string[] LoginRoles = { "SuperAdmin", "Admin", "Manager", "User" };
+    /// <summary>Roles allowed to sign in via <see cref="LoginAsync"/> — align with <c>UserService</c> staff roles.</summary>
+    private static readonly string[] LoginRoles =
+    {
+        "SuperAdmin", "Admin", "Manager", "Salesman", "Supervisor",
+        "Store Keeper", "Delivery Biker", "Maintenance", "Quality Analyst",
+        "Accountant", "Purchase", "User"
+    };
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
     {
@@ -94,6 +100,7 @@ public class AuthService : IAuthService
         var party = await _db.Parties
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.Email == dto.Email.ToLower()
+                                   && p.Role != null
                                    && LoginRoles.Contains(p.Role)
                                    && p.PasswordHash != null);
         if (party == null)

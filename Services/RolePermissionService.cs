@@ -50,7 +50,7 @@ public class RolePermissionService : IRolePermissionService
             var newPerms = menuKeys
                 .Where(k => !string.IsNullOrWhiteSpace(k))
                 .Distinct()
-                .Select(k => new RolePermission { Role = role, MenuKey = k })
+                .Select(k => new RolePermission { Role = role, MenuKey = k, TenantId = _db.CurrentTenantId })
                 .ToList();
             _db.RolePermissions.AddRange(newPerms);
 

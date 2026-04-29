@@ -11,6 +11,8 @@ namespace ReactPosApi.Controllers;
 [Route("api/dashboard")]
 public class DashboardController : ControllerBase
 {
+    private static readonly TimeZoneInfo PakistanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pakistan Standard Time");
+
     private readonly AppDbContext _db;
 
     public DashboardController(AppDbContext db)
@@ -18,10 +20,12 @@ public class DashboardController : ControllerBase
         _db = db;
     }
 
+    private static DateTime GetPakistanNow() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone);
+
     [HttpGet]
     public async Task<IActionResult> GetDashboardData()
     {
-        var today = DateTime.UtcNow;
+        var today = GetPakistanNow();
         var todayStr = today.ToString("yyyy-MM-dd");
         var thisMonthStart = new DateTime(today.Year, today.Month, 1);
         var lastMonthStart = thisMonthStart.AddMonths(-1);
@@ -61,22 +65,26 @@ public class DashboardController : ControllerBase
                 || DateTime.TryParse(trimmed, out parsedDate);
         }
 
+        // "paid" and "partial" are settled states kept from DB; all others are derived from DueDate at runtime.
+        // overdue  → due date has passed and entry is unpaid
+        // due      → due date is today
+        // upcoming → due tomorrow, day after tomorrow, or further in the future
         string ResolveEntryStatus(Models.RepaymentEntry entry)
         {
             if (string.Equals(entry.Status, "paid", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(entry.Status, "partial", StringComparison.OrdinalIgnoreCase))
             {
-                return entry.Status?.ToLowerInvariant() ?? "upcoming";
+                return entry.Status!.ToLowerInvariant();
             }
 
             if (TryParseDueDate(entry.DueDate, out var dueDate))
             {
                 if (dueDate.Date < today.Date) return "overdue";
                 if (dueDate.Date == today.Date) return "due";
-                return "upcoming";
+                return "upcoming"; // tomorrow, day after tomorrow, or any future date
             }
 
-            return entry.Status?.ToLowerInvariant() ?? "upcoming";
+            return "upcoming";
         }
 
         var paidEntries = allEntries.Where(e => ResolveEntryStatus(e) == "paid").ToList();
@@ -188,7 +196,6 @@ var totalOutstanding = allPlans
         var overdueList = allEntries
             .Where(e => ResolveEntryStatus(e) == "overdue")
             .OrderBy(e => e.DueDate)
-            .Take(10)
             .Select(e =>
             {
                 var plan = allPlans.FirstOrDefault(p => p.Id == e.PlanId);

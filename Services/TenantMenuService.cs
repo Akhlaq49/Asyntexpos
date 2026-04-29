@@ -28,7 +28,7 @@ public class TenantMenuService : ITenantMenuService
         var newConfigs = hiddenKeys
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .Distinct()
-            .Select(k => new TenantMenuConfig { MenuKey = k })
+            .Select(k => new TenantMenuConfig { MenuKey = k, TenantId = _db.CurrentTenantId })
             .ToList();
         _db.TenantMenuConfigs.AddRange(newConfigs);
 

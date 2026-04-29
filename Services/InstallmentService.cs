@@ -7,6 +7,8 @@ namespace ReactPosApi.Services;
 
 public class InstallmentService : IInstallmentService
 {
+    private static readonly TimeZoneInfo PakistanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pakistan Standard Time");
+
     private readonly AppDbContext _db;
     private readonly IFileService _fileService;
 
@@ -261,7 +263,7 @@ public class InstallmentService : IInstallmentService
             if (totalPaidForEntry >= emiAmount)
             {
                 entry.Status = "paid";
-                entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                entry.PaidDate = GetPakistanTodayString();
                 entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
 
                 overpayment = totalPaidForEntry - emiAmount;
@@ -285,14 +287,14 @@ public class InstallmentService : IInstallmentService
                         if (remaining >= futureRemaining)
                         {
                             future.Status = "paid";
-                            future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                            future.PaidDate = GetPakistanTodayString();
                             future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + futureRemaining;
                             remaining -= futureRemaining;
                         }
                         else
                         {
                             future.Status = "partial";
-                            future.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                            future.PaidDate = GetPakistanTodayString();
                             future.ActualPaidAmount = (future.ActualPaidAmount ?? 0m) + remaining;
                             remaining = 0;
                         }
@@ -316,7 +318,7 @@ public class InstallmentService : IInstallmentService
             }
             else
             {
-                entry.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                entry.PaidDate = GetPakistanTodayString();
                 entry.Status = "partial";
                 entry.ActualPaidAmount = (entry.ActualPaidAmount ?? 0m) + paidAmount;
             }
@@ -528,6 +530,23 @@ public class InstallmentService : IInstallmentService
         return (decimal)((p * r * factor) / (factor - 1));
     }
 
+    private static DateTime GetPakistanTodayDate() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).Date;
+    private static string GetPakistanTodayString() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, PakistanTimeZone).ToString("yyyy-MM-dd");
+
+    // Computes installment entry status from DueDate at runtime — DB-stored status is never used for unpaid entries.
+    // overdue  → due date has passed and entry is unpaid
+    // due      → due date is today
+    // upcoming → due tomorrow or day after tomorrow (within 2 days)
+    // upcoming → due more than 2 days away (also upcoming, not yet critical)
+    private static string ComputeEntryStatus(string? dueDate, DateTime todayDate)
+    {
+        if (!DateTime.TryParse(dueDate, out var dd)) return "upcoming";
+        if (dd.Date < todayDate) return "overdue";
+        if (dd.Date == todayDate) return "due";
+        // tomorrow or day after tomorrow → upcoming; anything beyond is also upcoming
+        return "upcoming";
+    }
+
     private static List<RepaymentEntry> GenerateSchedule(decimal financedAmount, decimal annualRate, int tenure, string startDate)
     {
         var schedule = new List<RepaymentEntry>();
@@ -535,7 +554,7 @@ public class InstallmentService : IInstallmentService
         var r = annualRate == 0 ? 0 : (double)(annualRate / 12 / 100);
         var balance = (double)financedAmount;
         var start = DateTime.Parse(startDate);
-        var todayDate = DateTime.UtcNow.Date;
+        var todayDate = GetPakistanTodayDate();
 
         for (int i = 1; i <= tenure; i++)
         {
@@ -543,10 +562,6 @@ public class InstallmentService : IInstallmentService
             var interest = annualRate == 0 ? 0 : balance * r;
             var principal = (double)emi - interest;
             balance = Math.Max(0, balance - principal);
-
-            string status = "upcoming";
-            if (dueDate.Date < todayDate) status = "overdue";
-            else if (dueDate.Date == todayDate) status = "due";
 
             schedule.Add(new RepaymentEntry
             {
@@ -556,7 +571,7 @@ public class InstallmentService : IInstallmentService
                 Principal = Math.Round((decimal)principal, 2),
                 Interest = Math.Round((decimal)interest, 2),
                 Balance = Math.Round((decimal)balance, 2),
-                Status = status
+                Status = ComputeEntryStatus(dueDate.ToString("yyyy-MM-dd"), todayDate)
             });
         }
         return schedule;
@@ -569,7 +584,7 @@ public class InstallmentService : IInstallmentService
         var r = annualRate == 0 ? 0 : (double)(annualRate / 12 / 100);
         var balance = (double)financedAmount;
         var start = DateTime.Parse(startDate);
-        var todayDate = DateTime.UtcNow.Date;
+        var todayDate = GetPakistanTodayDate();
 
         for (int i = 1; i <= tenure; i++)
         {
@@ -577,10 +592,6 @@ public class InstallmentService : IInstallmentService
             var interest = annualRate == 0 ? 0 : balance * r;
             var principal = (double)emi - interest;
             balance = Math.Max(0, balance - principal);
-
-            string status = "upcoming";
-            if (dueDate.Date < todayDate) status = "overdue";
-            else if (dueDate.Date == todayDate) status = "due";
 
             schedule.Add(new RepaymentEntryDto
             {
@@ -590,7 +601,7 @@ public class InstallmentService : IInstallmentService
                 Principal = Math.Round((decimal)principal, 2),
                 Interest = Math.Round((decimal)interest, 2),
                 Balance = Math.Round((decimal)balance, 2),
-                Status = status
+                Status = ComputeEntryStatus(dueDate.ToString("yyyy-MM-dd"), todayDate)
             });
         }
         return schedule;
@@ -631,7 +642,7 @@ public class InstallmentService : IInstallmentService
             if (amountToApply >= remainingForEntry)
             {
                 installment.Status = "paid";
-                installment.PaidDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                installment.PaidDate = GetPakistanTodayString();
                 installment.MiscAdjustedAmount = (installment.MiscAdjustedAmount ?? 0m) + remainingForEntry;
 
                 _db.MiscellaneousRegisters.Add(new MiscellaneousRegister
@@ -713,15 +724,11 @@ public class InstallmentService : IInstallmentService
         NextDueDate = p.NextDueDate ?? "",
         CreatedAt = p.CreatedAt.ToString("yyyy-MM-dd"),
         Schedule = p.Schedule.OrderBy(s => s.InstallmentNo).Select(s => {
-            // Dynamically recalculate status for non-settled entries based on current date
-            var entryStatus = s.Status;
-            if (entryStatus != "paid" && entryStatus != "partial" && DateTime.TryParse(s.DueDate, out var dd))
-            {
-                var todayDate = DateTime.UtcNow.Date;
-                if (dd.Date < todayDate) entryStatus = "overdue";
-                else if (dd.Date == todayDate) entryStatus = "due";
-                else entryStatus = "upcoming";
-            }
+            var todayDate = GetPakistanTodayDate();
+            // "paid" and "partial" are settled states stored in DB; everything else is computed from DueDate
+            var entryStatus = (s.Status == "paid" || s.Status == "partial")
+                ? s.Status
+                : ComputeEntryStatus(s.DueDate, todayDate);
             return new RepaymentEntryDto
             {
                 InstallmentNo = s.InstallmentNo,
