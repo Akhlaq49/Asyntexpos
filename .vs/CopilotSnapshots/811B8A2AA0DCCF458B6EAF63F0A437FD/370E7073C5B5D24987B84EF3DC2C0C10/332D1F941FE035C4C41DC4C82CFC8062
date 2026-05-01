@@ -1,0 +1,15 @@
+﻿# .NET build folders
+bin/
+obj/
+
+# publish output
+publish/
+
+# VS Code
+.vscode/
+
+# environment files
+.env
+/.vs/ReactPosApi/CopilotIndices/17.14.1661.41761
+/.vs/ReactPosApi/FileContentIndex
+/wwwroot/uploads/products
