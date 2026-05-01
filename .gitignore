@@ -12,3 +12,4 @@ publish/
 .env
 /.vs/ReactPosApi/CopilotIndices/17.14.1661.41761
 /.vs/ReactPosApi/FileContentIndex
+/wwwroot/uploads/products
