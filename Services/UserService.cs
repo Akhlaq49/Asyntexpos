@@ -32,10 +32,9 @@ public class UserService : IUserService
 
     public async Task<PagedResult<UserDto>> GetAllPagedAsync(PaginationQuery query)
     {
-        // Filter by valid user roles using case-insensitive comparison
+        // Filter by valid user roles (roles are normalized during create/update, so exact match is safe)
         var q = _db.Parties
-            .Where(p => p.Role != null && 
-                   UserRoles.Any(r => r.Equals(p.Role, StringComparison.OrdinalIgnoreCase)))
+            .Where(p => p.Role != null && UserRoles.Contains(p.Role))
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(query.Search))
@@ -76,8 +75,9 @@ public class UserService : IUserService
     public async Task<List<UserDto>> GetAllAsync()
     {
         return await _db.Parties
-            .Where(p => p.Role != null && 
-                   UserRoles.Any(r => r.Equals(p.Role, StringComparison.OrdinalIgnoreCase)))
+            .IgnoreQueryFilters()
+            .Where(p => p.Role != null && UserRoles.Contains(p.Role))
+            .Where(p => p.TenantId == _db.CurrentTenantId)
             .OrderByDescending(p => p.CreatedAt)
             .Select(p => new UserDto
             {
