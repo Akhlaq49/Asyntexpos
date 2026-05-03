@@ -213,6 +213,27 @@ var totalOutstanding = allPlans
                 };
             }).ToList();
 
+        // ── Upcoming installments ──
+        var upcomingList = allEntries
+            .Where(e => ResolveEntryStatus(e) == "upcoming")
+            .OrderBy(e => e.DueDate)
+            .Take(15)
+            .Select(e =>
+            {
+                var plan = allPlans.FirstOrDefault(p => p.Id == e.PlanId);
+                return new
+                {
+                    planId = e.PlanId,
+                    installmentNo = e.InstallmentNo,
+                    dueDate = e.DueDate,
+                    emiAmount = e.EmiAmount,
+                    customerName = plan?.Customer?.FullName ?? "Unknown",
+                    customerPhone = plan?.Customer?.Phone ?? "",
+                    productName = plan?.Product?.ProductName ?? "Unknown",
+                    status = "upcoming"
+                };
+            }).ToList();
+
         // ── Recent payments ──
        var recentPayments = allEntries
     .Where(e => !string.IsNullOrEmpty(e.PaidDate))
@@ -312,6 +333,7 @@ var totalOutstanding = allPlans
             // Lists
             upcomingDues,
             overdueList,
+            upcomingList,
             recentPayments,
             recentPlans
         });
