@@ -124,7 +124,10 @@ builder.Services.AddCors(options =>
                 "https://frontapp.asyntexconsultancy.com",
                 "http://frontapp.asyntexconsultancy.com",
                 "https://aanduwholesellerllc.com",
-                "http://aanduwholesellerllc.com"
+                "http://aanduwholesellerllc.com",
+                "https://faizmart.co.uk",
+                "http://faizmart.co.uk"
+
             )
             .AllowAnyHeader()
             .AllowAnyMethod();

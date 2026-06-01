@@ -104,11 +104,13 @@ public class InstallmentService : IInstallmentService
         product.UpdatedAt = DateTime.UtcNow;
 
         var productPrice = product.Price;
-        var baseAmount = dto.FinanceAmount.HasValue && dto.FinanceAmount.Value > 0
-            ? dto.FinanceAmount.Value
-            : productPrice;
+        // Sale price (finance amount) = purchase price marked up by the interest rate %.
+        // The markup is the profit; installments split the sale price with no extra financing interest.
+        var baseAmount = dto.InterestRate > 0
+            ? Math.Round(productPrice * (1 + dto.InterestRate / 100m), 2)
+            : (dto.FinanceAmount.HasValue && dto.FinanceAmount.Value > 0 ? dto.FinanceAmount.Value : productPrice);
         var financedAmount = baseAmount - dto.DownPayment;
-        var emi = CalculateEMI(financedAmount, dto.InterestRate, dto.Tenure);
+        var emi = CalculateEMI(financedAmount, 0, dto.Tenure);
         var totalPayable = dto.DownPayment + emi * dto.Tenure;
         var totalInterest = totalPayable - baseAmount;
 
@@ -117,7 +119,7 @@ public class InstallmentService : IInstallmentService
             CustomerId = dto.CustomerId,
             ProductId = dto.ProductId,
             ProductPrice = productPrice,
-            FinanceAmount = dto.FinanceAmount,
+            FinanceAmount = baseAmount,
             DownPayment = dto.DownPayment,
             FinancedAmount = financedAmount,
             InterestRate = dto.InterestRate,
@@ -131,7 +133,7 @@ public class InstallmentService : IInstallmentService
             RemainingInstallments = dto.Tenure
         };
 
-        var schedule = GenerateSchedule(financedAmount, dto.InterestRate, dto.Tenure, dto.StartDate);
+        var schedule = GenerateSchedule(financedAmount, 0, dto.Tenure, dto.StartDate);
         plan.NextDueDate = schedule.FirstOrDefault(s => s.Status == "due" || s.Status == "upcoming")?.DueDate ?? "";
 
         using var transaction = await _db.Database.BeginTransactionAsync();
@@ -494,15 +496,16 @@ public class InstallmentService : IInstallmentService
 
     public InstallmentPreviewDto PreviewPlan(PreviewInstallmentDto dto)
     {
-        var baseAmount = dto.FinanceAmount.HasValue && dto.FinanceAmount.Value > 0
-            ? dto.FinanceAmount.Value
-            : dto.ProductPrice;
+        // Sale price (finance amount) = purchase price marked up by the interest rate %.
+        var baseAmount = dto.InterestRate > 0
+            ? Math.Round(dto.ProductPrice * (1 + dto.InterestRate / 100m), 2)
+            : (dto.FinanceAmount.HasValue && dto.FinanceAmount.Value > 0 ? dto.FinanceAmount.Value : dto.ProductPrice);
         var financedAmount = baseAmount - dto.DownPayment;
-        var emi = CalculateEMI(financedAmount, dto.InterestRate, dto.Tenure);
+        var emi = CalculateEMI(financedAmount, 0, dto.Tenure);
         var totalPayable = dto.DownPayment + emi * dto.Tenure;
         var totalInterest = totalPayable - baseAmount;
 
-        var schedule = GenerateScheduleDto(financedAmount, dto.InterestRate, dto.Tenure, dto.StartDate);
+        var schedule = GenerateScheduleDto(financedAmount, 0, dto.Tenure, dto.StartDate);
 
         return new InstallmentPreviewDto
         {
