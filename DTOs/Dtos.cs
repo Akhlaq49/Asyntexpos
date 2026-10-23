@@ -211,6 +211,8 @@ public class SaleDto
     public int Id { get; set; }
     /// <summary>Set when this sale was created by converting a quotation (its terms & conditions go on the receipt)</summary>
     public string? QuotationReference { get; set; }
+    /// <summary>The source quotation's own terms & conditions, when they were edited for it</summary>
+    public string? QuotationTerms { get; set; }
     public string Reference { get; set; } = string.Empty;
     public string? OrderNumber { get; set; }
     public int? CustomerId { get; set; }
@@ -507,6 +509,8 @@ public class QuotationDto
     public string QuotationDate { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
     public List<AppliedTaxDto> Taxes { get; set; } = new();
+    /// <summary>Terms edited for this quotation (null = standard terms); only filled when loading one quotation</summary>
+    public string? TermsContent { get; set; }
     public List<QuotationItemDto> Items { get; set; } = new();
 }
 
@@ -542,6 +546,8 @@ public class CreateQuotationDto
     public string? QuotationDate { get; set; }
     /// <summary>When sent, OrderTax and GrandTotal are calculated from these (base = items total - discount)</summary>
     public List<AppliedTaxDto>? Taxes { get; set; }
+    /// <summary>Terms edited for this quotation. null = keep as is (standard on a new quotation); "" = back to the standard terms</summary>
+    public string? TermsContent { get; set; }
     public List<CreateQuotationItemDto> Items { get; set; } = new();
 }
 

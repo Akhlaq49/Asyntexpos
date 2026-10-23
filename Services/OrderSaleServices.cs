@@ -29,11 +29,13 @@ public class SaleService : ISaleService
         if (sales.Count == 0) return;
         var ids = sales.Select(s => s.Id).ToList();
         var links = await _db.Quotations.Where(q => q.SaleId != null && ids.Contains(q.SaleId.Value))
-            .Select(q => new { SaleId = q.SaleId!.Value, q.Id, q.Reference }).ToListAsync();
+            .Select(q => new { SaleId = q.SaleId!.Value, q.Id, q.Reference, q.TermsContent }).ToListAsync();
         foreach (var link in links)
         {
             var sale = sales.FirstOrDefault(s => s.Id == link.SaleId);
-            if (sale != null) sale.QuotationReference = string.IsNullOrWhiteSpace(link.Reference) ? $"QT-{link.Id}" : link.Reference;
+            if (sale == null) continue;
+            sale.QuotationReference = string.IsNullOrWhiteSpace(link.Reference) ? $"QT-{link.Id}" : link.Reference;
+            sale.QuotationTerms = link.TermsContent;
         }
     }
 
@@ -932,6 +934,7 @@ public class QuotationService : IQuotationService
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
+            TermsContent = x.TermsContent,
             Items = x.Items.Select(i => new QuotationItemDto
             {
                 Id = i.Id, ProductId = i.ProductId, ProductName = i.ProductName,
@@ -948,6 +951,7 @@ public class QuotationService : IQuotationService
         var entity = new Quotation
         {
             TaxesJson = dto.Taxes != null ? AppliedTaxes.Serialize(dto.Taxes) : null,
+            TermsContent = string.IsNullOrWhiteSpace(dto.TermsContent) ? null : dto.TermsContent.Trim(),
             Reference = dto.Reference ?? string.Empty,
             CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
             CustomerImage = dto.CustomerImage, ProductId = dto.ProductId,
@@ -980,6 +984,7 @@ public class QuotationService : IQuotationService
         {
             ApplyTaxes(dto);
             if (dto.Taxes != null) entity.TaxesJson = AppliedTaxes.Serialize(dto.Taxes);
+            if (dto.TermsContent != null) entity.TermsContent = string.IsNullOrWhiteSpace(dto.TermsContent) ? null : dto.TermsContent.Trim();
             entity.Reference = dto.Reference ?? entity.Reference;
             entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
             entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;

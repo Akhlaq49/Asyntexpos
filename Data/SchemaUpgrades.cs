@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS `TaxTypes` (
   UNIQUE KEY `IX_TaxTypes_TenantId_Name` (`TenantId`, `Name`)
 ) CHARACTER SET utf8mb4");
 
+        // terms & conditions edited for a single quotation
+        if (!HasColumn(db, "Quotations", "TermsContent"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `Quotations` ADD COLUMN `TermsContent` longtext NULL");
+
         foreach (var table in new[] { "Products", "Quotations", "PurchaseOrders", "Sales" })
             if (!HasColumn(db, table, "TaxesJson"))
                 db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `TaxesJson` longtext NULL");

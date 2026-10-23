@@ -52,6 +52,9 @@ public class Quotation : ITenantEntity
 
     /// <summary>Taxes applied to the quotation; OrderTax is their total (JSON list of AppliedTaxDto)</summary>
     public string? TaxesJson { get; set; }
+
+    /// <summary>Terms & conditions edited for this quotation only (null = the company's standard terms)</summary>
+    public string? TermsContent { get; set; }
 }
 
 public class QuotationItem : ITenantEntity
