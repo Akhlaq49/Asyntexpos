@@ -21,5 +21,4 @@ public class Category : ITenantEntity
     public string Status { get; set; } = "active";
 
     // Navigation
-    public ICollection<SubCategory> SubCategories { get; set; } = new List<SubCategory>();
 }

@@ -15,4 +15,4 @@ CREATE TABLE IF NOT EXISTS `TenantMenuConfigs` (
 
 -- Add DefaultDashboard column to Tenants table
 ALTER TABLE `Tenants`
-    ADD COLUMN IF NOT EXISTS `DefaultDashboard` varchar(200) NOT NULL DEFAULT '/admin-dashboard-2';
+    ADD COLUMN IF NOT EXISTS `DefaultDashboard` varchar(200) NOT NULL DEFAULT '/admin-dashboard';

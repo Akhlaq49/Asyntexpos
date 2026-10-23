@@ -66,17 +66,6 @@ public class Party : ITenantEntity
     [MaxLength(100)]
     public string? UserName { get; set; }  // For Store role
 
-    // Employee-specific fields (only used when Role is "Employee")
-    public int? DepartmentId { get; set; }
-    public int? DesignationId { get; set; }
-    public int? ShiftId { get; set; }
-    public DateTime? DateOfJoining { get; set; }
-
-    [Column(TypeName = "decimal(18,2)")]
-    public decimal? BasicSalary { get; set; }
-
-    [MaxLength(50)]
-    public string? EmployeeId { get; set; }  // Display ID like EMP001
 
     // Auth fields (only used when Role is Admin/Manager/User/Store/Employee)
     [MaxLength(500)]
@@ -96,18 +85,7 @@ public class Party : ITenantEntity
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    // Navigation — employee FKs
-    [ForeignKey(nameof(DepartmentId))]
-    public Department? Department { get; set; }
 
-    [ForeignKey(nameof(DesignationId))]
-    public Designation? Designation { get; set; }
-
-    [ForeignKey(nameof(ShiftId))]
-    public Shift? Shift { get; set; }
-
-    // Navigation — plans this party guarantees
-    public ICollection<PlanGuarantor> GuaranteedPlans { get; set; } = new List<PlanGuarantor>();
 
     // Navigation — addresses (billing/shipping)
     public ICollection<PartyAddress> Addresses { get; set; } = new List<PartyAddress>();

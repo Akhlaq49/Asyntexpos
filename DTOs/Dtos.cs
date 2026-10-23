@@ -25,43 +25,16 @@ public class CreateCategoryDto
 }
 
 // ============================
-// SubCategory
-// ============================
-public class SubCategoryDto
-{
-    public int Id { get; set; }
-    public string? Image { get; set; }
-    public string SubCategory { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public string CategoryCode { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string Status { get; set; } = "active";
-}
-
-public class CreateSubCategoryDto
-{
-    public string SubCategory { get; set; } = string.Empty;
-    public int CategoryId { get; set; }
-    public string? CategoryCode { get; set; }
-    public string? Description { get; set; }
-    public string Status { get; set; } = "active";
-    // Image uploaded as IFormFile in the controller
-}
-
-// ============================
 // Product
 // ============================
 public class ProductDto
 {
     public string Id { get; set; } = string.Empty;
-    public string Store { get; set; } = string.Empty;
-    public string Warehouse { get; set; } = string.Empty;
     public string ProductName { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public string SellingType { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
-    public string SubCategory { get; set; } = string.Empty;
     public string Brand { get; set; } = string.Empty;
     public string Unit { get; set; } = string.Empty;
     public string BarcodeSymbology { get; set; } = string.Empty;
@@ -99,7 +72,6 @@ public class CustomerDto
     public string City { get; set; } = string.Empty;
     public string? Picture { get; set; }
     public string Status { get; set; } = "active";
-    public decimal MiscBalance { get; set; } = 0.00m;
 }
 
 public class CreateCustomerDto
@@ -112,136 +84,6 @@ public class CreateCustomerDto
     public string Address { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string Status { get; set; } = "active";
-}
-
-// ============================
-// Installment
-// ============================
-public class RepaymentEntryDto
-{
-    public int InstallmentNo { get; set; }
-    public string DueDate { get; set; } = string.Empty;
-    public decimal EmiAmount { get; set; }
-    public decimal Principal { get; set; }
-    public decimal Interest { get; set; }
-    public decimal Balance { get; set; }
-    public string Status { get; set; } = "upcoming";
-    public string? PaidDate { get; set; }
-    public decimal? ActualPaidAmount { get; set; }
-    public decimal? MiscAdjustedAmount { get; set; }
-}
-
-public class GuarantorDto
-{
-    public int Id { get; set; }
-    public int PartyId { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string? SO { get; set; }
-    public string? Phone { get; set; }
-    public string? Cnic { get; set; }
-    public string? Address { get; set; }
-    public string? Relationship { get; set; }
-    public string? Picture { get; set; }
-    public List<PlanMediaDto> Pictures { get; set; } = new();
-}
-
-public class PlanMediaDto
-{
-    public int Id { get; set; }
-    public string EntityType { get; set; } = string.Empty;
-    public int? EntityId { get; set; }
-    public string MediaType { get; set; } = "image";
-    public string FilePath { get; set; } = string.Empty;
-}
-
-public class InstallmentPlanDto
-{
-    public string Id { get; set; } = string.Empty;
-    public string CustomerId { get; set; } = string.Empty;
-    public string CustomerName { get; set; } = string.Empty;
-    public string? CustomerSo { get; set; }
-    public string? CustomerCnic { get; set; }
-    public string CustomerPhone { get; set; } = string.Empty;
-    public string CustomerAddress { get; set; } = string.Empty;
-    public string? CustomerImage { get; set; }
-    public string ProductName { get; set; } = string.Empty;
-    public string ProductImage { get; set; } = string.Empty;
-    public decimal ProductPrice { get; set; }
-    public decimal? FinanceAmount { get; set; }
-    public decimal DownPayment { get; set; }
-    public decimal FinancedAmount { get; set; }
-    public decimal InterestRate { get; set; }
-    public int Tenure { get; set; }
-    public decimal EmiAmount { get; set; }
-    public decimal TotalPayable { get; set; }
-    public decimal TotalInterest { get; set; }
-    public string StartDate { get; set; } = string.Empty;
-    public string Status { get; set; } = "active";
-    public int PaidInstallments { get; set; }
-    public int RemainingInstallments { get; set; }
-    public string NextDueDate { get; set; } = string.Empty;
-    public string CreatedAt { get; set; } = string.Empty;
-    public List<RepaymentEntryDto> Schedule { get; set; } = new();
-    public List<GuarantorDto> Guarantors { get; set; } = new();
-    public List<PlanMediaDto> CustomerPictures { get; set; } = new();
-    public List<PlanMediaDto> PlanMedia { get; set; } = new();
-}
-
-public class CreateInstallmentDto
-{
-    public int CustomerId { get; set; }
-    public int ProductId { get; set; }
-    public decimal? FinanceAmount { get; set; }
-    public decimal DownPayment { get; set; }
-    public decimal InterestRate { get; set; }
-    public int Tenure { get; set; }
-    public string StartDate { get; set; } = string.Empty;
-}
-
-public class PayInstallmentDto
-{
-    public decimal Amount { get; set; }
-    public bool UseMiscBalance { get; set; } = false;
-    public string? PaymentMethod { get; set; } = "Cash";
-    public string? Notes { get; set; }
-}
-
-public class PartySearchDto
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string? SO { get; set; }
-    public string? Phone { get; set; }
-    public string? Cnic { get; set; }
-    public string? Address { get; set; }
-    public string? Email { get; set; }
-    public string? City { get; set; }
-    public string? Picture { get; set; }
-    public string Role { get; set; } = string.Empty;
-}
-
-public class PreviewInstallmentDto
-{
-    public decimal ProductPrice { get; set; }
-    public decimal? FinanceAmount { get; set; }
-    public decimal DownPayment { get; set; }
-    public decimal InterestRate { get; set; }
-    public int Tenure { get; set; }
-    public string StartDate { get; set; } = string.Empty;
-}
-
-public class InstallmentPreviewDto
-{
-    public decimal ProductPrice { get; set; }
-    public decimal FinanceAmount { get; set; }
-    public decimal FinancedAmount { get; set; }
-    public decimal DownPayment { get; set; }
-    public decimal InterestRate { get; set; }
-    public int Tenure { get; set; }
-    public decimal EmiAmount { get; set; }
-    public decimal TotalPayable { get; set; }
-    public decimal TotalInterest { get; set; }
-    public List<RepaymentEntryDto> Schedule { get; set; } = new();
 }
 
 // ============================
@@ -292,8 +134,6 @@ public class CreateVariantAttributeDto
 public class StockEntryDto
 {
     public int Id { get; set; }
-    public string Warehouse { get; set; } = string.Empty;
-    public string Store { get; set; } = string.Empty;
     public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string ProductImage { get; set; } = string.Empty;
@@ -306,83 +146,8 @@ public class StockEntryDto
 
 public class CreateStockEntryDto
 {
-    public string Warehouse { get; set; } = string.Empty;
-    public string Store { get; set; } = string.Empty;
     public int ProductId { get; set; }
     public string Person { get; set; } = string.Empty;
-    public int Quantity { get; set; } = 1;
-}
-
-// ============================
-// Stock Adjustment
-// ============================
-public class StockAdjustmentDto
-{
-    public int Id { get; set; }
-    public string Warehouse { get; set; } = string.Empty;
-    public string Store { get; set; } = string.Empty;
-    public int ProductId { get; set; }
-    public string ProductName { get; set; } = string.Empty;
-    public string ProductImage { get; set; } = string.Empty;
-    public string Sku { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public string ReferenceNumber { get; set; } = string.Empty;
-    public string Person { get; set; } = string.Empty;
-    public int Quantity { get; set; }
-    public string? Notes { get; set; }
-    public string Date { get; set; } = string.Empty;
-}
-
-public class CreateStockAdjustmentDto
-{
-    public string Warehouse { get; set; } = string.Empty;
-    public string Store { get; set; } = string.Empty;
-    public int ProductId { get; set; }
-    public string ReferenceNumber { get; set; } = string.Empty;
-    public string Person { get; set; } = string.Empty;
-    public int Quantity { get; set; } = 1;
-    public string? Notes { get; set; }
-}
-
-// ============================
-// Stock Transfer
-// ============================
-public class StockTransferDto
-{
-    public int Id { get; set; }
-    public string WarehouseFrom { get; set; } = string.Empty;
-    public string WarehouseTo { get; set; } = string.Empty;
-    public string ReferenceNumber { get; set; } = string.Empty;
-    public string? Notes { get; set; }
-    public int NoOfProducts { get; set; }
-    public int QuantityTransferred { get; set; }
-    public string Date { get; set; } = string.Empty;
-    public List<StockTransferItemDto> Items { get; set; } = new();
-}
-
-public class StockTransferItemDto
-{
-    public int Id { get; set; }
-    public int ProductId { get; set; }
-    public string ProductName { get; set; } = string.Empty;
-    public string ProductImage { get; set; } = string.Empty;
-    public string Sku { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public int Quantity { get; set; }
-}
-
-public class CreateStockTransferDto
-{
-    public string WarehouseFrom { get; set; } = string.Empty;
-    public string WarehouseTo { get; set; } = string.Empty;
-    public string ReferenceNumber { get; set; } = string.Empty;
-    public string? Notes { get; set; }
-    public List<CreateStockTransferItemDto> Items { get; set; } = new();
-}
-
-public class CreateStockTransferItemDto
-{
-    public int ProductId { get; set; }
     public int Quantity { get; set; } = 1;
 }
 
@@ -425,23 +190,10 @@ public class CreateBrandDto
 }
 
 // ============================
-// Expired Product Update
-// ============================
-public class UpdateExpiredDto
-{
-    public string? Sku { get; set; }
-    public string? ProductName { get; set; }
-    public string? ManufacturedDate { get; set; }
-    public string? ExpiryDate { get; set; }
-}
-
-// ============================
 // Low Stock Update
 // ============================
 public class UpdateLowStockDto
 {
-    public string? Warehouse { get; set; }
-    public string? Store { get; set; }
     public string? Sku { get; set; }
     public string? Category { get; set; }
     public string? ProductName { get; set; }
@@ -455,6 +207,8 @@ public class UpdateLowStockDto
 public class SaleDto
 {
     public int Id { get; set; }
+    /// <summary>Set when this sale was created by converting a quotation (its terms & conditions go on the receipt)</summary>
+    public string? QuotationReference { get; set; }
     public string Reference { get; set; } = string.Empty;
     public string? OrderNumber { get; set; }
     public int? CustomerId { get; set; }
@@ -531,6 +285,15 @@ public class CreateSaleItemDto
     public decimal TaxAmount { get; set; }
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
+}
+
+/// <summary>Convert a quotation into a sale: stock is deducted and the payment received now is recorded</summary>
+public class ConvertQuotationToSaleDto
+{
+    /// <summary>Amount received from the customer now (0 = unpaid, the rest stays due)</summary>
+    public decimal PaidAmount { get; set; }
+    public string PaymentType { get; set; } = "Cash";
+    public string? Notes { get; set; }
 }
 
 public class CreateSalePaymentDto
@@ -723,6 +486,8 @@ public class CreateSalesReturnItemDto
 public class QuotationDto
 {
     public int Id { get; set; }
+    public int? SaleId { get; set; }
+    public string? SaleReference { get; set; }
     public string Reference { get; set; } = string.Empty;
     public int? CustomerId { get; set; }
     public string CustomerName { get; set; } = string.Empty;
@@ -785,67 +550,4 @@ public class CreateQuotationItemDto
     public decimal TaxAmount { get; set; }
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
-}
-
-// ── Coupon DTOs ─────────────────────────────────────────
-
-public class CouponDto
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Code { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string Type { get; set; } = "Percentage";
-    public decimal Discount { get; set; }
-    public int Limit { get; set; }
-    public string? StartDate { get; set; }
-    public string? EndDate { get; set; }
-    public bool OncePerCustomer { get; set; }
-    public int? ProductId { get; set; }
-    public string? ProductName { get; set; }
-    public string Status { get; set; } = "Active";
-}
-
-public class CreateCouponDto
-{
-    public string Name { get; set; } = string.Empty;
-    public string Code { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string Type { get; set; } = "Percentage";
-    public decimal Discount { get; set; }
-    public int Limit { get; set; }
-    public string? StartDate { get; set; }
-    public string? EndDate { get; set; }
-    public bool OncePerCustomer { get; set; }
-    public int? ProductId { get; set; }
-    public string? ProductName { get; set; }
-    public string Status { get; set; } = "Active";
-}
-
-// ============================
-// Miscellaneous Register
-// ============================
-public class MiscellaneousRegisterDto
-{
-    public string Id { get; set; } = string.Empty;
-    public string CustomerId { get; set; } = string.Empty;
-    public string CustomerName { get; set; } = string.Empty;
-    public string TransactionType { get; set; } = string.Empty;
-    public decimal Amount { get; set; }
-    public decimal Balance { get; set; } = 0.00m;
-    public string Description { get; set; } = string.Empty;
-    public string? ReferenceId { get; set; }
-    public string ReferenceType { get; set; } = string.Empty;
-    public string CreatedAt { get; set; } = string.Empty;
-    public string? CreatedBy { get; set; }
-}
-
-public class CreateMiscTransactionDto
-{
-    public int CustomerId { get; set; }
-    public string TransactionType { get; set; } = string.Empty; // Credit, Debit
-    public decimal Amount { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public string? ReferenceId { get; set; }
-    public string ReferenceType { get; set; } = "ManualAdjustment";
 }

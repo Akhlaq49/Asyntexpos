@@ -59,7 +59,7 @@ public class TenantMenuController : ControllerBase
         catch
         {
             // Column may not exist yet – return default path
-            return Ok("/admin-dashboard-2");
+            return Ok("/admin-dashboard");
         }
     }
 

@@ -30,7 +30,7 @@ public class Tenant
     public bool IsActive { get; set; } = true;
 
     [MaxLength(200)]
-    public string DefaultDashboard { get; set; } = "/admin-dashboard-2";
+    public string DefaultDashboard { get; set; } = "/admin-dashboard";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

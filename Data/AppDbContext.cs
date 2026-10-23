@@ -26,17 +26,12 @@ public class AppDbContext : DbContext
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
     // Lookup tables
-    public DbSet<Store> Stores => Set<Store>();
-    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Unit> Units => Set<Unit>();
 
     public DbSet<VariantAttribute> VariantAttributes => Set<VariantAttribute>();
     public DbSet<Warranty> Warranties => Set<Warranty>();
     public DbSet<StockEntry> StockEntries => Set<StockEntry>();
-    public DbSet<StockAdjustment> StockAdjustments => Set<StockAdjustment>();
-    public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
-    public DbSet<StockTransferItem> StockTransferItems => Set<StockTransferItem>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
     public DbSet<SalePayment> SalePayments => Set<SalePayment>();
@@ -46,27 +41,21 @@ public class AppDbContext : DbContext
     public DbSet<SalesReturnItem> SalesReturnItems => Set<SalesReturnItem>();
     public DbSet<Quotation> Quotations => Set<Quotation>();
     public DbSet<QuotationItem> QuotationItems => Set<QuotationItem>();
-    public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<PurchaseItem> PurchaseItems => Set<PurchaseItem>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+    public DbSet<TermsConditions> TermsConditions => Set<TermsConditions>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();
-    public DbSet<SubCategory> SubCategories => Set<SubCategory>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
 
-    // Parties (unified: Admin, Manager, User, Customer, Guarantor)
+    // Parties (unified: Admin, Manager, User, Customer, Supplier)
     public DbSet<Party> Parties => Set<Party>();
-    public DbSet<PlanGuarantor> PlanGuarantors => Set<PlanGuarantor>();
-    public DbSet<MiscellaneousRegister> MiscellaneousRegisters => Set<MiscellaneousRegister>();
 
-    // Installments
-    public DbSet<InstallmentPlan> InstallmentPlans => Set<InstallmentPlan>();
-    public DbSet<RepaymentEntry> RepaymentEntries => Set<RepaymentEntry>();
-    public DbSet<PlanMedia> PlanMedia => Set<PlanMedia>();
-
-    // Online storefront
+    // Customer addresses
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
 
     // Role Permissions
@@ -78,30 +67,13 @@ public class AppDbContext : DbContext
     // Tenant Menu Configuration (hidden menus per tenant)
     public DbSet<TenantMenuConfig> TenantMenuConfigs => Set<TenantMenuConfig>();
 
-    // HRM
-    public DbSet<Department> Departments => Set<Department>();
-    public DbSet<Designation> Designations => Set<Designation>();
-    public DbSet<Shift> Shifts => Set<Shift>();
-    public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
-    public DbSet<Leave> Leaves => Set<Leave>();
-    public DbSet<Holiday> Holidays => Set<Holiday>();
-    public DbSet<Payroll> Payrolls => Set<Payroll>();
-    public DbSet<Attendance> Attendances => Set<Attendance>();
-
     // Finance & Accounting
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
-    public DbSet<IncomeCategory> IncomeCategories => Set<IncomeCategory>();
-    public DbSet<FinanceIncome> FinanceIncomes => Set<FinanceIncome>();
-    public DbSet<AccountType> AccountTypes => Set<AccountType>();
-    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
 
     // SMS / Notifications
     public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
     public DbSet<SmsWhitelistedNumber> SmsWhitelistedNumbers => Set<SmsWhitelistedNumber>();
-
-    // Web Content (dynamic storefront sections)
-    public DbSet<WebContent> WebContents => Set<WebContent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -112,16 +84,6 @@ public class AppDbContext : DbContext
         {
             e.HasIndex(c => new { c.TenantId, c.Slug }).IsUnique();
             e.Property(c => c.Status).HasDefaultValue("active");
-        });
-
-        // SubCategory -> Category
-        modelBuilder.Entity<SubCategory>(e =>
-        {
-            e.HasOne(sc => sc.Category)
-             .WithMany(c => c.SubCategories)
-             .HasForeignKey(sc => sc.CategoryId)
-             .OnDelete(DeleteBehavior.Restrict);
-            e.Property(sc => sc.Status).HasDefaultValue("active");
         });
 
         // Product
@@ -150,140 +112,6 @@ public class AppDbContext : DbContext
             e.Property(p => p.Role).HasDefaultValue("Customer");
             e.Property(p => p.Status).HasDefaultValue("active");
             e.Property(p => p.IsActive).HasDefaultValue(true);
-            e.Property(p => p.BasicSalary).HasColumnType("decimal(18,2)");
-
-            e.HasOne(p => p.Department).WithMany().HasForeignKey(p => p.DepartmentId).OnDelete(DeleteBehavior.SetNull);
-            e.HasOne(p => p.Designation).WithMany().HasForeignKey(p => p.DesignationId).OnDelete(DeleteBehavior.SetNull);
-            e.HasOne(p => p.Shift).WithMany().HasForeignKey(p => p.ShiftId).OnDelete(DeleteBehavior.SetNull);
-        });
-
-        // Department
-        modelBuilder.Entity<Department>(e =>
-        {
-            e.HasOne(d => d.HOD).WithMany().HasForeignKey(d => d.HODId).OnDelete(DeleteBehavior.SetNull);
-            e.Property(d => d.Status).HasDefaultValue("active");
-            e.Property(d => d.IsActive).HasDefaultValue(true);
-        });
-
-        // Designation -> Department
-        modelBuilder.Entity<Designation>(e =>
-        {
-            e.HasOne(d => d.Department).WithMany(dept => dept.Designations).HasForeignKey(d => d.DepartmentId).OnDelete(DeleteBehavior.SetNull);
-            e.Property(d => d.Status).HasDefaultValue("active");
-            e.Property(d => d.IsActive).HasDefaultValue(true);
-        });
-
-        // Shift
-        modelBuilder.Entity<Shift>(e =>
-        {
-            e.Property(s => s.Status).HasDefaultValue("active");
-            e.Property(s => s.IsActive).HasDefaultValue(true);
-        });
-
-        // LeaveType
-        modelBuilder.Entity<LeaveType>(e =>
-        {
-            e.Property(lt => lt.Status).HasDefaultValue("active");
-            e.Property(lt => lt.IsActive).HasDefaultValue(true);
-        });
-
-        // Leave
-        modelBuilder.Entity<Leave>(e =>
-        {
-            e.HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(l => l.LeaveType).WithMany(lt => lt.Leaves).HasForeignKey(l => l.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(l => l.ApprovedBy).WithMany().HasForeignKey(l => l.ApprovedById).OnDelete(DeleteBehavior.SetNull);
-            e.Property(l => l.Days).HasColumnType("decimal(5,1)");
-        });
-
-        // Holiday
-        modelBuilder.Entity<Holiday>(e =>
-        {
-            e.Property(h => h.Status).HasDefaultValue("active");
-            e.Property(h => h.IsActive).HasDefaultValue(true);
-        });
-
-        // Payroll
-        modelBuilder.Entity<Payroll>(e =>
-        {
-            e.HasOne(p => p.Employee).WithMany().HasForeignKey(p => p.EmployeeId).OnDelete(DeleteBehavior.Restrict);
-        });
-
-        // Attendance
-        modelBuilder.Entity<Attendance>(e =>
-        {
-            e.HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasIndex(a => new { a.TenantId, a.EmployeeId, a.Date }).IsUnique();
-        });
-
-        // InstallmentPlan
-        modelBuilder.Entity<InstallmentPlan>(e =>
-        {
-            e.HasOne(ip => ip.Customer)
-             .WithMany()
-             .HasForeignKey(ip => ip.CustomerId)
-             .OnDelete(DeleteBehavior.Restrict);
-
-            e.HasOne(ip => ip.Product)
-             .WithMany()
-             .HasForeignKey(ip => ip.ProductId)
-             .OnDelete(DeleteBehavior.Restrict);
-
-            e.Property(p => p.ProductPrice).HasColumnType("decimal(18,2)");
-            e.Property(p => p.FinanceAmount).HasColumnType("decimal(18,2)");
-            e.Property(p => p.DownPayment).HasColumnType("decimal(18,2)");
-            e.Property(p => p.FinancedAmount).HasColumnType("decimal(18,2)");
-            e.Property(p => p.InterestRate).HasColumnType("decimal(8,4)");
-            e.Property(p => p.EmiAmount).HasColumnType("decimal(18,2)");
-            e.Property(p => p.TotalPayable).HasColumnType("decimal(18,2)");
-            e.Property(p => p.TotalInterest).HasColumnType("decimal(18,2)");
-            e.Property(p => p.Status).HasDefaultValue("active");
-        });
-
-        // RepaymentEntry -> InstallmentPlan
-        modelBuilder.Entity<RepaymentEntry>(e =>
-        {
-            e.HasOne(r => r.Plan)
-             .WithMany(p => p.Schedule)
-             .HasForeignKey(r => r.PlanId)
-             .OnDelete(DeleteBehavior.Cascade);
-            e.Property(r => r.EmiAmount).HasColumnType("decimal(18,2)");
-            e.Property(r => r.Principal).HasColumnType("decimal(18,2)");
-            e.Property(r => r.Interest).HasColumnType("decimal(18,2)");
-            e.Property(r => r.Balance).HasColumnType("decimal(18,2)");
-            e.Property(r => r.Status).HasDefaultValue("upcoming");
-        });
-
-        // PlanGuarantor -> InstallmentPlan + Party
-        modelBuilder.Entity<PlanGuarantor>(e =>
-        {
-            e.HasOne(pg => pg.Plan)
-             .WithMany(p => p.PlanGuarantors)
-             .HasForeignKey(pg => pg.PlanId)
-             .OnDelete(DeleteBehavior.Cascade);
-
-            e.HasOne(pg => pg.Party)
-             .WithMany(p => p.GuaranteedPlans)
-             .HasForeignKey(pg => pg.PartyId)
-             .OnDelete(DeleteBehavior.Restrict);
-        });
-
-        // PlanMedia -> InstallmentPlan
-        modelBuilder.Entity<PlanMedia>(e =>
-        {
-            e.HasOne(pm => pm.Plan)
-             .WithMany(p => p.Media)
-             .HasForeignKey(pm => pm.PlanId)
-             .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // StockTransferItem -> StockTransfer
-        modelBuilder.Entity<StockTransferItem>(e =>
-        {
-            e.HasOne(i => i.StockTransfer)
-             .WithMany(t => t.Items)
-             .HasForeignKey(i => i.StockTransferId)
-             .OnDelete(DeleteBehavior.Cascade);
         });
 
         // PartyAddress -> Party
@@ -443,12 +271,21 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.SetNull);
         });
 
-        // Coupon
-        modelBuilder.Entity<Coupon>(e =>
+        // PurchaseOrder -> items (receipts become Purchases with PurchaseOrderId)
+        // one terms & conditions document per tenant
+        modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
+
+        modelBuilder.Entity<PurchaseOrder>(e =>
         {
-            e.HasIndex(c => new { c.TenantId, c.Code }).IsUnique();
-            e.Property(c => c.Discount).HasColumnType("decimal(18,2)");
+            e.HasIndex(po => new { po.TenantId, po.PoNumber }).IsUnique();
+            e.Property(po => po.Status).HasDefaultValue(PurchaseOrderStatus.Draft);
         });
+        modelBuilder.Entity<PurchaseOrderItem>(e =>
+        {
+            e.HasOne(i => i.PurchaseOrder).WithMany(po => po.Items).HasForeignKey(i => i.PurchaseOrderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(i => i.Product).WithMany().HasForeignKey(i => i.ProductId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<Purchase>(e => e.HasIndex(p => p.PurchaseOrderId));
 
         // RolePermission
         modelBuilder.Entity<RolePermission>(e =>
@@ -474,25 +311,6 @@ public class AppDbContext : DbContext
         {
             e.HasOne(x => x.ExpenseCategory).WithMany(c => c.Expenses).HasForeignKey(x => x.ExpenseCategoryId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
-        });
-
-        modelBuilder.Entity<FinanceIncome>(e =>
-        {
-            e.HasOne(x => x.IncomeCategory).WithMany(c => c.Incomes).HasForeignKey(x => x.IncomeCategoryId).OnDelete(DeleteBehavior.Restrict);
-            e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
-        });
-
-        modelBuilder.Entity<BankAccount>(e =>
-        {
-            e.HasOne(x => x.AccountType).WithMany(t => t.BankAccounts).HasForeignKey(x => x.AccountTypeId).OnDelete(DeleteBehavior.Restrict);
-            e.Property(x => x.OpeningBalance).HasColumnType("decimal(18,2)");
-        });
-
-        // WebContent
-        modelBuilder.Entity<WebContent>(e =>
-        {
-            e.HasIndex(w => new { w.TenantId, w.Section, w.SortOrder });
-            e.Property(w => w.Status).HasDefaultValue("active");
         });
 
         // ═══════════════════════════════════════════════════════════

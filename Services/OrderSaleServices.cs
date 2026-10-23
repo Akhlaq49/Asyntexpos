@@ -16,9 +16,25 @@ public class SaleService : ISaleService
         var query = _db.Sales.AsQueryable();
         if (!string.IsNullOrEmpty(source)) query = query.Where(s => s.Source == source);
 
-        return await query.Include(s => s.Items).Include(s => s.Payments)
+        var list = await query.Include(s => s.Items).Include(s => s.Payments)
             .OrderByDescending(s => s.CreatedAt)
             .Select(s => MapToDto(s)).ToListAsync();
+        await AttachQuotationReferencesAsync(list);
+        return list;
+    }
+
+    /// <summary>Marks sales that came from a converted quotation</summary>
+    private async Task AttachQuotationReferencesAsync(List<SaleDto> sales)
+    {
+        if (sales.Count == 0) return;
+        var ids = sales.Select(s => s.Id).ToList();
+        var links = await _db.Quotations.Where(q => q.SaleId != null && ids.Contains(q.SaleId.Value))
+            .Select(q => new { SaleId = q.SaleId!.Value, q.Id, q.Reference }).ToListAsync();
+        foreach (var link in links)
+        {
+            var sale = sales.FirstOrDefault(s => s.Id == link.SaleId);
+            if (sale != null) sale.QuotationReference = string.IsNullOrWhiteSpace(link.Reference) ? $"QT-{link.Id}" : link.Reference;
+        }
     }
 
     public async Task<PagedResult<SaleDto>> GetAllPagedAsync(string? source, PaginationQuery query, string? paymentStatus = null)
@@ -48,9 +64,11 @@ public class SaleService : ISaleService
             .Include(s => s.Payments)
             .ToListAsync();
 
+        var items = entities.Select(MapToDto).ToList();
+        await AttachQuotationReferencesAsync(items);
         return new PagedResult<SaleDto>
         {
-            Items = entities.Select(MapToDto).ToList(),
+            Items = items,
             TotalCount = totalCount,
             Page = query.Page,
             PageSize = query.PageSize
@@ -61,7 +79,9 @@ public class SaleService : ISaleService
     {
         var s = await _db.Sales.Include(s => s.Items).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == id);
         if (s == null) return null;
-        return MapToDto(s);
+        var dto = MapToDto(s);
+        await AttachQuotationReferencesAsync(new List<SaleDto> { dto });
+        return dto;
     }
 
     public async Task<object> CreateAsync(CreateSaleDto dto)
@@ -202,6 +222,96 @@ public class SaleService : ISaleService
             PayingAmount = p.PayingAmount, PaymentType = p.PaymentType,
             Description = p.Description, PaymentDate = p.PaymentDate.ToString("dd MMM yyyy")
         }).ToList();
+    }
+
+    /// <summary>
+    /// Quotation -> sale in one transaction: creates the sale from the quotation lines,
+    /// deducts the products from stock, records the payment received and marks the quotation Converted.
+    /// Throws InvalidOperationException with a user-facing message when it can't be converted.
+    /// </summary>
+    public async Task<SaleDto?> ConvertQuotationAsync(int quotationId, ConvertQuotationToSaleDto dto, string biller)
+    {
+        var quotation = await _db.Quotations.Include(q => q.Items).FirstOrDefaultAsync(q => q.Id == quotationId);
+        if (quotation == null) return null;
+        if (quotation.SaleId != null)
+            throw new InvalidOperationException($"This quotation was already converted to sale {quotation.SaleReference}.");
+        if (quotation.Items.Count == 0)
+            throw new InvalidOperationException("This quotation has no products to sell.");
+        if (dto.PaidAmount < 0)
+            throw new InvalidOperationException("The amount received can't be negative.");
+
+        // every product must still exist and have enough stock
+        var productIds = quotation.Items.Select(i => i.ProductId).Distinct().ToList();
+        var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        var problems = new List<string>();
+        foreach (var g in quotation.Items.GroupBy(i => i.ProductId))
+        {
+            var needed = g.Sum(i => i.Quantity);
+            if (!products.TryGetValue(g.Key, out var p)) problems.Add($"{g.First().ProductName}: product no longer exists");
+            else if (p.Quantity < needed) problems.Add($"{p.ProductName}: {p.Quantity} in stock, {needed} needed");
+        }
+        if (problems.Count > 0)
+            throw new InvalidOperationException("Not enough stock - " + string.Join("; ", problems) + ".");
+
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var lastRef = await _db.Sales.OrderByDescending(s => s.Id).Select(s => s.Reference).FirstOrDefaultAsync();
+            int nextNum = 1;
+            if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
+            { int.TryParse(lastRef.Substring(2), out nextNum); nextNum++; }
+
+            var paid = Math.Min(dto.PaidAmount, quotation.GrandTotal);
+            var sale = new Sale
+            {
+                Reference = $"SL{nextNum:D3}",
+                OrderNumber = string.IsNullOrWhiteSpace(quotation.Reference) ? $"QT-{quotation.Id}" : quotation.Reference,
+                CustomerId = quotation.CustomerId, CustomerName = quotation.CustomerName, CustomerImage = quotation.CustomerImage,
+                Biller = string.IsNullOrWhiteSpace(biller) ? "Admin" : biller,
+                Source = "pos", // listed under Sales > POS Orders
+                GrandTotal = quotation.GrandTotal, Paid = 0, Due = quotation.GrandTotal,
+                OrderTax = quotation.OrderTax, Discount = quotation.Discount, Shipping = quotation.Shipping,
+                Status = "Pending", PaymentStatus = "Unpaid",
+                Notes = string.IsNullOrWhiteSpace(dto.Notes) ? $"Converted from quotation {quotation.Reference}" : dto.Notes,
+                SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
+                Items = quotation.Items.Select(i => new SaleItem
+                {
+                    ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
+                    PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
+                    TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
+                }).ToList()
+            };
+            _db.Sales.Add(sale);
+
+            foreach (var item in sale.Items)              // stock out
+                products[item.ProductId].Quantity -= item.Quantity;
+
+            if (paid > 0)                                  // payment received now
+            {
+                sale.Payments.Add(new SalePayment
+                {
+                    Reference = $"{sale.Reference}-P1", ReceivedAmount = dto.PaidAmount, PayingAmount = paid,
+                    PaymentType = string.IsNullOrWhiteSpace(dto.PaymentType) ? "Cash" : dto.PaymentType,
+                    Description = $"Payment on conversion of quotation {quotation.Reference}",
+                    PaymentDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+                });
+                sale.Paid = paid;
+            }
+            RecalculateSalePaymentState(sale);
+
+            await _db.SaveChangesAsync();
+            quotation.Status = "Converted";
+            quotation.SaleId = sale.Id;
+            quotation.SaleReference = sale.Reference;
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return await GetByIdAsync(sale.Id);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<object?> CreatePaymentAsync(int saleId, CreateSalePaymentDto dto)
@@ -770,7 +880,7 @@ public class QuotationService : IQuotationService
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description,
+                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
             }).ToList(),
@@ -800,7 +910,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description,
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
         }).ToListAsync();
@@ -817,7 +927,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description,
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
             Items = x.Items.Select(i => new QuotationItemDto
@@ -858,6 +968,8 @@ public class QuotationService : IQuotationService
     {
         var entity = await _db.Quotations.Include(q => q.Items).FirstOrDefaultAsync(q => q.Id == id);
         if (entity == null) return null;
+        if (entity.SaleId != null)
+            throw new InvalidOperationException($"This quotation was converted to sale {entity.SaleReference} and can't be edited.");
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
@@ -901,83 +1013,3 @@ public class QuotationService : IQuotationService
     }
 }
 
-// ── CouponService ──
-public class CouponService : ICouponService
-{
-    private readonly AppDbContext _db;
-    public CouponService(AppDbContext db) => _db = db;
-
-    public async Task<List<CouponDto>> GetAllAsync(string? type, string? status, string? sort)
-    {
-        var q = _db.Coupons.AsQueryable();
-        if (!string.IsNullOrEmpty(type)) q = q.Where(c => c.Type == type);
-        if (!string.IsNullOrEmpty(status)) q = q.Where(c => c.Status == status);
-
-        q = sort switch
-        {
-            "Ascending" => q.OrderBy(c => c.Name),
-            "Descending" => q.OrderByDescending(c => c.Name),
-            _ => q.OrderByDescending(c => c.CreatedAt)
-        };
-
-        return await q.Select(c => new CouponDto
-        {
-            Id = c.Id, Name = c.Name, Code = c.Code, Description = c.Description,
-            Type = c.Type, Discount = c.Discount, Limit = c.Limit,
-            StartDate = c.StartDate, EndDate = c.EndDate, OncePerCustomer = c.OncePerCustomer,
-            ProductId = c.ProductId, ProductName = c.ProductName, Status = c.Status
-        }).ToListAsync();
-    }
-
-    public async Task<CouponDto?> GetByIdAsync(int id)
-    {
-        var c = await _db.Coupons.FindAsync(id);
-        if (c == null) return null;
-        return new CouponDto
-        {
-            Id = c.Id, Name = c.Name, Code = c.Code, Description = c.Description,
-            Type = c.Type, Discount = c.Discount, Limit = c.Limit,
-            StartDate = c.StartDate, EndDate = c.EndDate, OncePerCustomer = c.OncePerCustomer,
-            ProductId = c.ProductId, ProductName = c.ProductName, Status = c.Status
-        };
-    }
-
-    public async Task<object> CreateAsync(CreateCouponDto dto)
-    {
-        var entity = new Coupon
-        {
-            Name = dto.Name, Code = dto.Code, Description = dto.Description,
-            Type = dto.Type, Discount = dto.Discount, Limit = dto.Limit,
-            StartDate = dto.StartDate, EndDate = dto.EndDate,
-            OncePerCustomer = dto.OncePerCustomer, ProductId = dto.ProductId,
-            ProductName = dto.ProductName, Status = dto.Status
-        };
-        _db.Coupons.Add(entity);
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
-    }
-
-    public async Task<object?> UpdateAsync(int id, CreateCouponDto dto)
-    {
-        var entity = await _db.Coupons.FindAsync(id);
-        if (entity == null) return null;
-
-        entity.Name = dto.Name; entity.Code = dto.Code; entity.Description = dto.Description;
-        entity.Type = dto.Type; entity.Discount = dto.Discount; entity.Limit = dto.Limit;
-        entity.StartDate = dto.StartDate; entity.EndDate = dto.EndDate;
-        entity.OncePerCustomer = dto.OncePerCustomer; entity.ProductId = dto.ProductId;
-        entity.ProductName = dto.ProductName; entity.Status = dto.Status;
-
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
-    }
-
-    public async Task<bool> DeleteAsync(int id)
-    {
-        var entity = await _db.Coupons.FindAsync(id);
-        if (entity == null) return false;
-        _db.Coupons.Remove(entity);
-        await _db.SaveChangesAsync();
-        return true;
-    }
-}

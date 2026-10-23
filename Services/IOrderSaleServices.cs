@@ -4,6 +4,7 @@ namespace ReactPosApi.Services;
 
 public interface ISaleService
 {
+    Task<SaleDto?> ConvertQuotationAsync(int quotationId, ConvertQuotationToSaleDto dto, string biller);
     Task<List<SaleDto>> GetAllAsync(string? source);
     Task<PagedResult<SaleDto>> GetAllPagedAsync(string? source, PaginationQuery query, string? paymentStatus = null);
     Task<SaleDto?> GetByIdAsync(int id);
@@ -47,11 +48,3 @@ public interface IQuotationService
     Task<bool> DeleteAsync(int id);
 }
 
-public interface ICouponService
-{
-    Task<List<CouponDto>> GetAllAsync(string? type, string? status, string? sort);
-    Task<CouponDto?> GetByIdAsync(int id);
-    Task<object> CreateAsync(CreateCouponDto dto);
-    Task<object?> UpdateAsync(int id, CreateCouponDto dto);
-    Task<bool> DeleteAsync(int id);
-}

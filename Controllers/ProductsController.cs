@@ -24,27 +24,6 @@ public class ProductsController : ControllerBase
         return Ok(await _service.GetAllAsync());
     }
 
-    [HttpGet("expired")]
-    public async Task<ActionResult<List<ProductDto>>> GetExpired()
-        => Ok(await _service.GetExpiredAsync());
-
-    [HttpPut("expired/{id}")]
-    public async Task<ActionResult<ProductDto>> UpdateExpired(int id, [FromBody] UpdateExpiredDto dto)
-    {
-        var result = await _service.UpdateExpiredAsync(id, dto);
-        if (result == null) return NotFound();
-        return Ok(result);
-    }
-
-    [HttpDelete("expired/{id}")]
-    public async Task<IActionResult> DeleteExpired(int id)
-    {
-        var (success, error) = await _service.DeleteExpiredAsync(id);
-        if (error != null) return Conflict(new { message = error });
-        if (!success) return NotFound();
-        return NoContent();
-    }
-
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductDto>> GetById(int id)
     {
@@ -97,14 +76,11 @@ public class ProductsController : ControllerBase
 // Form model for multipart binding
 public class ProductFormModel
 {
-    public string? Store { get; set; }
-    public string? Warehouse { get; set; }
     public string? ProductName { get; set; }
     public string? Slug { get; set; }
     public string? Sku { get; set; }
     public string? SellingType { get; set; }
     public string? Category { get; set; }
-    public string? SubCategory { get; set; }
     public string? Brand { get; set; }
     public string? Unit { get; set; }
     public string? BarcodeSymbology { get; set; }

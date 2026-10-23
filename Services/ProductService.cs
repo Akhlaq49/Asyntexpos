@@ -65,46 +65,6 @@ public class ProductService : IProductService
         return product == null ? null : MapToDto(product);
     }
 
-    public async Task<List<ProductDto>> GetExpiredAsync()
-    {
-        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        var products = await _db.Products
-            .Include(p => p.Images)
-            .Where(p => p.ExpiryDate == null || string.Compare(p.ExpiryDate, today) <= 0)
-            .OrderByDescending(p => p.CreatedAt)
-            .ToListAsync();
-        return products.Select(MapToDto).ToList();
-    }
-
-    public async Task<ProductDto?> UpdateExpiredAsync(int id, UpdateExpiredDto dto)
-    {
-        var entity = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
-        if (entity == null) return null;
-
-        entity.SKU = dto.Sku ?? entity.SKU;
-        entity.ProductName = dto.ProductName ?? entity.ProductName;
-        entity.ManufacturedDate = dto.ManufacturedDate ?? entity.ManufacturedDate;
-        entity.ExpiryDate = dto.ExpiryDate ?? entity.ExpiryDate;
-        entity.UpdatedAt = DateTime.UtcNow;
-
-        await _db.SaveChangesAsync();
-        return MapToDto(entity);
-    }
-
-    public async Task<(bool success, string? error)> DeleteExpiredAsync(int id)
-    {
-        var entity = await _db.Products.FindAsync(id);
-        if (entity == null) return (false, null);
-
-        var installmentCount = await _db.InstallmentPlans.CountAsync(ip => ip.ProductId == id);
-        if (installmentCount > 0)
-            return (false, $"Cannot delete this product. It is referenced by {installmentCount} installment plan(s).");
-
-        _db.Products.Remove(entity);
-        await _db.SaveChangesAsync();
-        return (true, null);
-    }
-
     public async Task<List<ProductDto>> GetLowStocksAsync()
     {
         var products = await _db.Products
@@ -130,8 +90,6 @@ public class ProductService : IProductService
         var entity = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
         if (entity == null) return null;
 
-        entity.Warehouse = dto.Warehouse ?? entity.Warehouse;
-        entity.Store = dto.Store ?? entity.Store;
         entity.SKU = dto.Sku ?? entity.SKU;
         entity.Category = dto.Category ?? entity.Category;
         entity.ProductName = dto.ProductName ?? entity.ProductName;
@@ -156,14 +114,11 @@ public class ProductService : IProductService
 
         var entity = new Product
         {
-            Store = form.Store,
-            Warehouse = form.Warehouse,
             ProductName = productName,
             Slug = slug,
             SKU = sku,
             SellingType = form.SellingType,
             Category = form.Category,
-            SubCategory = form.SubCategory,
             Brand = form.Brand,
             Unit = form.Unit,
             BarcodeSymbology = form.BarcodeSymbology,
@@ -188,6 +143,37 @@ public class ProductService : IProductService
         {
             _db.Products.Add(entity);
             await _db.SaveChangesAsync();
+
+            // Opening stock entered with the product counts as a purchase (dashboard "Total Purchase"),
+            // not an expense. The product already holds this quantity, so stock is NOT added again here.
+            if (entity.Quantity > 0 && entity.Price > 0)
+            {
+                var openingTotal = entity.Quantity * entity.Price;
+                _db.Purchases.Add(new Purchase
+                {
+                    SupplierName = "Opening Stock",
+                    Reference = entity.SKU ?? $"OPEN-{entity.Id}",
+                    Date = DateTime.UtcNow,
+                    Status = "Received",
+                    PaymentStatus = "Paid",
+                    Total = openingTotal,
+                    Paid = openingTotal,
+                    Notes = $"Opening stock for {entity.ProductName}",
+                    Items = new List<PurchaseItem>
+                    {
+                        new()
+                        {
+                            ProductId = entity.Id,
+                            ProductName = entity.ProductName,
+                            Quantity = entity.Quantity,
+                            PurchasePrice = entity.Price,
+                            UnitCost = entity.Price,
+                            TotalCost = openingTotal
+                        }
+                    }
+                });
+                await _db.SaveChangesAsync();
+            }
 
             if (form.Images != null && form.Images.Count > 0)
             {
@@ -222,18 +208,15 @@ public class ProductService : IProductService
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
-            entity.Store = form.Store;
-            entity.Warehouse = form.Warehouse;
             entity.ProductName = form.ProductName ?? entity.ProductName;
             entity.Slug = form.Slug;
             entity.SKU = form.Sku;
             entity.SellingType = form.SellingType;
             entity.Category = form.Category;
-            entity.SubCategory = form.SubCategory;
             entity.Brand = form.Brand;
             entity.Unit = form.Unit;
-            entity.BarcodeSymbology = form.BarcodeSymbology;
-            entity.ItemBarcode = form.ItemBarcode;
+            entity.BarcodeSymbology = form.BarcodeSymbology ?? entity.BarcodeSymbology; // no longer on the product form; keep existing value
+            entity.ItemBarcode = form.ItemBarcode ?? entity.ItemBarcode;
             entity.Description = form.Description;
             entity.ProductType = form.ProductType ?? entity.ProductType;
             entity.Quantity = form.Quantity;
@@ -244,9 +227,9 @@ public class ProductService : IProductService
             entity.DiscountValue = form.DiscountValue;
             entity.QuantityAlert = form.QuantityAlert;
             entity.Warranty = form.Warranty;
-            entity.Manufacturer = form.Manufacturer;
-            entity.ManufacturedDate = form.ManufacturedDate;
-            entity.ExpiryDate = form.ExpiryDate;
+            entity.Manufacturer = form.Manufacturer ?? entity.Manufacturer;
+            entity.ManufacturedDate = form.ManufacturedDate ?? entity.ManufacturedDate;
+            entity.ExpiryDate = form.ExpiryDate ?? entity.ExpiryDate;
             entity.UpdatedAt = DateTime.UtcNow;
 
             if (form.Images != null && form.Images.Count > 0)
@@ -280,10 +263,6 @@ public class ProductService : IProductService
         var entity = await _db.Products.FindAsync(id);
         if (entity == null) return (false, null);
 
-        var installmentCount = await _db.InstallmentPlans.CountAsync(ip => ip.ProductId == id);
-        if (installmentCount > 0)
-            return (false, $"Cannot delete this product. It is referenced by {installmentCount} installment plan(s).");
-
         _db.Products.Remove(entity);
         await _db.SaveChangesAsync();
         return (true, null);
@@ -292,14 +271,11 @@ public class ProductService : IProductService
     private static ProductDto MapToDto(Product p) => new()
     {
         Id = p.Id.ToString(),
-        Store = p.Store ?? "",
-        Warehouse = p.Warehouse ?? "",
         ProductName = p.ProductName,
         Slug = p.Slug ?? "",
         Sku = p.SKU ?? "",
         SellingType = p.SellingType ?? "",
         Category = p.Category ?? "",
-        SubCategory = p.SubCategory ?? "",
         Brand = p.Brand ?? "",
         Unit = p.Unit ?? "",
         BarcodeSymbology = p.BarcodeSymbology ?? "",

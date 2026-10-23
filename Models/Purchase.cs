@@ -51,6 +51,9 @@ public class Purchase : ITenantEntity
     [MaxLength(500)]
     public string? Notes { get; set; }
 
+    /// <summary>Set when this purchase was created by receiving a purchase order (managed from there)</summary>
+    public int? PurchaseOrderId { get; set; }
+
     // Navigation property for line items
     public ICollection<PurchaseItem>? Items { get; set; }
 

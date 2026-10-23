@@ -18,61 +18,31 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 builder.Services.AddScoped<IFileService, FileService>();
-builder.Services.AddScoped<IMiscellaneousRegisterService, MiscellaneousRegisterService>();
-builder.Services.AddScoped<IInstallmentService, InstallmentService>();
-builder.Services.AddSingleton<IInstallmentInvoicePdfService, InstallmentInvoicePdfService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IProductService, ProductService>();
-builder.Services.AddScoped<ISubCategoryService, SubCategoryService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
-builder.Services.AddScoped<IStoreService, StoreService>();
-builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IBrandService, BrandService>();
 builder.Services.AddScoped<IUnitService, UnitService>();
 builder.Services.AddScoped<IVariantAttributeService, VariantAttributeService>();
 builder.Services.AddScoped<IWarrantyService, WarrantyService>();
 builder.Services.AddScoped<IStockEntryService, StockEntryService>();
-builder.Services.AddScoped<IStockTransferService, StockTransferService>();
-builder.Services.AddScoped<IStockAdjustmentService, StockAdjustmentService>();
+builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<ISaleService, SaleService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
-builder.Services.AddScoped<ICouponService, CouponService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
-
-// Storefront (public online store)
-builder.Services.AddScoped<IStorefrontService, StorefrontService>();
-
-// Web Content (dynamic storefront sections with caching)
-builder.Services.AddScoped<IWebContentService, WebContentService>();
 
 // Tenant Menu Configuration
 builder.Services.AddScoped<ITenantMenuService, TenantMenuService>();
 
-// HRM Services
-builder.Services.AddScoped<IDepartmentService, DepartmentService>();
-builder.Services.AddScoped<IDesignationService, DesignationService>();
-builder.Services.AddScoped<IShiftService, ShiftService>();
-builder.Services.AddScoped<ILeaveTypeService, LeaveTypeService>();
-builder.Services.AddScoped<ILeaveService, LeaveService>();
-builder.Services.AddScoped<IHolidayService, HolidayService>();
-builder.Services.AddScoped<IPayrollService, PayrollService>();
-builder.Services.AddScoped<IEmployeeService, EmployeeService>();
-builder.Services.AddScoped<IAttendanceService, AttendanceService>();
-
-// Finance & Accounting Services
+// Expenses
 builder.Services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
-builder.Services.AddScoped<IIncomeCategoryService, IncomeCategoryService>();
-builder.Services.AddScoped<IFinanceIncomeService, FinanceIncomeService>();
-builder.Services.AddScoped<IAccountTypeService, AccountTypeService>();
-builder.Services.AddScoped<IBankAccountService, BankAccountService>();
-builder.Services.AddScoped<IFinanceReportService, FinanceReportService>();
 
 // WhatsApp Cloud API
 builder.Services.AddHttpClient<IWhatsAppService, WhatsAppService>();
@@ -161,6 +131,21 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+    SchemaUpgrades.Apply(db); // tables added after the database was first created
+
+    // Menu section "Finance & Accounts" was renamed to "Finance" in the frontend.
+    // Menu keys are "<Section>/<Item>", so carry saved permissions/hidden menus over (idempotent).
+    db.Database.ExecuteSqlRaw(
+        "UPDATE RolePermissions SET MenuKey = CONCAT('Finance/', SUBSTRING(MenuKey, 20)) WHERE MenuKey LIKE 'Finance & Accounts/%'");
+    db.Database.ExecuteSqlRaw(
+        "UPDATE TenantMenuConfigs SET MenuKey = CONCAT('Finance/', SUBSTRING(MenuKey, 20)) WHERE MenuKey LIKE 'Finance & Accounts/%'");
+
+    // Fields removed from the product form; drop their field-visibility settings (idempotent).
+    db.Database.ExecuteSqlRaw(
+        "DELETE FROM FormFieldConfigs WHERE FormName = 'AddProduct' AND FieldName IN " +
+        "('store', 'warehouse', 'subCategory', 'manufacturer', 'manufacturedDate', 'expiryDate', 'barcodeSymbology', 'itemBarcode')");
+    // Installments were removed from this backend; drop their form settings too
+    db.Database.ExecuteSqlRaw("DELETE FROM FormFieldConfigs WHERE FormName = 'CreateInstallment'");
 
     // ── MULTI-TENANCY: Seed default tenant + SuperAdmin ──
     // Use IgnoreQueryFilters() because there's no authenticated user at startup

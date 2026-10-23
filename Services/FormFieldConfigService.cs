@@ -133,18 +133,13 @@ public class FormFieldConfigService : IFormFieldConfigService
             new() { FormName = "Customer", FieldName = "address", FieldLabel = "Address", IsVisible = true },
 
             // AddProduct form fields
-            new() { FormName = "AddProduct", FieldName = "store", FieldLabel = "Store", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "warehouse", FieldLabel = "Warehouse", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "productName", FieldLabel = "Product Name", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "slug", FieldLabel = "Slug", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "sku", FieldLabel = "SKU", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "sellingType", FieldLabel = "Selling Type", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "category", FieldLabel = "Category", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "subCategory", FieldLabel = "Sub Category", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "brand", FieldLabel = "Brand", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "unit", FieldLabel = "Unit", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "barcodeSymbology", FieldLabel = "Barcode Symbology", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "itemBarcode", FieldLabel = "Item Barcode", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "description", FieldLabel = "Description", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "quantity", FieldLabel = "Quantity", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "price", FieldLabel = "Price", IsVisible = true },
@@ -154,18 +149,7 @@ public class FormFieldConfigService : IFormFieldConfigService
             new() { FormName = "AddProduct", FieldName = "discountValue", FieldLabel = "Discount Value", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "quantityAlert", FieldLabel = "Quantity Alert", IsVisible = true },
             new() { FormName = "AddProduct", FieldName = "warranty", FieldLabel = "Warranty", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "manufacturer", FieldLabel = "Manufacturer", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "manufacturedDate", FieldLabel = "Manufactured Date", IsVisible = true },
-            new() { FormName = "AddProduct", FieldName = "expiryDate", FieldLabel = "Expiry Date", IsVisible = true },
 
-            // CreateInstallment form fields
-            new() { FormName = "CreateInstallment", FieldName = "customerId", FieldLabel = "Customer", IsVisible = true },
-            new() { FormName = "CreateInstallment", FieldName = "productId", FieldLabel = "Product", IsVisible = true },
-            new() { FormName = "CreateInstallment", FieldName = "financeAmount", FieldLabel = "Finance Amount", IsVisible = true },
-            new() { FormName = "CreateInstallment", FieldName = "downPayment", FieldLabel = "Down Payment", IsVisible = true },
-            new() { FormName = "CreateInstallment", FieldName = "interestRate", FieldLabel = "Interest Rate", IsVisible = true },
-            new() { FormName = "CreateInstallment", FieldName = "tenure", FieldLabel = "Tenure (Months)", IsVisible = true },
-            new() { FormName = "CreateInstallment", FieldName = "startDate", FieldLabel = "Start Date", IsVisible = true },
 
             // POS form fields
             new() { FormName = "POS", FieldName = "customer", FieldLabel = "Customer", IsVisible = true },

@@ -9,6 +9,8 @@ public class StockEntry : ITenantEntity
 
     public int TenantId { get; set; }
 
+    // Warehouse/Store are no longer used by Manage Stock. Kept (saved as "") because the
+    // columns are NOT NULL in existing databases.
     [Required, MaxLength(200)]
     public string Warehouse { get; set; } = string.Empty;
 

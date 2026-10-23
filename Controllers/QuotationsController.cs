@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ReactPosApi.DTOs;
@@ -46,9 +47,31 @@ public class QuotationsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] CreateQuotationDto dto)
     {
-        var result = await _service.UpdateAsync(id, dto);
-        if (result == null) return NotFound();
-        return Ok(result);
+        try
+        {
+            var result = await _service.UpdateAsync(id, dto);
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>Quotation -> sale: deducts stock and records the payment received now</summary>
+    [HttpPost("{id}/convert-to-sale")]
+    public async Task<IActionResult> ConvertToSale(int id, [FromBody] ConvertQuotationToSaleDto dto, [FromServices] ISaleService sales)
+    {
+        try
+        {
+            var sale = await sales.ConvertQuotationAsync(id, dto, User.FindFirstValue(ClaimTypes.Name) ?? "");
+            return sale == null ? NotFound() : Ok(sale);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpDelete("{id}")]

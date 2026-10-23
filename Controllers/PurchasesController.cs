@@ -157,6 +157,9 @@ public class PurchasesController : ControllerBase
             if (purchase == null)
                 return NotFound(new { error = "Purchase not found" });
 
+            if (purchase.PurchaseOrderId.HasValue)
+                return Conflict(new { error = "This purchase was created by receiving a purchase order. Manage it from Purchase Orders." });
+
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
@@ -267,6 +270,9 @@ public class PurchasesController : ControllerBase
             if (purchase == null)
                 return NotFound(new { error = "Purchase not found" });
 
+            if (purchase.PurchaseOrderId.HasValue)
+                return Conflict(new { error = "This purchase was created by receiving a purchase order. Manage it from Purchase Orders." });
+
             // Revert inventory if purchase was Received
             if (purchase.Status == "Received" && purchase.Items != null)
             {
@@ -345,6 +351,7 @@ public class PurchasesController : ControllerBase
             Total = purchase.Total,
             Paid = purchase.Paid,
             Notes = purchase.Notes,
+            PurchaseOrderId = purchase.PurchaseOrderId,
             Items = items,
             CreatedAt = purchase.CreatedAt,
             UpdatedAt = purchase.UpdatedAt

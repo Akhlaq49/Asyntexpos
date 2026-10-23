@@ -36,6 +36,7 @@ public class PurchaseDto
     public decimal Paid { get; set; }
     public decimal Due => Total - Paid;
     public string? Notes { get; set; }
+    public int? PurchaseOrderId { get; set; }
     public List<PurchaseItemDto>? Items { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

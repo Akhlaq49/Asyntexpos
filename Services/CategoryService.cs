@@ -86,10 +86,6 @@ public class CategoryService : ICategoryService
         var entity = await _db.Categories.FindAsync(id);
         if (entity == null) return (false, null);
 
-        var subCatCount = await _db.SubCategories.CountAsync(sc => sc.CategoryId == id);
-        if (subCatCount > 0)
-            return (false, $"Cannot delete this category. It has {subCatCount} sub-category(ies).");
-
         var productCount = await _db.Products.CountAsync(p => p.Category == entity.Name);
         if (productCount > 0)
             return (false, $"Cannot delete this category. It is used by {productCount} product(s).");

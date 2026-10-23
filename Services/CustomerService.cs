@@ -8,13 +8,11 @@ namespace ReactPosApi.Services;
 public class CustomerService : ICustomerService
 {
     private readonly AppDbContext _db;
-    private readonly IMiscellaneousRegisterService _miscService;
     private readonly IFileService _fileService;
 
-    public CustomerService(AppDbContext db, IMiscellaneousRegisterService miscService, IFileService fileService)
+    public CustomerService(AppDbContext db, IFileService fileService)
     {
         _db = db;
-        _miscService = miscService;
         _fileService = fileService;
     }
 
@@ -42,12 +40,7 @@ public class CustomerService : ICustomerService
         var totalCount = await q.CountAsync();
         var items = await q.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync();
 
-        var dtos = new List<CustomerDto>();
-        foreach (var c in items)
-        {
-            var miscBalance = await _miscService.GetBalanceAsync(c.Id);
-            dtos.Add(MapToDto(c, miscBalance));
-        }
+        var dtos = items.Select(MapToDto).ToList();
 
         return new PagedResult<CustomerDto>
         {
@@ -65,13 +58,7 @@ public class CustomerService : ICustomerService
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
-        var customerDtos = new List<CustomerDto>();
-        foreach (var c in list)
-        {
-            var miscBalance = await _miscService.GetBalanceAsync(c.Id);
-            customerDtos.Add(MapToDto(c, miscBalance));
-        }
-        return customerDtos;
+        return list.Select(MapToDto).ToList();
     }
 
     public async Task<CustomerDto?> GetByIdAsync(int id)
@@ -79,8 +66,7 @@ public class CustomerService : ICustomerService
         var c = await _db.Parties.FindAsync(id);
         if (c == null || c.Role != "Customer") return null;
 
-        var miscBalance = await _miscService.GetBalanceAsync(id);
-        return MapToDto(c, miscBalance);
+        return MapToDto(c);
     }
 
     public async Task<CustomerDto> CreateAsync(CreateCustomerDto dto)
@@ -100,8 +86,7 @@ public class CustomerService : ICustomerService
         _db.Parties.Add(entity);
         await _db.SaveChangesAsync();
 
-        var miscBalance = await _miscService.GetBalanceAsync(entity.Id);
-        return MapToDto(entity, miscBalance);
+        return MapToDto(entity);
     }
 
     public async Task<CustomerDto?> UpdateAsync(int id, CreateCustomerDto dto)
@@ -119,8 +104,7 @@ public class CustomerService : ICustomerService
         entity.Status = dto.Status;
         await _db.SaveChangesAsync();
 
-        var miscBalance = await _miscService.GetBalanceAsync(id);
-        return MapToDto(entity, miscBalance);
+        return MapToDto(entity);
     }
 
     public async Task<CustomerDto?> UploadPictureAsync(int id, IFormFile picture)
@@ -131,8 +115,7 @@ public class CustomerService : ICustomerService
         entity.Picture = await _fileService.SaveFileAsync(picture, "customers");
         await _db.SaveChangesAsync();
 
-        var miscBalance = await _miscService.GetBalanceAsync(id);
-        return MapToDto(entity, miscBalance);
+        return MapToDto(entity);
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -145,7 +128,7 @@ public class CustomerService : ICustomerService
         return true;
     }
 
-    private static CustomerDto MapToDto(Party c, decimal miscBalance = 0) => new()
+    private static CustomerDto MapToDto(Party c) => new()
     {
         Id = c.Id.ToString(),
         Name = c.FullName,
@@ -156,7 +139,6 @@ public class CustomerService : ICustomerService
         Address = c.Address ?? "",
         City = c.City ?? "",
         Picture = c.Picture,
-        Status = c.Status,
-        MiscBalance = miscBalance
+        Status = c.Status
     };
 }

@@ -38,16 +38,10 @@ public class AgentToolExecutor : IAgentToolExecutor
             "search_products" => await SearchProducts(arguments),
             "get_product_stock" => await GetProductStock(arguments),
             "get_customer_info" => await GetCustomerInfo(arguments),
-            "get_overdue_installments" => await GetOverdueInstallments(arguments),
-            "get_installment_plan_details" => await GetInstallmentPlanDetails(arguments),
-            "get_daily_collection" => await GetDailyCollection(arguments),
             "get_expenses_summary" => await GetExpensesSummary(arguments),
             "get_top_selling_products" => await GetTopSellingProducts(arguments),
             "get_recent_purchases" => await GetRecentPurchases(arguments),
             "get_dashboard_stats" => await GetDashboardStats(),
-            "get_customer_ledger" => await GetCustomerLedger(arguments),
-            "get_defaulters" => await GetDefaulters(arguments),
-            "get_employee_attendance" => await GetEmployeeAttendance(arguments),
             _ => JsonSerializer.Serialize(new { error = $"Unknown tool: {toolName}" })
         };
     }
@@ -219,106 +213,9 @@ public class AgentToolExecutor : IAgentToolExecutor
             .Take(5)
             .ToListAsync();
 
-        var results = new List<object>();
-        foreach (var c in customers)
-        {
-            var plans = await _db.InstallmentPlans
-                .Include(p => p.Product)
-                .Where(p => p.CustomerId == c.Id)
-                .Select(p => new { p.Id, p.Product!.ProductName, p.Status, p.TotalPayable, p.DownPayment, p.FinancedAmount, p.StartDate })
-                .ToListAsync();
-
-            results.Add(new
-            {
-                c.Id, c.FullName, c.Phone, c.Email, c.Address,
-                installment_plans = plans
-            });
-        }
+        var results = customers.Select(c => new { c.Id, c.FullName, c.Phone, c.Email, c.Address }).ToList();
         if (results.Count == 0) return ToJson(new { error = "No customer found." });
         return ToJson(results);
-    }
-
-    private async Task<string> GetOverdueInstallments(JsonElement args)
-    {
-        var limit = GetInt(args, "limit", 20);
-        var entries = await _db.RepaymentEntries
-            .Include(e => e.Plan).ThenInclude(p => p!.Customer)
-            .Include(e => e.Plan).ThenInclude(p => p!.Product)
-            .Where(e => e.Status == "overdue" && e.Plan!.Status == "active")
-            .Take(limit)
-            .ToListAsync();
-
-        var items = entries.Select(e => new
-        {
-            plan_id = e.PlanId,
-            installment_no = e.InstallmentNo,
-            customer = e.Plan?.Customer?.FullName ?? "Unknown",
-            phone = e.Plan?.Customer?.Phone,
-            product = e.Plan?.Product?.ProductName ?? "Unknown",
-            due_date = e.DueDate,
-            amount_due = e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0)
-        });
-        return ToJson(new { count = entries.Count, overdue_entries = items });
-    }
-
-    private async Task<string> GetInstallmentPlanDetails(JsonElement args)
-    {
-        var planId = GetInt(args, "plan_id");
-        var plan = await _db.InstallmentPlans
-            .Include(p => p.Customer)
-            .Include(p => p.Product)
-            .Include(p => p.Schedule)
-            .Include(p => p.PlanGuarantors)
-            .FirstOrDefaultAsync(p => p.Id == planId);
-
-        if (plan == null) return ToJson(new { error = "Plan not found." });
-
-        return ToJson(new
-        {
-            plan.Id, plan.Status, plan.StartDate,
-            customer = plan.Customer?.FullName, phone = plan.Customer?.Phone,
-            product = plan.Product?.ProductName,
-            plan.ProductPrice, plan.DownPayment, plan.FinancedAmount,
-            plan.TotalPayable, plan.TotalInterest, plan.InterestRate, plan.Tenure,
-            schedule = plan.Schedule.OrderBy(s => s.InstallmentNo).Select(s => new
-            {
-                s.InstallmentNo, s.DueDate, s.EmiAmount, s.Status,
-                paid = s.Status == "paid" ? s.EmiAmount
-                     : s.Status == "partial" ? (s.ActualPaidAmount ?? 0) + (s.MiscAdjustedAmount ?? 0)
-                     : 0m,
-                s.PaidDate
-            })
-        });
-    }
-
-    private async Task<string> GetDailyCollection(JsonElement args)
-    {
-        var dateStr = GetStr(args, "date");
-        var date = ParseDate(dateStr) ?? DateTime.UtcNow;
-        var dayStr = date.ToString("yyyy-MM-dd");
-
-        var entries = await _db.RepaymentEntries
-            .Where(e => e.PaidDate != null && e.PaidDate.StartsWith(dayStr) && (e.Status == "paid" || e.Status == "partial"))
-            .ToListAsync();
-
-        var paidTotal = entries.Where(e => e.Status == "paid").Sum(e => e.EmiAmount);
-        var partialTotal = entries.Where(e => e.Status == "partial").Sum(e => (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0));
-
-        var plans = await _db.InstallmentPlans
-            .Where(p => p.CreatedAt.Date == date.Date)
-            .ToListAsync();
-        var downPayments = plans.Sum(p => p.DownPayment);
-
-        return ToJson(new
-        {
-            date = dayStr,
-            entries_collected = entries.Count,
-            paid_amount = paidTotal,
-            partial_amount = partialTotal,
-            total_collected = paidTotal + partialTotal,
-            down_payments = downPayments,
-            grand_total = paidTotal + partialTotal + downPayments
-        });
     }
 
     private async Task<string> GetExpensesSummary(JsonElement args)
@@ -377,8 +274,6 @@ public class AgentToolExecutor : IAgentToolExecutor
         var totalCustomers = await _db.Parties.CountAsync(p => p.Role == "Customer" || p.Role == "customer");
         var totalSales = await _db.Sales.CountAsync();
         var todaySales = await _db.Sales.Where(s => s.SaleDate >= today).SumAsync(s => s.GrandTotal);
-        var activePlans = await _db.InstallmentPlans.CountAsync(p => p.Status == "active");
-        var overdue = await _db.RepaymentEntries.CountAsync(e => e.Status == "overdue");
         var lowStock = await _db.Products.CountAsync(p => p.Quantity <= p.QuantityAlert);
         var totalRevenue = await _db.Sales.SumAsync(s => s.GrandTotal);
 
@@ -388,93 +283,9 @@ public class AgentToolExecutor : IAgentToolExecutor
             total_customers = totalCustomers,
             total_sales = totalSales,
             today_sales_amount = todaySales,
-            active_installment_plans = activePlans,
-            overdue_installments = overdue,
             low_stock_products = lowStock,
             total_revenue = totalRevenue
         });
     }
 
-    private async Task<string> GetCustomerLedger(JsonElement args)
-    {
-        var customerId = GetInt(args, "customer_id");
-        var customer = await _db.Parties.FirstOrDefaultAsync(p => p.Id == customerId);
-        if (customer == null) return ToJson(new { error = "Customer not found." });
-
-        var plans = await _db.InstallmentPlans
-            .Include(p => p.Product)
-            .Include(p => p.Schedule)
-            .Where(p => p.CustomerId == customerId)
-            .ToListAsync();
-
-        var transactions = new List<object>();
-        foreach (var plan in plans)
-        {
-            transactions.Add(new { type = "Purchase", description = $"Plan #{plan.Id} - {plan.Product?.ProductName}", debit = plan.TotalPayable, credit = 0m });
-            transactions.Add(new { type = "Down Payment", description = $"Plan #{plan.Id}", debit = 0m, credit = plan.DownPayment });
-            foreach (var e in plan.Schedule.Where(s => s.Status == "paid" || s.Status == "partial").OrderBy(s => s.InstallmentNo))
-            {
-                var amt = e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0);
-                transactions.Add(new { type = "Installment", description = $"Plan #{plan.Id} Inst #{e.InstallmentNo}", debit = 0m, credit = amt });
-            }
-        }
-
-        var totalPurchases = plans.Sum(p => p.TotalPayable);
-        var totalPaid = plans.Sum(p => p.DownPayment + p.Schedule.Where(e => e.Status == "paid" || e.Status == "partial")
-            .Sum(e => e.Status == "paid" ? e.EmiAmount : (e.ActualPaidAmount ?? 0) + (e.MiscAdjustedAmount ?? 0)));
-
-        return ToJson(new
-        {
-            customer = customer.FullName, phone = customer.Phone,
-            total_purchases = totalPurchases, total_paid = totalPaid,
-            remaining = totalPurchases - totalPaid,
-            transactions
-        });
-    }
-
-    private async Task<string> GetDefaulters(JsonElement args)
-    {
-        var limit = GetInt(args, "limit", 20);
-        var plans = await _db.InstallmentPlans
-            .Include(p => p.Customer)
-            .Include(p => p.Product)
-            .Include(p => p.Schedule)
-            .Where(p => p.Status == "active")
-            .ToListAsync();
-
-        var defaulters = plans
-            .Where(p => p.Schedule.Any(e => e.Status == "overdue"))
-            .Select(p =>
-            {
-                var overdue = p.Schedule.Where(e => e.Status == "overdue").ToList();
-                return new
-                {
-                    plan_id = p.Id,
-                    customer = p.Customer?.FullName ?? "Unknown",
-                    phone = p.Customer?.Phone,
-                    product = p.Product?.ProductName ?? "Unknown",
-                    missed_installments = overdue.Count,
-                    overdue_amount = overdue.Sum(e => e.EmiAmount - (e.ActualPaidAmount ?? 0) - (e.MiscAdjustedAmount ?? 0))
-                };
-            })
-            .OrderByDescending(d => d.overdue_amount)
-            .Take(limit)
-            .ToList();
-
-        return ToJson(new { count = defaulters.Count, defaulters });
-    }
-
-    private async Task<string> GetEmployeeAttendance(JsonElement args)
-    {
-        var dateStr = GetStr(args, "date");
-        var date = ParseDate(dateStr) ?? DateTime.UtcNow;
-
-        var records = await _db.Attendances
-            .Include(a => a.Employee)
-            .Where(a => a.Date.Date == date.Date)
-            .Select(a => new { EmployeeName = a.Employee != null ? a.Employee.FullName : "Unknown", a.Date, a.ClockIn, a.ClockOut, a.Status, a.TotalHours })
-            .ToListAsync();
-
-        return ToJson(new { date = date.ToString("yyyy-MM-dd"), count = records.Count, attendance = records });
-    }
 }

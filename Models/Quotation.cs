@@ -44,6 +44,11 @@ public class Quotation : ITenantEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public List<QuotationItem> Items { get; set; } = new();
+
+    /// <summary>Set when the quotation was converted into a sale</summary>
+    public int? SaleId { get; set; }
+    [System.ComponentModel.DataAnnotations.MaxLength(50)]
+    public string? SaleReference { get; set; }
 }
 
 public class QuotationItem : ITenantEntity

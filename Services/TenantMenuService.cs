@@ -40,7 +40,9 @@ public class TenantMenuService : ITenantMenuService
     {
         var tenantId = _db.CurrentTenantId;
         var tenant = await _db.Tenants.FindAsync(tenantId);
-        return tenant?.DefaultDashboard ?? "/admin-dashboard-2";
+        // "/admin-dashboard-2" was removed; tenants that still have it saved get the Admin Dashboard
+        var dashboard = tenant?.DefaultDashboard;
+        return string.IsNullOrEmpty(dashboard) || dashboard == "/admin-dashboard-2" ? "/admin-dashboard" : dashboard;
     }
 
     public async Task<bool> SetDefaultDashboardAsync(string callerRole, string dashboardPath)

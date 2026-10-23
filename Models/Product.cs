@@ -9,12 +9,6 @@ public class Product : ITenantEntity
 
     public int TenantId { get; set; }
 
-    [MaxLength(100)]
-    public string? Store { get; set; }
-
-    [MaxLength(100)]
-    public string? Warehouse { get; set; }
-
     [Required, MaxLength(300)]
     public string ProductName { get; set; } = string.Empty;
 
@@ -30,8 +24,6 @@ public class Product : ITenantEntity
     [MaxLength(200)]
     public string? Category { get; set; }
 
-    [MaxLength(200)]
-    public string? SubCategory { get; set; }
 
     [MaxLength(200)]
     public string? Brand { get; set; }
