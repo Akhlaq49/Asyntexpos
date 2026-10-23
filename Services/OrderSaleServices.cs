@@ -271,6 +271,7 @@ public class SaleService : ISaleService
                 Source = "pos", // listed under Sales > POS Orders
                 GrandTotal = quotation.GrandTotal, Paid = 0, Due = quotation.GrandTotal,
                 OrderTax = quotation.OrderTax, Discount = quotation.Discount, Shipping = quotation.Shipping,
+                TaxesJson = quotation.TaxesJson,
                 Status = "Pending", PaymentStatus = "Unpaid",
                 Notes = string.IsNullOrWhiteSpace(dto.Notes) ? $"Converted from quotation {quotation.Reference}" : dto.Notes,
                 SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
@@ -535,6 +536,7 @@ public class SaleService : ISaleService
         CustomerName = s.CustomerName, CustomerImage = s.CustomerImage, Biller = s.Biller,
         GrandTotal = s.GrandTotal, Paid = s.Paid, Due = s.Due,
         OrderTax = s.OrderTax, Discount = s.Discount, Shipping = s.Shipping,
+        Taxes = AppliedTaxes.Parse(s.TaxesJson),
         Status = NormalizeOrderStatusForDto(s), PaymentStatus = s.PaymentStatus, Notes = s.Notes, Source = s.Source,
         ExpectedDate = s.ExpectedDate?.ToString("yyyy-MM-dd"),
         SaleDate = s.SaleDate.ToString("dd MMM yyyy"),
@@ -880,7 +882,7 @@ public class QuotationService : IQuotationService
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
+                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
             }).ToList(),
@@ -910,7 +912,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
         }).ToListAsync();
@@ -927,7 +929,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
             Items = x.Items.Select(i => new QuotationItemDto
@@ -942,8 +944,10 @@ public class QuotationService : IQuotationService
 
     public async Task<object> CreateAsync(CreateQuotationDto dto)
     {
+        ApplyTaxes(dto);
         var entity = new Quotation
         {
+            TaxesJson = dto.Taxes != null ? AppliedTaxes.Serialize(dto.Taxes) : null,
             Reference = dto.Reference ?? string.Empty,
             CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
             CustomerImage = dto.CustomerImage, ProductId = dto.ProductId,
@@ -974,6 +978,8 @@ public class QuotationService : IQuotationService
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
+            ApplyTaxes(dto);
+            if (dto.Taxes != null) entity.TaxesJson = AppliedTaxes.Serialize(dto.Taxes);
             entity.Reference = dto.Reference ?? entity.Reference;
             entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
             entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
@@ -1001,6 +1007,16 @@ public class QuotationService : IQuotationService
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    /// <summary>Taxes sent with the quotation: amounts on (items total - discount); OrderTax = their total, GrandTotal recalculated</summary>
+    private static void ApplyTaxes(CreateQuotationDto dto)
+    {
+        if (dto.Taxes == null) return;
+        var itemsTotal = dto.Items.Sum(i => i.TotalCost);
+        dto.Taxes = AppliedTaxes.Calculate(dto.Taxes, itemsTotal - dto.Discount);
+        dto.OrderTax = dto.Taxes.Sum(t => t.Amount);
+        dto.GrandTotal = Math.Max(0, Math.Round(itemsTotal - dto.Discount + dto.OrderTax + dto.Shipping, 2));
     }
 
     public async Task<bool> DeleteAsync(int id)

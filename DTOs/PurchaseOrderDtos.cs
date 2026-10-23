@@ -52,6 +52,7 @@ public class PurchaseOrderDto
     public int ReceivedUnits { get; set; }
     public decimal ReceivedValue { get; set; }
     public DateTime CreatedAt { get; set; }
+    public List<AppliedTaxDto> Taxes { get; set; } = new();
     public List<PurchaseOrderItemDto> Items { get; set; } = new();
     public List<PurchaseOrderReceiptDto> Receipts { get; set; } = new();
 }
@@ -78,6 +79,8 @@ public class SavePurchaseOrderDto
     public decimal Discount { get; set; }
     public decimal Shipping { get; set; }
     public string? Notes { get; set; }
+    /// <summary>When sent, OrderTax is their total (base = items total - discount)</summary>
+    public List<AppliedTaxDto>? Taxes { get; set; }
     public List<SavePurchaseOrderItemDto> Items { get; set; } = new();
 }
 

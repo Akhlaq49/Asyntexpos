@@ -101,6 +101,13 @@ public class ProductService : IProductService
         return MapToDto(entity);
     }
 
+    /// <summary>Taxes sent with the product form, amounts calculated on the price</summary>
+    private static List<AppliedTaxDto> ProductTaxes(ProductFormModel form)
+    {
+        var sent = string.IsNullOrWhiteSpace(form.TaxesJson) ? new List<AppliedTaxDto>() : AppliedTaxes.Parse(form.TaxesJson);
+        return AppliedTaxes.Calculate(sent, form.Price);
+    }
+
     public async Task<ProductDto> CreateAsync(ProductFormModel form)
     {
         // Auto-generate defaults for fields that may be hidden via field visibility config
@@ -128,7 +135,8 @@ public class ProductService : IProductService
             Quantity = form.Quantity,
             Price = form.Price,
             TaxType = form.TaxType,
-            Tax = form.Tax,
+            Tax = form.TaxesJson != null ? AppliedTaxes.Summary(ProductTaxes(form)) : form.Tax,
+            TaxesJson = form.TaxesJson != null ? AppliedTaxes.Serialize(ProductTaxes(form)) : null,
             DiscountType = form.DiscountType,
             DiscountValue = form.DiscountValue,
             QuantityAlert = form.QuantityAlert,
@@ -222,7 +230,13 @@ public class ProductService : IProductService
             entity.Quantity = form.Quantity;
             entity.Price = form.Price;
             entity.TaxType = form.TaxType;
-            entity.Tax = form.Tax;
+            if (form.TaxesJson != null)
+            {
+                var taxes = ProductTaxes(form);
+                entity.TaxesJson = AppliedTaxes.Serialize(taxes);
+                entity.Tax = AppliedTaxes.Summary(taxes);
+            }
+            else entity.Tax = form.Tax;
             entity.DiscountType = form.DiscountType;
             entity.DiscountValue = form.DiscountValue;
             entity.QuantityAlert = form.QuantityAlert;
@@ -286,6 +300,7 @@ public class ProductService : IProductService
         Price = p.Price,
         TaxType = p.TaxType ?? "",
         Tax = p.Tax ?? "",
+        Taxes = AppliedTaxes.Parse(p.TaxesJson),
         DiscountType = p.DiscountType ?? "",
         DiscountValue = p.DiscountValue,
         QuantityAlert = p.QuantityAlert,

@@ -52,6 +52,9 @@ public class Product : ITenantEntity
     [MaxLength(50)]
     public string? Tax { get; set; }
 
+    /// <summary>Taxes applied to the price (JSON list of AppliedTaxDto)</summary>
+    public string? TaxesJson { get; set; }
+
     [MaxLength(50)]
     public string? DiscountType { get; set; }
 

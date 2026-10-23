@@ -91,6 +91,8 @@ public class ProductFormModel
     public decimal Price { get; set; }
     public string? TaxType { get; set; }
     public string? Tax { get; set; }
+    /// <summary>JSON list of AppliedTaxDto (tax types + percent); amounts are calculated from Price</summary>
+    public string? TaxesJson { get; set; }
     public string? DiscountType { get; set; }
     public decimal DiscountValue { get; set; }
     public int QuantityAlert { get; set; }

@@ -40,6 +40,9 @@ public class Sale : ITenantEntity
     [MaxLength(500)]
     public string? Notes { get; set; }
 
+    /// <summary>Taxes applied (copied from the quotation it was converted from); OrderTax is their total (JSON list of AppliedTaxDto)</summary>
+    public string? TaxesJson { get; set; }
+
     [MaxLength(20)]
     public string Source { get; set; } = "online";
 

@@ -289,8 +289,15 @@ public class PurchaseOrderService : IPurchaseOrderService
         po.OrderDate = dto.OrderDate ?? po.OrderDate;
         po.ExpectedDate = dto.ExpectedDate;
         po.Status = dto.Status;
-        po.OrderTax = Math.Max(0, dto.OrderTax);
         po.Discount = Math.Max(0, dto.Discount);
+        if (dto.Taxes != null)
+        {
+            // taxes on (items total - discount); the order tax is their total
+            var taxes = AppliedTaxes.Calculate(dto.Taxes, subTotal - po.Discount);
+            po.TaxesJson = AppliedTaxes.Serialize(taxes);
+            po.OrderTax = taxes.Sum(t => t.Amount);
+        }
+        else po.OrderTax = Math.Max(0, dto.OrderTax);
         po.Shipping = Math.Max(0, dto.Shipping);
         po.SubTotal = Math.Round(subTotal, 2);
         po.Total = Math.Max(0, Math.Round(subTotal + po.OrderTax + po.Shipping - po.Discount, 2));
@@ -327,6 +334,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             Status = po.Status,
             SubTotal = po.SubTotal,
             OrderTax = po.OrderTax,
+            Taxes = AppliedTaxes.Parse(po.TaxesJson),
             Discount = po.Discount,
             Shipping = po.Shipping,
             Total = po.Total,

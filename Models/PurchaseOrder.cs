@@ -52,6 +52,9 @@ public class PurchaseOrder : ITenantEntity
     [MaxLength(500)]
     public string? Notes { get; set; }
 
+    /// <summary>Taxes applied to the order; OrderTax is their total (JSON list of AppliedTaxDto)</summary>
+    public string? TaxesJson { get; set; }
+
     [MaxLength(150)]
     public string? CreatedBy { get; set; }
 

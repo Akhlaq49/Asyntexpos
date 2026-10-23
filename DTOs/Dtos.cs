@@ -45,6 +45,7 @@ public class ProductDto
     public decimal Price { get; set; }
     public string TaxType { get; set; } = string.Empty;
     public string Tax { get; set; } = string.Empty;
+    public List<AppliedTaxDto> Taxes { get; set; } = new();
     public string DiscountType { get; set; } = string.Empty;
     public decimal DiscountValue { get; set; }
     public int QuantityAlert { get; set; }
@@ -227,6 +228,7 @@ public class SaleDto
     public string Source { get; set; } = string.Empty;
     public string? ExpectedDate { get; set; }
     public string SaleDate { get; set; } = string.Empty;
+    public List<AppliedTaxDto> Taxes { get; set; } = new();
     public List<SaleItemDto> Items { get; set; } = new();
     public List<SalePaymentDto> Payments { get; set; } = new();
 }
@@ -503,6 +505,7 @@ public class QuotationDto
     public string? Description { get; set; }
     public string QuotationDate { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
+    public List<AppliedTaxDto> Taxes { get; set; } = new();
     public List<QuotationItemDto> Items { get; set; } = new();
 }
 
@@ -536,6 +539,8 @@ public class CreateQuotationDto
     public string Status { get; set; } = "Pending";
     public string? Description { get; set; }
     public string? QuotationDate { get; set; }
+    /// <summary>When sent, OrderTax and GrandTotal are calculated from these (base = items total - discount)</summary>
+    public List<AppliedTaxDto>? Taxes { get; set; }
     public List<CreateQuotationItemDto> Items { get; set; } = new();
 }
 

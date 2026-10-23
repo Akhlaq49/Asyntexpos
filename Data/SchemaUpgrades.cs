@@ -13,6 +13,7 @@ public static class SchemaUpgrades
         AddPurchaseOrders(db);
         AddQuotationSaleLink(db);
         AddTermsConditions(db);
+        AddTaxTypes(db);
     }
 
     private static bool HasColumn(AppDbContext db, string table, string column) =>
@@ -40,6 +41,26 @@ CREATE TABLE IF NOT EXISTS `TermsConditions` (
             "SELECT t.`Id`, {0}, UTC_TIMESTAMP(6) FROM `Tenants` t " +
             "WHERE NOT EXISTS (SELECT 1 FROM `TermsConditions` tc WHERE tc.`TenantId` = t.`Id`)",
             Models.DefaultTermsConditions.Text.Trim());
+    }
+
+    /// <summary>Tax types + the taxes applied to products, quotations, purchase orders and sales</summary>
+    private static void AddTaxTypes(AppDbContext db)
+    {
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `TaxTypes` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Name` varchar(100) NOT NULL,
+  `Description` varchar(300) NULL,
+  `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+  `CreatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Id`),
+  UNIQUE KEY `IX_TaxTypes_TenantId_Name` (`TenantId`, `Name`)
+) CHARACTER SET utf8mb4");
+
+        foreach (var table in new[] { "Products", "Quotations", "PurchaseOrders", "Sales" })
+            if (!HasColumn(db, table, "TaxesJson"))
+                db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `TaxesJson` longtext NULL");
     }
 
     /// <summary>Quotations converted into a sale keep a link to it</summary>

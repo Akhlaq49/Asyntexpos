@@ -49,6 +49,9 @@ public class Quotation : ITenantEntity
     public int? SaleId { get; set; }
     [System.ComponentModel.DataAnnotations.MaxLength(50)]
     public string? SaleReference { get; set; }
+
+    /// <summary>Taxes applied to the quotation; OrderTax is their total (JSON list of AppliedTaxDto)</summary>
+    public string? TaxesJson { get; set; }
 }
 
 public class QuotationItem : ITenantEntity
