@@ -14,6 +14,8 @@ public static class SchemaUpgrades
         AddQuotationSaleLink(db);
         AddTermsConditions(db);
         AddTaxTypes(db);
+        // customers saved with a blank email before it became optional: NULL, so they don't clash on the unique email index
+        db.Database.ExecuteSqlRaw("UPDATE `Parties` SET `Email` = NULL WHERE `Role` = 'Customer' AND `Email` = ''");
     }
 
     private static bool HasColumn(AppDbContext db, string table, string column) =>

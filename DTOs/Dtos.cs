@@ -75,15 +75,16 @@ public class CustomerDto
     public string Status { get; set; } = "active";
 }
 
+/// <summary>Only the name is required; every other field is optional</summary>
 public class CreateCustomerDto
 {
     public string Name { get; set; } = string.Empty;
     public string? SO { get; set; }
     public string? Cnic { get; set; }
-    public string Phone { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public string Address { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? Address { get; set; }
+    public string? City { get; set; }
     public string Status { get; set; } = "active";
 }
 

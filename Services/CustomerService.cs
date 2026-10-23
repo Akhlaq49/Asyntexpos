@@ -69,18 +69,21 @@ public class CustomerService : ICustomerService
         return MapToDto(c);
     }
 
+    /// <summary>Blank optional fields are stored as NULL (a blank email would clash with the unique email index)</summary>
+    private static string? Opt(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+
     public async Task<CustomerDto> CreateAsync(CreateCustomerDto dto)
     {
         var entity = new Party
         {
-            FullName = dto.Name,
-            SO = dto.SO,
-            Cnic = dto.Cnic,
-            Phone = dto.Phone,
-            Email = dto.Email,
-            Address = dto.Address,
-            City = dto.City,
-            Status = dto.Status,
+            FullName = dto.Name.Trim(),
+            SO = Opt(dto.SO),
+            Cnic = Opt(dto.Cnic),
+            Phone = Opt(dto.Phone),
+            Email = Opt(dto.Email),
+            Address = Opt(dto.Address),
+            City = Opt(dto.City),
+            Status = string.IsNullOrWhiteSpace(dto.Status) ? "active" : dto.Status,
             Role = "Customer"
         };
         _db.Parties.Add(entity);
@@ -94,14 +97,14 @@ public class CustomerService : ICustomerService
         var entity = await _db.Parties.FindAsync(id);
         if (entity == null || entity.Role != "Customer") return null;
 
-        entity.FullName = dto.Name;
-        entity.SO = dto.SO;
-        entity.Cnic = dto.Cnic;
-        entity.Phone = dto.Phone;
-        entity.Email = dto.Email;
-        entity.Address = dto.Address;
-        entity.City = dto.City;
-        entity.Status = dto.Status;
+        entity.FullName = dto.Name.Trim();
+        entity.SO = Opt(dto.SO);
+        entity.Cnic = Opt(dto.Cnic);
+        entity.Phone = Opt(dto.Phone);
+        entity.Email = Opt(dto.Email);
+        entity.Address = Opt(dto.Address);
+        entity.City = Opt(dto.City);
+        entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status;
         await _db.SaveChangesAsync();
 
         return MapToDto(entity);
