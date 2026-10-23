@@ -82,6 +82,8 @@ public class ProductFormModel
     public string? SellingType { get; set; }
     public string? Category { get; set; }
     public string? Brand { get; set; }
+    public string? Color { get; set; }
+    public string? Model { get; set; }
     public string? Unit { get; set; }
     public string? BarcodeSymbology { get; set; }
     public string? ItemBarcode { get; set; }

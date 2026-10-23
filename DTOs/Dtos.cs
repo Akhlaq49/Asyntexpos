@@ -36,6 +36,8 @@ public class ProductDto
     public string SellingType { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public string Brand { get; set; } = string.Empty;
+    public string Color { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
     public string Unit { get; set; } = string.Empty;
     public string BarcodeSymbology { get; set; } = string.Empty;
     public string ItemBarcode { get; set; } = string.Empty;

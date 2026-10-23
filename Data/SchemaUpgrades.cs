@@ -14,6 +14,11 @@ public static class SchemaUpgrades
         AddQuotationSaleLink(db);
         AddTermsConditions(db);
         AddTaxTypes(db);
+        // product colour and model
+        if (!HasColumn(db, "Products", "Color"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");
+        if (!HasColumn(db, "Products", "Model"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Model` varchar(150) NULL");
         // customers saved with a blank email before it became optional: NULL, so they don't clash on the unique email index
         db.Database.ExecuteSqlRaw("UPDATE `Parties` SET `Email` = NULL WHERE `Role` = 'Customer' AND `Email` = ''");
     }

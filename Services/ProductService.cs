@@ -101,6 +101,10 @@ public class ProductService : IProductService
         return MapToDto(entity);
     }
 
+    /// <summary>Optional text field: blank -> NULL, trimmed and cut to the column length</summary>
+    private static string? Opt(string? v, int max) =>
+        string.IsNullOrWhiteSpace(v) ? null : (v.Trim().Length > max ? v.Trim()[..max] : v.Trim());
+
     /// <summary>Taxes sent with the product form, amounts calculated on the price</summary>
     private static List<AppliedTaxDto> ProductTaxes(ProductFormModel form)
     {
@@ -127,6 +131,8 @@ public class ProductService : IProductService
             SellingType = form.SellingType,
             Category = form.Category,
             Brand = form.Brand,
+            Color = Opt(form.Color, 100),
+            Model = Opt(form.Model, 150),
             Unit = form.Unit,
             BarcodeSymbology = form.BarcodeSymbology,
             ItemBarcode = form.ItemBarcode,
@@ -222,6 +228,8 @@ public class ProductService : IProductService
             entity.SellingType = form.SellingType;
             entity.Category = form.Category;
             entity.Brand = form.Brand;
+            entity.Color = Opt(form.Color, 100);
+            entity.Model = Opt(form.Model, 150);
             entity.Unit = form.Unit;
             entity.BarcodeSymbology = form.BarcodeSymbology ?? entity.BarcodeSymbology; // no longer on the product form; keep existing value
             entity.ItemBarcode = form.ItemBarcode ?? entity.ItemBarcode;
@@ -291,6 +299,8 @@ public class ProductService : IProductService
         SellingType = p.SellingType ?? "",
         Category = p.Category ?? "",
         Brand = p.Brand ?? "",
+        Color = p.Color ?? "",
+        Model = p.Model ?? "",
         Unit = p.Unit ?? "",
         BarcodeSymbology = p.BarcodeSymbology ?? "",
         ItemBarcode = p.ItemBarcode ?? "",

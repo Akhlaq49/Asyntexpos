@@ -28,6 +28,12 @@ public class Product : ITenantEntity
     [MaxLength(200)]
     public string? Brand { get; set; }
 
+    [MaxLength(100)]
+    public string? Color { get; set; }
+
+    [MaxLength(150)]
+    public string? Model { get; set; }
+
     [MaxLength(50)]
     public string? Unit { get; set; }
 
