@@ -95,6 +95,8 @@ builder.Services.AddCors(options =>
                 "http://frontapp.asyntexconsultancy.com",
                 "https://aanduwholesellerllc.com",
                 "http://aanduwholesellerllc.com",
+                "https://OneTouchAutomationPOS.asyntexconsultancy.com",
+                "http://OneTouchAutomationPOS.asyntexconsultancy.com",
                 "https://faizmart.co.uk",
                 "http://faizmart.co.uk"
 
