@@ -42,7 +42,10 @@ public class QuotationsController : ControllerBase
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateQuotationDto dto)
-        => Ok(await _service.CreateAsync(dto));
+    {
+        try { return Ok(await _service.CreateAsync(dto)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] CreateQuotationDto dto)

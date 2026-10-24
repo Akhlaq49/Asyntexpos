@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 
 namespace ReactPosApi.Data;
@@ -15,6 +16,7 @@ public static class SchemaUpgrades
         AddTermsConditions(db);
         AddTaxTypes(db);
         AddPurchaseOrderRevisionsAndPayments(db);
+        BackfillQuotationReferences(db);
         // product colour and model
         if (!HasColumn(db, "Products", "Color"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");
@@ -49,6 +51,29 @@ CREATE TABLE IF NOT EXISTS `TermsConditions` (
             "SELECT t.`Id`, {0}, UTC_TIMESTAMP(6) FROM `Tenants` t " +
             "WHERE NOT EXISTS (SELECT 1 FROM `TermsConditions` tc WHERE tc.`TenantId` = t.`Id`)",
             Models.DefaultTermsConditions.Text.Trim());
+    }
+
+    /// <summary>
+    /// Quotations saved without a reference get the next QT-0001, QT-0002 ... (per company, oldest first);
+    /// their revisions are renamed to match (QT-0003_R1 ...).
+    /// </summary>
+    private static void BackfillQuotationReferences(AppDbContext db)
+    {
+        var all = db.Quotations.IgnoreQueryFilters().ToList();
+        var changed = false;
+        foreach (var company in all.GroupBy(q => q.TenantId))
+        {
+            var max = company.Select(q => Regex.Match(q.Reference ?? "", @"^QT-(\d+)$")).Where(m => m.Success)
+                .Select(m => int.Parse(m.Groups[1].Value)).DefaultIfEmpty(0).Max();
+            foreach (var original in company.Where(q => q.RootQuotationId == null && string.IsNullOrWhiteSpace(q.Reference)).OrderBy(q => q.Id))
+            {
+                original.Reference = $"QT-{++max:D4}";
+                foreach (var revision in company.Where(q => q.RootQuotationId == original.Id))
+                    revision.Reference = $"{original.Reference}_R{revision.RevisionNo}";
+                changed = true;
+            }
+        }
+        if (changed) db.SaveChanges();
     }
 
     /// <summary>Purchase order revisions (PO-0001_R1 ...) and the payment / refund records of purchases</summary>

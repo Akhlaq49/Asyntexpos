@@ -957,6 +957,12 @@ public class QuotationService : IQuotationService
     {
         ApplyTaxes(dto);
         var entity = BuildQuotation(dto);
+        // every quotation has a unique reference: the typed one (if not used yet) or the next QT-0001, QT-0002 ...
+        var typed = dto.Reference?.Trim();
+        if (string.IsNullOrEmpty(typed)) entity.Reference = await NextReferenceAsync();
+        else if (await ReferenceTakenAsync(typed, null))
+            throw new InvalidOperationException($"Reference {typed} is already used by another quotation. Leave it empty to get the next number automatically.");
+        else entity.Reference = typed;
         _db.Quotations.Add(entity);
         await _db.SaveChangesAsync();
         return new { entity.Id };
@@ -1034,6 +1040,18 @@ public class QuotationService : IQuotationService
             }).ToListAsync();
     }
 
+    /// <summary>Next automatic reference: QT-0001, QT-0002 ... (one more than the highest QT-number used)</summary>
+    private async Task<string> NextReferenceAsync()
+    {
+        var refs = await _db.Quotations.Where(q => q.Reference.StartsWith("QT-")).Select(q => q.Reference).ToListAsync();
+        var max = refs.Select(r => System.Text.RegularExpressions.Regex.Match(r, @"^QT-(\d+)$"))
+            .Where(m => m.Success).Select(m => int.Parse(m.Groups[1].Value)).DefaultIfEmpty(0).Max();
+        return $"QT-{max + 1:D4}";
+    }
+
+    private Task<bool> ReferenceTakenAsync(string reference, int? exceptId) =>
+        _db.Quotations.AnyAsync(q => q.Reference == reference && (exceptId == null || q.Id != exceptId));
+
     private static Quotation BuildQuotation(CreateQuotationDto dto)
     {
         return new Quotation
@@ -1077,7 +1095,13 @@ public class QuotationService : IQuotationService
             ApplyTaxes(dto);
             if (dto.Taxes != null) entity.TaxesJson = AppliedTaxes.Serialize(dto.Taxes);
             if (dto.TermsContent != null) entity.TermsContent = string.IsNullOrWhiteSpace(dto.TermsContent) ? null : dto.TermsContent.Trim();
-            entity.Reference = dto.Reference ?? entity.Reference;
+            var newRef = dto.Reference?.Trim();   // empty keeps the current reference
+            if (!string.IsNullOrEmpty(newRef) && newRef != entity.Reference)
+            {
+                if (await ReferenceTakenAsync(newRef, entity.Id))
+                    throw new InvalidOperationException($"Reference {newRef} is already used by another quotation.");
+                entity.Reference = newRef;
+            }
             entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
             entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
             entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
