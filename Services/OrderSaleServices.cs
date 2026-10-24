@@ -723,7 +723,7 @@ public class SalesReturnService : ISalesReturnService
                 OrderTax = r.OrderTax, Discount = r.Discount, Shipping = r.Shipping,
                 GrandTotal = r.GrandTotal, Paid = r.Paid, Due = r.Due,
                 Status = r.Status, PaymentStatus = r.PaymentStatus,
-                ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"),
+                ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"), SaleId = r.SaleId, SaleReference = r.SaleReference,
                 CreatedAt = r.CreatedAt.ToString("dd MMM yyyy")
             }).ToList(),
             TotalCount = totalCount,
@@ -754,7 +754,7 @@ public class SalesReturnService : ISalesReturnService
             OrderTax = r.OrderTax, Discount = r.Discount, Shipping = r.Shipping,
             GrandTotal = r.GrandTotal, Paid = r.Paid, Due = r.Due,
             Status = r.Status, PaymentStatus = r.PaymentStatus,
-            ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"),
+            ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"), SaleId = r.SaleId, SaleReference = r.SaleReference,
             CreatedAt = r.CreatedAt.ToString("dd MMM yyyy")
         }).ToListAsync();
     }
@@ -772,7 +772,7 @@ public class SalesReturnService : ISalesReturnService
             OrderTax = r.OrderTax, Discount = r.Discount, Shipping = r.Shipping,
             GrandTotal = r.GrandTotal, Paid = r.Paid, Due = r.Due,
             Status = r.Status, PaymentStatus = r.PaymentStatus,
-            ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"),
+            ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"), SaleId = r.SaleId, SaleReference = r.SaleReference,
             CreatedAt = r.CreatedAt.ToString("dd MMM yyyy"),
             Items = r.Items.Select(i => new SalesReturnItemDto
             {
@@ -812,6 +812,8 @@ public class SalesReturnService : ISalesReturnService
     {
         var entity = await _db.SalesReturns.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == id);
         if (entity == null) return null;
+        if (entity.SaleId != null)
+            throw new InvalidOperationException($"{entity.Reference} is a return of sale {entity.SaleReference} and can't be edited. Delete it and return the sale again.");
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
@@ -848,6 +850,12 @@ public class SalesReturnService : ISalesReturnService
     {
         var entity = await _db.SalesReturns.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == id);
         if (entity == null) return false;
+        // a return of a sale put the goods back into stock: deleting it takes them out again
+        foreach (var item in entity.Items.Where(i => i.ProductId != null))
+        {
+            var product = await _db.Products.FindAsync(item.ProductId!.Value);
+            if (product != null) product.Quantity = Math.Max(0, product.Quantity - item.Quantity);
+        }
         _db.SalesReturns.Remove(entity);
         await _db.SaveChangesAsync();
         return true;

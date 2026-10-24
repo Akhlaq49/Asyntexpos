@@ -46,6 +46,11 @@ public class SalesReturn : ITenantEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public List<SalesReturnItem> Items { get; set; } = new();
+
+    /// <summary>The POS sale this return belongs to (null for returns entered by hand)</summary>
+    public int? SaleId { get; set; }
+    [MaxLength(50)]
+    public string? SaleReference { get; set; }
 }
 
 public class SalesReturnItem : ITenantEntity
@@ -59,6 +64,10 @@ public class SalesReturnItem : ITenantEntity
 
     [MaxLength(200)]
     public string ProductName { get; set; } = string.Empty;
+
+    /// <summary>Product that went back into stock, and the sale line it came from (returns of a sale)</summary>
+    public int? ProductId { get; set; }
+    public int? SaleItemId { get; set; }
 
     public decimal NetUnitPrice { get; set; }
     public int Stock { get; set; }

@@ -17,6 +17,7 @@ public static class SchemaUpgrades
         AddTaxTypes(db);
         AddPurchaseOrderRevisionsAndPayments(db);
         BackfillQuotationReferences(db);
+        AddSalesReturnSaleLink(db);
         // product colour and model
         if (!HasColumn(db, "Products", "Color"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");
@@ -51,6 +52,15 @@ CREATE TABLE IF NOT EXISTS `TermsConditions` (
             "SELECT t.`Id`, {0}, UTC_TIMESTAMP(6) FROM `Tenants` t " +
             "WHERE NOT EXISTS (SELECT 1 FROM `TermsConditions` tc WHERE tc.`TenantId` = t.`Id`)",
             Models.DefaultTermsConditions.Text.Trim());
+    }
+
+    /// <summary>Sales returns can belong to a POS sale; their lines point at the product and sale line</summary>
+    private static void AddSalesReturnSaleLink(AppDbContext db)
+    {
+        if (!HasColumn(db, "SalesReturns", "SaleId"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `SalesReturns` ADD COLUMN `SaleId` int NULL, ADD COLUMN `SaleReference` varchar(50) NULL, ADD INDEX `IX_SalesReturns_SaleId` (`SaleId`)");
+        if (!HasColumn(db, "SalesReturnItems", "ProductId"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `SalesReturnItems` ADD COLUMN `ProductId` int NULL, ADD COLUMN `SaleItemId` int NULL");
     }
 
     /// <summary>

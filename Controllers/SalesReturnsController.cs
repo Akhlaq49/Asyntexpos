@@ -46,7 +46,9 @@ public class SalesReturnsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] CreateSalesReturnDto dto)
     {
-        var result = await _service.UpdateAsync(id, dto);
+        object? result;
+        try { result = await _service.UpdateAsync(id, dto); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
         if (result == null) return NotFound();
         return Ok(result);
     }

@@ -59,6 +59,15 @@ public class TransactionsController : ControllerBase
             };
         }));
 
+        // refunds to customers on sales returns (out)
+        var returns = await _db.SalesReturns.Where(r => r.Paid > 0 && r.ReturnDate >= start && r.ReturnDate < end).ToListAsync();
+        list.AddRange(returns.Select(r => new TransactionDto
+        {
+            Key = $"SR-{r.Id}", Date = r.ReturnDate, Kind = "Customer refund", Direction = "Out", Amount = r.Paid,
+            Reference = r.Reference, Document = r.SaleReference ?? r.Reference, Party = r.CustomerName,
+            Notes = r.SaleReference != null ? $"Return of sale {r.SaleReference}" : "Sales return",
+        }));
+
         // expenses (out)
         var expenses = await _db.Expenses.Include(e => e.ExpenseCategory)
             .Where(e => e.Date >= start && e.Date < end).ToListAsync();

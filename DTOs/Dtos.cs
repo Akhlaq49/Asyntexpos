@@ -442,6 +442,9 @@ public class SalesReturnDto
     public string PaymentStatus { get; set; } = string.Empty;
     public string ReturnDate { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
+    /// <summary>The POS sale this return belongs to</summary>
+    public int? SaleId { get; set; }
+    public string? SaleReference { get; set; }
     public List<SalesReturnItemDto> Items { get; set; } = new();
 }
 
