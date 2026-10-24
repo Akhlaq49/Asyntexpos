@@ -23,6 +23,11 @@ public static class SchemaUpgrades
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");
         if (!HasColumn(db, "Products", "Model"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Model` varchar(150) NULL");
+        // POS Orders moved out of the "Sales" dropdown: its permission key is now "Sales/POS Orders"
+        db.Database.ExecuteSqlRaw("UPDATE IGNORE `RolePermissions` SET `MenuKey` = 'Sales/POS Orders' WHERE `MenuKey` = 'Sales/Sales'");
+        db.Database.ExecuteSqlRaw("DELETE FROM `RolePermissions` WHERE `MenuKey` = 'Sales/Sales'");
+        db.Database.ExecuteSqlRaw("UPDATE IGNORE `TenantMenuConfigs` SET `MenuKey` = 'Sales/POS Orders' WHERE `MenuKey` = 'Sales/Sales'");
+        db.Database.ExecuteSqlRaw("DELETE FROM `TenantMenuConfigs` WHERE `MenuKey` = 'Sales/Sales'");
         // customers saved with a blank email before it became optional: NULL, so they don't clash on the unique email index
         db.Database.ExecuteSqlRaw("UPDATE `Parties` SET `Email` = NULL WHERE `Role` = 'Customer' AND `Email` = ''");
     }
