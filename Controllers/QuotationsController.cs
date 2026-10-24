@@ -74,11 +74,37 @@ public class QuotationsController : ControllerBase
         }
     }
 
+    /// <summary>New version of the quotation (…_R1, _R2 …); the current version is kept as history</summary>
+    [HttpPost("{id}/revise")]
+    public async Task<IActionResult> Revise(int id, [FromBody] CreateQuotationDto dto)
+    {
+        try
+        {
+            var revision = await _service.ReviseAsync(id, dto);
+            return revision == null ? NotFound() : Ok(revision);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>All versions of the quotation, original first</summary>
+    [HttpGet("{id}/revisions")]
+    public async Task<IActionResult> Revisions(int id) => Ok(await _service.GetRevisionsAsync(id));
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var success = await _service.DeleteAsync(id);
-        if (!success) return NotFound();
-        return NoContent();
+        try
+        {
+            var success = await _service.DeleteAsync(id);
+            if (!success) return NotFound();
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

@@ -237,6 +237,8 @@ public class SaleService : ISaleService
         if (quotation == null) return null;
         if (quotation.SaleId != null)
             throw new InvalidOperationException($"This quotation was already converted to sale {quotation.SaleReference}.");
+        if (quotation.SupersededById != null)
+            throw new InvalidOperationException($"{quotation.Reference} is an older version. Convert the latest revision instead.");
         if (quotation.Items.Count == 0)
             throw new InvalidOperationException("This quotation has no products to sell.");
         if (dto.PaidAmount < 0)
@@ -884,7 +886,7 @@ public class QuotationService : IQuotationService
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
+                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
             }).ToList(),
@@ -914,7 +916,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
         }).ToListAsync();
@@ -931,7 +933,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson),
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
             TermsContent = x.TermsContent,
@@ -948,7 +950,82 @@ public class QuotationService : IQuotationService
     public async Task<object> CreateAsync(CreateQuotationDto dto)
     {
         ApplyTaxes(dto);
-        var entity = new Quotation
+        var entity = BuildQuotation(dto);
+        _db.Quotations.Add(entity);
+        await _db.SaveChangesAsync();
+        return new { entity.Id };
+    }
+
+    /// <summary>
+    /// New version of a quotation: QT-005 -> QT-005_R1 -> QT-005_R2 (numbered per original).
+    /// Only the latest, not-converted version can be revised; it is kept unchanged and marked as replaced.
+    /// Terms: null keeps the previous version's terms, "" = standard terms, text = new terms.
+    /// </summary>
+    public async Task<QuotationDto?> ReviseAsync(int id, CreateQuotationDto dto)
+    {
+        var current = await _db.Quotations.FirstOrDefaultAsync(q => q.Id == id);
+        if (current == null) return null;
+        if (current.SaleId != null)
+            throw new InvalidOperationException($"{current.Reference} was converted to sale {current.SaleReference} and can't be revised.");
+        if (current.SupersededById != null)
+            throw new InvalidOperationException($"{current.Reference} is an older version. Revise the latest version instead.");
+        if (dto.Items.Count == 0)
+            throw new InvalidOperationException("Add at least one product to the revision.");
+
+        var rootId = current.RootQuotationId ?? current.Id;
+        var root = rootId == current.Id ? current : await _db.Quotations.FirstAsync(q => q.Id == rootId);
+        var revisionNo = await _db.Quotations.Where(q => q.Id == rootId || q.RootQuotationId == rootId).MaxAsync(q => q.RevisionNo) + 1;
+        var suffix = $"_R{revisionNo}";
+        var baseRef = string.IsNullOrWhiteSpace(root.Reference) ? $"QT-{root.Id}" : root.Reference.Trim();
+        if (baseRef.Length + suffix.Length > 50) baseRef = baseRef[..(50 - suffix.Length)];
+
+        ApplyTaxes(dto);
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var revision = BuildQuotation(dto);
+            revision.Reference = baseRef + suffix;
+            revision.RootQuotationId = rootId;
+            revision.RevisionNo = revisionNo;
+            if (dto.TermsContent == null) revision.TermsContent = current.TermsContent;   // keep the previous version's terms
+            if (dto.Taxes == null) revision.TaxesJson = current.TaxesJson;
+            _db.Quotations.Add(revision);
+            await _db.SaveChangesAsync();
+
+            current.SupersededById = revision.Id;   // the previous version stays as it was, read-only
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return await GetByIdAsync(revision.Id);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    /// <summary>Every version of the quotation family (original first)</summary>
+    public async Task<List<QuotationDto>> GetRevisionsAsync(int id)
+    {
+        var q = await _db.Quotations.FirstOrDefaultAsync(x => x.Id == id);
+        if (q == null) return new();
+        var rootId = q.RootQuotationId ?? q.Id;
+        return await _db.Quotations.Where(x => x.Id == rootId || x.RootQuotationId == rootId)
+            .OrderBy(x => x.RevisionNo)
+            .Select(x => new QuotationDto
+            {
+                Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId, CustomerName = x.CustomerName,
+                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, GrandTotal = x.GrandTotal,
+                Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
+                RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
+                QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
+                CreatedAt = x.CreatedAt.ToString("dd MMM yyyy, HH:mm")
+            }).ToListAsync();
+    }
+
+    private static Quotation BuildQuotation(CreateQuotationDto dto)
+    {
+        return new Quotation
         {
             TaxesJson = dto.Taxes != null ? AppliedTaxes.Serialize(dto.Taxes) : null,
             TermsContent = string.IsNullOrWhiteSpace(dto.TermsContent) ? null : dto.TermsContent.Trim(),
@@ -967,9 +1044,6 @@ public class QuotationService : IQuotationService
                 TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
             }).ToList()
         };
-        _db.Quotations.Add(entity);
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
     }
 
     public async Task<object?> UpdateAsync(int id, CreateQuotationDto dto)
@@ -978,6 +1052,8 @@ public class QuotationService : IQuotationService
         if (entity == null) return null;
         if (entity.SaleId != null)
             throw new InvalidOperationException($"This quotation was converted to sale {entity.SaleReference} and can't be edited.");
+        if (entity.SupersededById != null)
+            throw new InvalidOperationException($"{entity.Reference} is an older version kept as history. Edit or revise the latest version.");
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
@@ -1028,6 +1104,11 @@ public class QuotationService : IQuotationService
     {
         var entity = await _db.Quotations.Include(q => q.Items).FirstOrDefaultAsync(q => q.Id == id);
         if (entity == null) return false;
+        if (entity.SupersededById != null)
+            throw new InvalidOperationException($"{entity.Reference} is an older version kept as history and can't be deleted.");
+        // deleting the latest revision makes the previous version the current one again
+        var previous = await _db.Quotations.FirstOrDefaultAsync(q => q.SupersededById == entity.Id);
+        if (previous != null) previous.SupersededById = null;
         _db.Quotations.Remove(entity);
         await _db.SaveChangesAsync();
         return true;

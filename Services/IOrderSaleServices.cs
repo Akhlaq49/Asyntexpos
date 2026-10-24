@@ -46,5 +46,9 @@ public interface IQuotationService
     Task<object> CreateAsync(CreateQuotationDto dto);
     Task<object?> UpdateAsync(int id, CreateQuotationDto dto);
     Task<bool> DeleteAsync(int id);
+    /// <summary>Saves a new version of the quotation (…_R1, _R2 …); the old version is kept read-only</summary>
+    Task<QuotationDto?> ReviseAsync(int id, CreateQuotationDto dto);
+    /// <summary>All versions of the quotation (original first)</summary>
+    Task<List<QuotationDto>> GetRevisionsAsync(int id);
 }
 

@@ -513,6 +513,10 @@ public class QuotationDto
     public List<AppliedTaxDto> Taxes { get; set; } = new();
     /// <summary>Terms edited for this quotation (null = standard terms); only filled when loading one quotation</summary>
     public string? TermsContent { get; set; }
+    /// <summary>Revisions: original id (null on the original), 0/1/2... and the newer version that replaced this one</summary>
+    public int? RootQuotationId { get; set; }
+    public int RevisionNo { get; set; }
+    public int? SupersededById { get; set; }
     public List<QuotationItemDto> Items { get; set; } = new();
 }
 

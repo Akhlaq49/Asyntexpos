@@ -55,6 +55,17 @@ public class Quotation : ITenantEntity
 
     /// <summary>Terms & conditions edited for this quotation only (null = the company's standard terms)</summary>
     public string? TermsContent { get; set; }
+
+    /* ---- revisions: QT-005 (original) -> QT-005_R1 -> QT-005_R2; every version is kept ---- */
+
+    /// <summary>The original quotation this is a revision of (null on the original itself)</summary>
+    public int? RootQuotationId { get; set; }
+
+    /// <summary>0 = original, 1 = _R1, 2 = _R2 ...</summary>
+    public int RevisionNo { get; set; }
+
+    /// <summary>Set when a newer revision replaced this version; it is then read-only history</summary>
+    public int? SupersededById { get; set; }
 }
 
 public class QuotationItem : ITenantEntity

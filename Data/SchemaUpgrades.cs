@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS `TaxTypes` (
   UNIQUE KEY `IX_TaxTypes_TenantId_Name` (`TenantId`, `Name`)
 ) CHARACTER SET utf8mb4");
 
+        // quotation revisions (QT-005 -> QT-005_R1 -> QT-005_R2)
+        if (!HasColumn(db, "Quotations", "RevisionNo"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `Quotations` ADD COLUMN `RootQuotationId` int NULL, ADD COLUMN `RevisionNo` int NOT NULL DEFAULT 0, ADD COLUMN `SupersededById` int NULL, ADD INDEX `IX_Quotations_RootQuotationId` (`RootQuotationId`)");
+
         // terms & conditions edited for a single quotation
         if (!HasColumn(db, "Quotations", "TermsContent"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Quotations` ADD COLUMN `TermsContent` longtext NULL");
