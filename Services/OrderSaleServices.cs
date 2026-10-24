@@ -237,8 +237,13 @@ public class SaleService : ISaleService
         if (quotation == null) return null;
         if (quotation.SaleId != null)
             throw new InvalidOperationException($"This quotation was already converted to sale {quotation.SaleReference}.");
-        if (quotation.SupersededById != null)
-            throw new InvalidOperationException($"{quotation.Reference} is an older version. Convert the latest revision instead.");
+        // any version (original, R1, R2 ...) can be converted - whichever the customer accepted - but only one per quotation
+        var familyRoot = quotation.RootQuotationId ?? quotation.Id;
+        var convertedSibling = await _db.Quotations
+            .Where(q => (q.Id == familyRoot || q.RootQuotationId == familyRoot) && q.Id != quotation.Id && q.SaleId != null)
+            .Select(q => new { q.Reference, q.SaleReference }).FirstOrDefaultAsync();
+        if (convertedSibling != null)
+            throw new InvalidOperationException($"{convertedSibling.Reference} of this quotation was already converted to sale {convertedSibling.SaleReference}. Only one version can be converted.");
         if (quotation.Items.Count == 0)
             throw new InvalidOperationException("This quotation has no products to sell.");
         if (dto.PaidAmount < 0)
@@ -958,7 +963,8 @@ public class QuotationService : IQuotationService
 
     /// <summary>
     /// New version of a quotation: QT-005 -> QT-005_R1 -> QT-005_R2 (numbered per original).
-    /// Only the latest, not-converted version can be revised; it is kept unchanged and marked as replaced.
+    /// Any version can be revised (e.g. R3 from the original); every version is kept unchanged and stays convertible.
+    /// Not allowed once a version of the quotation has been converted to a sale.
     /// Terms: null keeps the previous version's terms, "" = standard terms, text = new terms.
     /// </summary>
     public async Task<QuotationDto?> ReviseAsync(int id, CreateQuotationDto dto)
@@ -967,13 +973,17 @@ public class QuotationService : IQuotationService
         if (current == null) return null;
         if (current.SaleId != null)
             throw new InvalidOperationException($"{current.Reference} was converted to sale {current.SaleReference} and can't be revised.");
-        if (current.SupersededById != null)
-            throw new InvalidOperationException($"{current.Reference} is an older version. Revise the latest version instead.");
         if (dto.Items.Count == 0)
             throw new InvalidOperationException("Add at least one product to the revision.");
 
         var rootId = current.RootQuotationId ?? current.Id;
         var root = rootId == current.Id ? current : await _db.Quotations.FirstAsync(q => q.Id == rootId);
+        var converted = await _db.Quotations.Where(q => (q.Id == rootId || q.RootQuotationId == rootId) && q.SaleId != null)
+            .Select(q => new { q.Reference, q.SaleReference }).FirstOrDefaultAsync();
+        if (converted != null)
+            throw new InvalidOperationException($"{converted.Reference} of this quotation was already converted to sale {converted.SaleReference}, so it can't be revised any more.");
+        // the version that is currently the newest gets marked as replaced (it may not be the one being revised)
+        var newest = await _db.Quotations.FirstOrDefaultAsync(q => (q.Id == rootId || q.RootQuotationId == rootId) && q.SupersededById == null);
         var revisionNo = await _db.Quotations.Where(q => q.Id == rootId || q.RootQuotationId == rootId).MaxAsync(q => q.RevisionNo) + 1;
         var suffix = $"_R{revisionNo}";
         var baseRef = string.IsNullOrWhiteSpace(root.Reference) ? $"QT-{root.Id}" : root.Reference.Trim();
@@ -992,7 +1002,7 @@ public class QuotationService : IQuotationService
             _db.Quotations.Add(revision);
             await _db.SaveChangesAsync();
 
-            current.SupersededById = revision.Id;   // the previous version stays as it was, read-only
+            if (newest != null) newest.SupersededById = revision.Id;   // older versions stay exactly as they were
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
             return await GetByIdAsync(revision.Id);
@@ -1053,7 +1063,12 @@ public class QuotationService : IQuotationService
         if (entity.SaleId != null)
             throw new InvalidOperationException($"This quotation was converted to sale {entity.SaleReference} and can't be edited.");
         if (entity.SupersededById != null)
-            throw new InvalidOperationException($"{entity.Reference} is an older version kept as history. Edit or revise the latest version.");
+            throw new InvalidOperationException($"{entity.Reference} is an older version and is kept unchanged. Use Revise to make a new version from it.");
+        var editRoot = entity.RootQuotationId ?? entity.Id;
+        var chosen = await _db.Quotations.Where(q => (q.Id == editRoot || q.RootQuotationId == editRoot) && q.SaleId != null)
+            .Select(q => new { q.Reference, q.SaleReference }).FirstOrDefaultAsync();
+        if (chosen != null)
+            throw new InvalidOperationException($"{chosen.Reference} of this quotation was already converted to sale {chosen.SaleReference}; the other versions are kept unchanged.");
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
