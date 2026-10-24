@@ -881,6 +881,7 @@ public class QuotationService : IQuotationService
         var entities = await q
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
+            .Include(x => x.Items)
             .ToListAsync();
 
         return new PagedResult<QuotationDto>
@@ -891,7 +892,7 @@ public class QuotationService : IQuotationService
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
+                GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
             }).ToList(),
@@ -921,7 +922,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
         }).ToListAsync();
@@ -938,7 +939,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
-            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
+            GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
             TermsContent = x.TermsContent,
