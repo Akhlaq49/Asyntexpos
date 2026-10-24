@@ -14,6 +14,7 @@ public static class SchemaUpgrades
         AddQuotationSaleLink(db);
         AddTermsConditions(db);
         AddTaxTypes(db);
+        AddPurchaseOrderRevisionsAndPayments(db);
         // product colour and model
         if (!HasColumn(db, "Products", "Color"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");
@@ -48,6 +49,41 @@ CREATE TABLE IF NOT EXISTS `TermsConditions` (
             "SELECT t.`Id`, {0}, UTC_TIMESTAMP(6) FROM `Tenants` t " +
             "WHERE NOT EXISTS (SELECT 1 FROM `TermsConditions` tc WHERE tc.`TenantId` = t.`Id`)",
             Models.DefaultTermsConditions.Text.Trim());
+    }
+
+    /// <summary>Purchase order revisions (PO-0001_R1 ...) and the payment / refund records of purchases</summary>
+    private static void AddPurchaseOrderRevisionsAndPayments(AppDbContext db)
+    {
+        if (!HasColumn(db, "PurchaseOrders", "RevisionNo"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `PurchaseOrders` ADD COLUMN `RootPurchaseOrderId` int NULL, ADD COLUMN `RevisionNo` int NOT NULL DEFAULT 0, ADD COLUMN `SupersededById` int NULL, ADD INDEX `IX_PurchaseOrders_RootPurchaseOrderId` (`RootPurchaseOrderId`)");
+
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PurchasePayments` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `PurchaseId` int NOT NULL,
+  `PurchaseOrderId` int NULL,
+  `Type` varchar(20) NOT NULL,
+  `Amount` decimal(18,2) NOT NULL,
+  `Method` varchar(30) NOT NULL,
+  `Reference` varchar(60) NULL,
+  `Date` datetime(6) NOT NULL,
+  `Notes` varchar(500) NULL,
+  `CreatedBy` varchar(150) NULL,
+  `CreatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_PurchasePayments_PurchaseId` (`PurchaseId`),
+  KEY `IX_PurchasePayments_PurchaseOrderId` (`PurchaseOrderId`),
+  CONSTRAINT `FK_PurchasePayments_Purchases_PurchaseId` FOREIGN KEY (`PurchaseId`) REFERENCES `Purchases` (`Id`) ON DELETE CASCADE
+) CHARACTER SET utf8mb4");
+
+        // purchases paid before payments were recorded one by one: one opening record each, so the history adds up
+        db.Database.ExecuteSqlRaw(@"
+INSERT INTO `PurchasePayments` (`TenantId`, `PurchaseId`, `PurchaseOrderId`, `Type`, `Amount`, `Method`, `Reference`, `Date`, `Notes`, `CreatedAt`)
+SELECT p.`TenantId`, p.`Id`, p.`PurchaseOrderId`, 'Payment', p.`Paid`, 'Not recorded', LEFT(CONCAT(p.`Reference`, '-P1'), 60), p.`Date`,
+       'Paid when the purchase was recorded', UTC_TIMESTAMP(6)
+FROM `Purchases` p
+WHERE p.`Paid` > 0 AND NOT EXISTS (SELECT 1 FROM `PurchasePayments` x WHERE x.`PurchaseId` = p.`Id`)");
     }
 
     /// <summary>Tax types + the taxes applied to products, quotations, purchase orders and sales</summary>

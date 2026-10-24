@@ -47,6 +47,7 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
     public DbSet<TermsConditions> TermsConditions => Set<TermsConditions>();
     public DbSet<TaxType> TaxTypes => Set<TaxType>();
+    public DbSet<PurchasePayment> PurchasePayments => Set<PurchasePayment>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();
@@ -276,6 +277,7 @@ public class AppDbContext : DbContext
         // one terms & conditions document per tenant
         modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
         modelBuilder.Entity<TaxType>(e => e.HasIndex(t => new { t.TenantId, t.Name }).IsUnique());
+        modelBuilder.Entity<PurchasePayment>(e => { e.HasIndex(p => p.PurchaseId); e.HasIndex(p => p.PurchaseOrderId); });
 
         modelBuilder.Entity<PurchaseOrder>(e =>
         {

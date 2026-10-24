@@ -28,7 +28,38 @@ public class PurchaseOrderReceiptDto
     public int Units { get; set; }
     public decimal Total { get; set; }
     public decimal Paid { get; set; }
+    /// <summary>Total - Paid (negative = paid in advance / overpaid)</summary>
+    public decimal Due { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
+    /// <summary>Every payment and refund on this receipt, oldest first</summary>
+    public List<PurchasePaymentDto> Payments { get; set; } = new();
+}
+
+/// <summary>One payment to the supplier (money out) or refund from the supplier (money in)</summary>
+public class PurchasePaymentDto
+{
+    public int Id { get; set; }
+    public int PurchaseId { get; set; }
+    public int? PurchaseOrderId { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Method { get; set; } = string.Empty;
+    public string? Reference { get; set; }
+    public DateTime Date { get; set; }
+    public string? Notes { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class SavePurchasePaymentDto
+{
+    /// <summary>"Payment" (pay the supplier) or "Refund" (money back from the supplier)</summary>
+    public string Type { get; set; } = "Payment";
+    public decimal Amount { get; set; }
+    public string Method { get; set; } = "Cash";
+    public DateTime? Date { get; set; }
+    public string? Reference { get; set; }
+    public string? Notes { get; set; }
 }
 
 public class PurchaseOrderDto
@@ -55,6 +86,12 @@ public class PurchaseOrderDto
     public List<AppliedTaxDto> Taxes { get; set; } = new();
     public List<PurchaseOrderItemDto> Items { get; set; } = new();
     public List<PurchaseOrderReceiptDto> Receipts { get; set; } = new();
+    /// <summary>Revisions: original id (null on the original), 0/1/2..., and the newer version (if any)</summary>
+    public int? RootPurchaseOrderId { get; set; }
+    public int RevisionNo { get; set; }
+    public int? SupersededById { get; set; }
+    /// <summary>Paid to the supplier across all receipts (payments - refunds)</summary>
+    public decimal PaidTotal { get; set; }
 }
 
 public class SavePurchaseOrderItemDto
@@ -95,6 +132,7 @@ public class ReceivePurchaseOrderDto
     public DateTime? Date { get; set; }
     /// <summary>Amount paid to the supplier for this delivery</summary>
     public decimal Paid { get; set; }
+    public string PaymentMethod { get; set; } = "Cash";
     public string? Notes { get; set; }
     public List<ReceivePurchaseOrderLineDto> Lines { get; set; } = new();
 }

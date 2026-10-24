@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReactPosApi.Data;
 using ReactPosApi.DTOs;
 using ReactPosApi.Models;
+using ReactPosApi.Services;
 
 namespace ReactPosApi.Controllers;
 
@@ -89,6 +91,16 @@ public class PurchasesController : ControllerBase
             };
 
             _context.Purchases.Add(purchase);
+            await _context.SaveChangesAsync();
+
+            // the amount paid when the purchase is entered is its first payment record (shown under Transactions)
+            if (dto.Paid > 0)
+                _context.PurchasePayments.Add(new PurchasePayment
+                {
+                    PurchaseId = purchase.Id, Type = PurchasePaymentType.Payment, Amount = dto.Paid, Method = "Cash",
+                    Reference = $"{purchase.Reference}-P1", Date = dto.Date, Notes = "Paid when the purchase was recorded",
+                    CreatedBy = User.FindFirstValue(ClaimTypes.Name), CreatedAt = DateTime.UtcNow,
+                });
             await _context.SaveChangesAsync();
 
             // Add line items and sync inventory
@@ -192,6 +204,18 @@ public class PurchasesController : ControllerBase
             purchase.Discount = dto.Discount;
             purchase.Shipping = dto.Shipping;
             purchase.Total = dto.Total;
+            // a changed Paid amount is recorded as an extra payment or a refund, so the history stays complete
+            var paidRecords = await _context.PurchasePayments.Where(p => p.PurchaseId == purchase.Id).ToListAsync();
+            var paidDiff = dto.Paid - PurchasePaymentRules.NetPaid(paidRecords);
+            if (paidDiff != 0)
+                _context.PurchasePayments.Add(new PurchasePayment
+                {
+                    PurchaseId = purchase.Id, PurchaseOrderId = purchase.PurchaseOrderId,
+                    Type = paidDiff > 0 ? PurchasePaymentType.Payment : PurchasePaymentType.Refund, Amount = Math.Abs(paidDiff),
+                    Method = "Cash", Reference = $"{dto.Reference}-{(paidDiff > 0 ? "P" : "RF")}{paidRecords.Count + 1}",
+                    Date = DateTime.UtcNow, Notes = "Paid amount changed when the purchase was edited",
+                    CreatedBy = User.FindFirstValue(ClaimTypes.Name), CreatedAt = DateTime.UtcNow,
+                });
             purchase.Paid = dto.Paid;
             purchase.Notes = dto.Notes;
             purchase.PaymentStatus = CalculatePaymentStatus(dto.Paid, dto.Total);

@@ -12,9 +12,13 @@ public interface IPurchaseOrderService
     Task<PurchaseOrderDto> CreateAsync(SavePurchaseOrderDto dto, string? createdBy);
     Task<PurchaseOrderDto?> UpdateAsync(int id, SavePurchaseOrderDto dto);
     Task<PurchaseOrderDto?> MarkOrderedAsync(int id);
-    Task<PurchaseOrderDto?> ReceiveAsync(int id, ReceivePurchaseOrderDto dto);
+    Task<PurchaseOrderDto?> ReceiveAsync(int id, ReceivePurchaseOrderDto dto, string? receivedBy = null);
     Task<PurchaseOrderDto?> CancelAsync(int id);
     Task<bool> DeleteAsync(int id);
+    /// <summary>New version PO-0001_R1, _R2 ... from any version; every version is kept</summary>
+    Task<PurchaseOrderDto?> ReviseAsync(int id, SavePurchaseOrderDto dto, string? createdBy);
+    /// <summary>Every version of the order, original first</summary>
+    Task<List<PurchaseOrderDto>> GetRevisionsAsync(int id);
 }
 
 /// <summary>Business-rule violation shown to the user (HTTP 400)</summary>
@@ -73,6 +77,11 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new PurchaseOrderException($"A {Label(po.Status)} purchase order can't be edited.");
         if (po.Items.Any(i => i.ReceivedQuantity > 0))
             throw new PurchaseOrderException("Goods have already been received against this order, so it can't be edited.");
+        if (po.SupersededById != null)
+            throw new PurchaseOrderException($"{po.PoNumber} is an older version and is kept unchanged. Use Revise to make a new version from it.");
+        var receivedVersion = await ReceivedVersionAsync(po);
+        if (receivedVersion != null)
+            throw new PurchaseOrderException($"Goods were received against {receivedVersion}, so the other versions are kept unchanged.");
 
         _db.PurchaseOrderItems.RemoveRange(po.Items);
         po.Items = new List<PurchaseOrderItem>();
@@ -95,12 +104,16 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     // ─────────────── receive goods -> inventory + purchase ───────────────
 
-    public async Task<PurchaseOrderDto?> ReceiveAsync(int id, ReceivePurchaseOrderDto dto)
+    public async Task<PurchaseOrderDto?> ReceiveAsync(int id, ReceivePurchaseOrderDto dto, string? receivedBy = null)
     {
         var po = await LoadAsync(id);
         if (po == null) return null;
         if (po.Status == PurchaseOrderStatus.Received || po.Status == PurchaseOrderStatus.Cancelled)
             throw new PurchaseOrderException($"Nothing can be received on a {Label(po.Status)} purchase order.");
+
+        var otherReceived = await ReceivedVersionAsync(po, excludeSelf: true);
+        if (otherReceived != null)
+            throw new PurchaseOrderException($"Goods were already received against {otherReceived}. Only one version of a purchase order can be received.");
 
         var lines = dto.Lines.Where(l => l.Quantity != 0).ToList();
         if (lines.Count == 0) throw new PurchaseOrderException("Enter the quantity received for at least one product.");
@@ -159,12 +172,12 @@ public class PurchaseOrderService : IPurchaseOrderService
             var receiptTotal = Math.Max(0, linesValue + extrasShare);
             var paid = Math.Min(Math.Max(0, dto.Paid), receiptTotal);
 
-            _db.Purchases.Add(new Purchase
+            var purchase = new Purchase
             {
                 PurchaseOrderId = po.Id,
                 SupplierName = po.SupplierName.Length > 100 ? po.SupplierName[..100] : po.SupplierName,
                 SupplierRef = po.PoNumber,
-                Reference = $"{po.PoNumber}-R{receiptNo}",
+                Reference = $"{po.PoNumber}-GR{receiptNo}",   // GR = goods received ("_R1" is a revision)
                 Date = date,
                 Status = "Received",
                 PaymentStatus = paid <= 0 ? "Unpaid" : paid >= receiptTotal ? "Paid" : "Partial",
@@ -177,7 +190,19 @@ public class PurchaseOrderService : IPurchaseOrderService
                 Items = purchaseItems,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-            });
+            };
+            _db.Purchases.Add(purchase);
+            await _db.SaveChangesAsync();
+
+            // the amount paid on delivery is the receipt's first payment record
+            if (paid > 0)
+                _db.PurchasePayments.Add(new PurchasePayment
+                {
+                    PurchaseId = purchase.Id, PurchaseOrderId = po.Id, Type = PurchasePaymentType.Payment, Amount = paid,
+                    Method = string.IsNullOrWhiteSpace(dto.PaymentMethod) ? "Cash" : dto.PaymentMethod.Trim(),
+                    Reference = $"{purchase.Reference}-P1", Date = date, Notes = "Paid on delivery", CreatedBy = receivedBy,
+                    CreatedAt = DateTime.UtcNow,
+                });
 
             po.Status = po.Items.All(i => i.ReceivedQuantity >= i.Quantity)
                 ? PurchaseOrderStatus.Received
@@ -219,9 +244,88 @@ public class PurchaseOrderService : IPurchaseOrderService
             throw new PurchaseOrderException("Goods have been received against this order, so it can't be deleted. Cancel it instead.");
         if (po.Status != PurchaseOrderStatus.Draft && po.Status != PurchaseOrderStatus.Cancelled && po.Status != PurchaseOrderStatus.Ordered)
             throw new PurchaseOrderException($"A {Label(po.Status)} purchase order can't be deleted.");
+        if (po.SupersededById != null)
+            throw new PurchaseOrderException($"{po.PoNumber} is an older version kept as history and can't be deleted. Cancel it instead.");
+        var previous = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.SupersededById == po.Id);
+        if (previous != null) previous.SupersededById = null;
         _db.PurchaseOrders.Remove(po);
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    // ─────────────── revisions ───────────────
+
+    /// <summary>
+    /// PO-0001 -> PO-0001_R1 -> PO-0001_R2: a new full version from any version (the supplier may come back on any of them).
+    /// Every version is kept unchanged and can still be ordered, received or cancelled on its own -
+    /// but once goods are received against one version the order can't be revised any more.
+    /// </summary>
+    public async Task<PurchaseOrderDto?> ReviseAsync(int id, SavePurchaseOrderDto dto, string? createdBy)
+    {
+        var source = await LoadAsync(id);
+        if (source == null) return null;
+        var received = await ReceivedVersionAsync(source);
+        if (received != null)
+            throw new PurchaseOrderException($"Goods were already received against {received}, so this order can't be revised any more.");
+
+        var rootId = source.RootPurchaseOrderId ?? source.Id;
+        var root = rootId == source.Id ? source : await _db.PurchaseOrders.FirstAsync(p => p.Id == rootId);
+        var family = await _db.PurchaseOrders.Where(p => p.Id == rootId || p.RootPurchaseOrderId == rootId).ToListAsync();
+        var revisionNo = family.Max(p => p.RevisionNo) + 1;
+        var suffix = $"_R{revisionNo}";
+        var baseNo = root.PoNumber.Length + suffix.Length > 30 ? root.PoNumber[..(30 - suffix.Length)] : root.PoNumber;
+
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var revision = new PurchaseOrder
+            {
+                PoNumber = baseNo + suffix,
+                RootPurchaseOrderId = rootId,
+                RevisionNo = revisionNo,
+                CreatedBy = createdBy,
+                CreatedAt = DateTime.UtcNow,
+            };
+            await ApplyAsync(revision, dto);
+            if (dto.Taxes == null) revision.TaxesJson = source.TaxesJson;
+            _db.PurchaseOrders.Add(revision);
+            await _db.SaveChangesAsync();
+
+            var newest = family.FirstOrDefault(p => p.SupersededById == null);
+            if (newest != null) newest.SupersededById = revision.Id;   // older versions stay exactly as they were
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return await GetByIdAsync(revision.Id);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task<List<PurchaseOrderDto>> GetRevisionsAsync(int id)
+    {
+        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
+        if (po == null) return new();
+        var rootId = po.RootPurchaseOrderId ?? po.Id;
+        var family = await _db.PurchaseOrders.Include(p => p.Items)
+            .Where(p => p.Id == rootId || p.RootPurchaseOrderId == rootId).OrderBy(p => p.RevisionNo).ToListAsync();
+        return await MapAsync(family);
+    }
+
+    /// <summary>PO number of the version of this order that has goods received (optionally ignoring this one), or null</summary>
+    private async Task<string?> ReceivedVersionAsync(PurchaseOrder po, bool excludeSelf = false)
+    {
+        var rootId = po.RootPurchaseOrderId ?? po.Id;
+        var ids = await _db.PurchaseOrders.Where(p => p.Id == rootId || p.RootPurchaseOrderId == rootId)
+            .Where(p => !excludeSelf || p.Id != po.Id).Select(p => p.Id).ToListAsync();
+        var receivedId = await _db.Purchases.Where(p => p.PurchaseOrderId != null && ids.Contains(p.PurchaseOrderId.Value))
+            .Select(p => p.PurchaseOrderId).FirstOrDefaultAsync();
+        if (receivedId == null)
+            receivedId = await _db.PurchaseOrderItems.Where(i => ids.Contains(i.PurchaseOrderId) && i.ReceivedQuantity > 0)
+                .Select(i => (int?)i.PurchaseOrderId).FirstOrDefaultAsync();
+        return receivedId == null ? null : await _db.PurchaseOrders.Where(p => p.Id == receivedId).Select(p => p.PoNumber).FirstAsync();
     }
 
     // ─────────────── helpers ───────────────
@@ -318,6 +422,9 @@ public class PurchaseOrderService : IPurchaseOrderService
         var receipts = await _db.Purchases.Include(p => p.Items)
             .Where(p => p.PurchaseOrderId != null && ids.Contains(p.PurchaseOrderId.Value))
             .OrderBy(p => p.Date).ThenBy(p => p.Id).ToListAsync();
+        var receiptIds = receipts.Select(r => r.Id).ToList();
+        var payments = await _db.PurchasePayments.Where(p => receiptIds.Contains(p.PurchaseId))
+            .OrderBy(p => p.Date).ThenBy(p => p.Id).ToListAsync();
         var productIds = orders.SelectMany(o => o.Items).Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Include(p => p.Images)
             .Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
@@ -341,6 +448,10 @@ public class PurchaseOrderService : IPurchaseOrderService
             Notes = po.Notes,
             CreatedBy = po.CreatedBy,
             CreatedAt = po.CreatedAt,
+            RootPurchaseOrderId = po.RootPurchaseOrderId,
+            RevisionNo = po.RevisionNo,
+            SupersededById = po.SupersededById,
+            PaidTotal = receipts.Where(r => r.PurchaseOrderId == po.Id).Sum(r => r.Paid),
             OrderedUnits = po.Items.Sum(i => i.Quantity),
             ReceivedUnits = po.Items.Sum(i => i.ReceivedQuantity),
             ReceivedValue = receipts.Where(r => r.PurchaseOrderId == po.Id).Sum(r => r.Total),
@@ -372,7 +483,9 @@ public class PurchaseOrderService : IPurchaseOrderService
                 Units = (int)(r.Items?.Sum(i => i.Quantity) ?? 0),
                 Total = r.Total,
                 Paid = r.Paid,
+                Due = r.Total - r.Paid,
                 PaymentStatus = r.PaymentStatus,
+                Payments = payments.Where(p => p.PurchaseId == r.Id).Select(PurchasePaymentRules.ToDto).ToList(),
             }).ToList(),
         }).ToList();
     }

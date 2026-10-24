@@ -62,6 +62,17 @@ public class PurchaseOrder : ITenantEntity
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /* ---- revisions: PO-0001 (original) -> PO-0001_R1 -> PO-0001_R2; every version is kept ---- */
+
+    /// <summary>The original order this is a revision of (null on the original itself)</summary>
+    public int? RootPurchaseOrderId { get; set; }
+
+    /// <summary>0 = original, 1 = _R1, 2 = _R2 ...</summary>
+    public int RevisionNo { get; set; }
+
+    /// <summary>Set when a newer revision exists (the older version is kept unchanged)</summary>
+    public int? SupersededById { get; set; }
+
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 
