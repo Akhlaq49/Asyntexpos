@@ -180,6 +180,8 @@ public class ProfitAndLossMonthDto
     public decimal GrossProfit { get; set; }
     public decimal PurchaseExpense { get; set; }
     public decimal SalesReturn { get; set; }
+    /// <summary>Expenses recorded under Finance > Expenses</summary>
+    public decimal OtherExpense { get; set; }
     public decimal TotalExpense { get; set; }
     public decimal NetProfit { get; set; }
 }
@@ -196,6 +198,8 @@ public class AnnualReportMonthDto
     public string Month { get; set; } = "";
     public decimal Sales { get; set; }
     public decimal Purchases { get; set; }
+    /// <summary>Expenses recorded under Finance > Expenses</summary>
+    public decimal Expenses { get; set; }
     public decimal Returns { get; set; }
     public decimal Profit { get; set; }
 }
