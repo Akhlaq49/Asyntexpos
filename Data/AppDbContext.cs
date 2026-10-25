@@ -48,6 +48,9 @@ public class AppDbContext : DbContext
     public DbSet<TermsConditions> TermsConditions => Set<TermsConditions>();
     public DbSet<TaxType> TaxTypes => Set<TaxType>();
     public DbSet<PurchasePayment> PurchasePayments => Set<PurchasePayment>();
+    public DbSet<PurchaseReturn> PurchaseReturns => Set<PurchaseReturn>();
+    public DbSet<PurchaseReturnItem> PurchaseReturnItems => Set<PurchaseReturnItem>();
+    public DbSet<PurchaseReturnRefund> PurchaseReturnRefunds => Set<PurchaseReturnRefund>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();
@@ -278,6 +281,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
         modelBuilder.Entity<TaxType>(e => e.HasIndex(t => new { t.TenantId, t.Name }).IsUnique());
         modelBuilder.Entity<PurchasePayment>(e => { e.HasIndex(p => p.PurchaseId); e.HasIndex(p => p.PurchaseOrderId); });
+        // goods sent back to the supplier from a received purchase
+        modelBuilder.Entity<PurchaseReturn>(e =>
+        {
+            e.HasIndex(r => new { r.TenantId, r.Reference }).IsUnique();
+            e.HasIndex(r => r.PurchaseId);
+            e.HasMany(r => r.Items).WithOne(i => i.PurchaseReturn).HasForeignKey(i => i.PurchaseReturnId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(r => r.Refunds).WithOne(i => i.PurchaseReturn).HasForeignKey(i => i.PurchaseReturnId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         modelBuilder.Entity<PurchaseOrder>(e =>
         {

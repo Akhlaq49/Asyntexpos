@@ -18,6 +18,7 @@ public static class SchemaUpgrades
         AddPurchaseOrderRevisionsAndPayments(db);
         BackfillQuotationReferences(db);
         AddSalesReturnSaleLink(db);
+        AddPurchaseReturns(db);
         // product colour and model
         if (!HasColumn(db, "Products", "Color"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");
@@ -57,6 +58,64 @@ CREATE TABLE IF NOT EXISTS `TermsConditions` (
             "SELECT t.`Id`, {0}, UTC_TIMESTAMP(6) FROM `Tenants` t " +
             "WHERE NOT EXISTS (SELECT 1 FROM `TermsConditions` tc WHERE tc.`TenantId` = t.`Id`)",
             Models.DefaultTermsConditions.Text.Trim());
+    }
+
+    /// <summary>Goods sent back to the supplier from a received purchase, their items and the money refunded</summary>
+    private static void AddPurchaseReturns(AppDbContext db)
+    {
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PurchaseReturns` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Reference` varchar(30) NOT NULL,
+  `PurchaseId` int NOT NULL,
+  `PurchaseReference` varchar(50) NOT NULL,
+  `PurchaseOrderId` int NULL,
+  `SupplierName` varchar(150) NOT NULL,
+  `ReturnDate` datetime(6) NOT NULL,
+  `Total` decimal(18,2) NOT NULL,
+  `Credited` decimal(18,2) NOT NULL,
+  `Refunded` decimal(18,2) NOT NULL,
+  `Notes` varchar(500) NULL,
+  `CreatedBy` varchar(150) NULL,
+  `CreatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Id`),
+  UNIQUE KEY `IX_PurchaseReturns_TenantId_Reference` (`TenantId`, `Reference`),
+  KEY `IX_PurchaseReturns_PurchaseId` (`PurchaseId`)
+) CHARACTER SET utf8mb4");
+
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PurchaseReturnItems` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `PurchaseReturnId` int NOT NULL,
+  `PurchaseItemId` int NOT NULL,
+  `ProductId` int NULL,
+  `ProductName` varchar(100) NOT NULL,
+  `Quantity` int NOT NULL,
+  `UnitCost` decimal(18,2) NOT NULL,
+  `Total` decimal(18,2) NOT NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_PurchaseReturnItems_PurchaseReturnId` (`PurchaseReturnId`),
+  CONSTRAINT `FK_PurchaseReturnItems_PurchaseReturns_PurchaseReturnId` FOREIGN KEY (`PurchaseReturnId`) REFERENCES `PurchaseReturns` (`Id`) ON DELETE CASCADE
+) CHARACTER SET utf8mb4");
+
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PurchaseReturnRefunds` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `PurchaseReturnId` int NOT NULL,
+  `Amount` decimal(18,2) NOT NULL,
+  `Method` varchar(30) NOT NULL,
+  `Reference` varchar(60) NULL,
+  `Date` datetime(6) NOT NULL,
+  `Notes` varchar(500) NULL,
+  `CreatedBy` varchar(150) NULL,
+  `CreatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_PurchaseReturnRefunds_PurchaseReturnId` (`PurchaseReturnId`),
+  CONSTRAINT `FK_PurchaseReturnRefunds_PurchaseReturns_PurchaseReturnId` FOREIGN KEY (`PurchaseReturnId`) REFERENCES `PurchaseReturns` (`Id`) ON DELETE CASCADE
+) CHARACTER SET utf8mb4");
     }
 
     /// <summary>Sales returns can belong to a POS sale; their lines point at the product and sale line</summary>

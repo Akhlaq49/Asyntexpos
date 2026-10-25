@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using ReactPosApi.Data;
 using ReactPosApi.DTOs;
 using ReactPosApi.Models;
+using ReactPosApi.Services;
 
 namespace ReactPosApi.Controllers;
 
@@ -39,7 +40,8 @@ public class TransactionsController : ControllerBase
         }));
 
         // supplier payments (out) and refunds (in)
-        var purchasePayments = await _db.PurchasePayments.Where(p => p.Date >= start && p.Date < end).ToListAsync();
+        // (return credits only lower what is owed - no money moves, so they are not transactions)
+        var purchasePayments = await _db.PurchasePayments.Where(p => p.Date >= start && p.Date < end && p.Method != PurchasePaymentRules.ReturnCredit).ToListAsync();
         var purchaseIds = purchasePayments.Select(p => p.PurchaseId).Distinct().ToList();
         var purchases = await _db.Purchases.Where(p => purchaseIds.Contains(p.Id))
             .Select(p => new { p.Id, p.Reference, p.SupplierName }).ToDictionaryAsync(p => p.Id);
@@ -57,6 +59,18 @@ public class TransactionsController : ControllerBase
                 PurchaseOrderNo = p.PurchaseOrderId != null && poNumbers.TryGetValue(p.PurchaseOrderId.Value, out var no) ? no : null,
                 Notes = p.Notes, CreatedBy = p.CreatedBy,
             };
+        }));
+
+        // money back from suppliers for goods returned (in)
+        var prRefunds = await (from f in _db.PurchaseReturnRefunds
+                               join r in _db.PurchaseReturns on f.PurchaseReturnId equals r.Id
+                               where f.Date >= start && f.Date < end
+                               select new { f, r.Reference, r.PurchaseReference, r.SupplierName, r.PurchaseOrderId }).ToListAsync();
+        list.AddRange(prRefunds.Select(x => new TransactionDto
+        {
+            Key = $"PRR-{x.f.Id}", Date = x.f.Date, Kind = "Supplier refund", Direction = "In", Amount = x.f.Amount, Method = x.f.Method,
+            Reference = x.f.Reference ?? x.Reference, Document = x.Reference, Party = x.SupplierName, PurchaseOrderId = x.PurchaseOrderId,
+            Notes = string.IsNullOrWhiteSpace(x.f.Notes) ? $"Goods returned from {x.PurchaseReference}" : x.f.Notes, CreatedBy = x.f.CreatedBy,
         }));
 
         // refunds to customers on sales returns (out)

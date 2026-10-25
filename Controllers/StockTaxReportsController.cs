@@ -64,6 +64,15 @@ public class StockTaxReportsController : ControllerBase
         rows.AddRange(returnLines.Select(l => new StockMovement(l.ReturnDate, l.ProductId, names.TryGetValue(l.ProductId, out var n) ? n.Name : l.ProductName,
             names.TryGetValue(l.ProductId, out var n2) ? n2.Sku : null, "Sale return", l.Reference, l.CustomerName, l.Quantity, 0)));
 
+        // goods sent back to suppliers
+        var prLines = await (from i in _db.PurchaseReturnItems
+                             join r in _db.PurchaseReturns on i.PurchaseReturnId equals r.Id
+                             where i.ProductId != null && r.ReturnDate >= start && r.ReturnDate < end && (productId == null || i.ProductId == productId)
+                             select new { r.ReturnDate, ProductId = i.ProductId!.Value, i.ProductName, i.Quantity, r.Reference, r.SupplierName })
+                            .ToListAsync();
+        rows.AddRange(prLines.Select(l => new StockMovement(l.ReturnDate, l.ProductId, names.TryGetValue(l.ProductId, out var n) ? n.Name : l.ProductName,
+            names.TryGetValue(l.ProductId, out var n2) ? n2.Sku : null, "Purchase return", l.Reference, l.SupplierName, 0, l.Quantity)));
+
         return Ok(new
         {
             movements = rows.OrderByDescending(r => r.Date).ThenBy(r => r.ProductName).ToList(),

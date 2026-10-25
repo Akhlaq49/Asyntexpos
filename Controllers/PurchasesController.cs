@@ -172,6 +172,11 @@ public class PurchasesController : ControllerBase
             if (purchase.PurchaseOrderId.HasValue)
                 return Conflict(new { error = "This purchase was created by receiving a purchase order. Manage it from Purchase Orders." });
 
+            // goods from this purchase have been sent back: changing it would break the returns' quantities and credits
+            var returnRefs = await _context.PurchaseReturns.Where(r => r.PurchaseId == purchase.Id).Select(r => r.Reference).ToListAsync();
+            if (returnRefs.Count > 0)
+                return Conflict(new { error = $"Goods from this purchase have been returned ({string.Join(", ", returnRefs)}). Delete the return(s) first." });
+
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
@@ -296,6 +301,11 @@ public class PurchasesController : ControllerBase
 
             if (purchase.PurchaseOrderId.HasValue)
                 return Conflict(new { error = "This purchase was created by receiving a purchase order. Manage it from Purchase Orders." });
+
+            // goods from this purchase have been sent back: changing it would break the returns' quantities and credits
+            var returnRefs = await _context.PurchaseReturns.Where(r => r.PurchaseId == purchase.Id).Select(r => r.Reference).ToListAsync();
+            if (returnRefs.Count > 0)
+                return Conflict(new { error = $"Goods from this purchase have been returned ({string.Join(", ", returnRefs)}). Delete the return(s) first." });
 
             // Revert inventory if purchase was Received
             if (purchase.Status == "Received" && purchase.Items != null)

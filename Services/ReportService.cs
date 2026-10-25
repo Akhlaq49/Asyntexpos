@@ -256,6 +256,7 @@ public class ReportService : IReportService
         var sales = await _db.Sales.Include(s => s.Items).ToListAsync();
         var purchases = await _db.Purchases.ToListAsync();
         var returns = await _db.SalesReturns.ToListAsync();
+        var purchaseReturns = await _db.PurchaseReturns.ToListAsync();
         var expenses = await _db.Expenses.ToListAsync();
 
         var months = new List<ProfitAndLossMonthDto>();
@@ -271,14 +272,16 @@ public class ReportService : IReportService
             var purchaseTotal = monthPurchases.Sum(p => p.Total);
             var returnTotal = monthReturns.Sum(r => r.GrandTotal);
             var expenseTotal = expenses.Where(e => e.Date >= current && e.Date < monthEnd).Sum(e => e.Amount);
+            // goods sent back to suppliers: their cost no longer counts as a purchase
+            var purchaseReturnTotal = purchaseReturns.Where(r => r.ReturnDate >= current && r.ReturnDate < monthEnd).Sum(r => r.Total);
 
             months.Add(new ProfitAndLossMonthDto
             {
                 Month = current.ToString("MMM yyyy"), Sales = salesTotal, Service = 0,
-                PurchaseReturn = 0, GrossProfit = salesTotal,
+                PurchaseReturn = purchaseReturnTotal, GrossProfit = salesTotal + purchaseReturnTotal,
                 PurchaseExpense = purchaseTotal, SalesReturn = returnTotal, OtherExpense = expenseTotal,
                 TotalExpense = purchaseTotal + returnTotal + expenseTotal,
-                NetProfit = salesTotal - purchaseTotal - returnTotal - expenseTotal
+                NetProfit = salesTotal + purchaseReturnTotal - purchaseTotal - returnTotal - expenseTotal
             });
             current = monthEnd;
         }
@@ -290,6 +293,7 @@ public class ReportService : IReportService
         var sales = await _db.Sales.ToListAsync();
         var purchases = await _db.Purchases.ToListAsync();
         var returns = await _db.SalesReturns.ToListAsync();
+        var purchaseReturns = await _db.PurchaseReturns.ToListAsync();
         var expenses = await _db.Expenses.ToListAsync();
 
         var months = new List<AnnualReportMonthDto>();
@@ -305,7 +309,9 @@ public class ReportService : IReportService
     })
     .Where(x => x.ParsedDate >= start && x.ParsedDate < end)
     .Sum(x => x.Sale.GrandTotal);
-            var monthPurchases = purchases.Where(p => p.Date >= start && p.Date < end).Sum(p => p.Total);
+            // purchases net of goods sent back to suppliers
+            var monthPurchases = purchases.Where(p => p.Date >= start && p.Date < end).Sum(p => p.Total)
+                - purchaseReturns.Where(r => r.ReturnDate >= start && r.ReturnDate < end).Sum(r => r.Total);
             var monthReturns = returns.Where(r => r.ReturnDate >= start && r.ReturnDate < end).Sum(r => r.GrandTotal);
 
             var monthExpenses = expenses.Where(e => e.Date >= start && e.Date < end).Sum(e => e.Amount);

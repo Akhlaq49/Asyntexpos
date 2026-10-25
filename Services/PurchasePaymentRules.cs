@@ -8,6 +8,12 @@ public static class PurchasePaymentRules
 {
     public static readonly string[] Methods = { "Cash", "Online", "Bank Transfer", "Cheque", "Card", "Other" };
 
+    /// <summary>Method of the record that deducts a purchase return from what is owed (no money moves)</summary>
+    public const string ReturnCredit = "Return credit";
+
+    /// <summary>Payments - refunds, counting only money that actually moved (not return credits)</summary>
+    public static decimal CashPaid(IEnumerable<PurchasePayment> records) => NetPaid(records.Where(r => r.Method != ReturnCredit));
+
     /// <summary>Payments - refunds</summary>
     public static decimal NetPaid(IEnumerable<PurchasePayment> records) =>
         records.Sum(r => r.Type == PurchasePaymentType.Refund ? -r.Amount : r.Amount);

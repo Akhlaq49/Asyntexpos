@@ -45,7 +45,7 @@ public class PurchasePaymentsController : ControllerBase
         if (amount <= 0) return BadRequest(new { message = "Enter an amount greater than 0." });
 
         var records = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).ToListAsync();
-        var netPaid = PurchasePaymentRules.NetPaid(records);
+        var netPaid = PurchasePaymentRules.CashPaid(records);   // return credits are not money that can come back
         if (type == PurchasePaymentType.Refund && amount > netPaid)
             return BadRequest(new { message = $"Only Rs {netPaid:N2} has been paid on {purchase.Reference}, so at most that much can come back." });
 
