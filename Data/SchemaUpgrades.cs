@@ -19,6 +19,9 @@ public static class SchemaUpgrades
         BackfillQuotationReferences(db);
         AddSalesReturnSaleLink(db);
         AddPurchaseReturns(db);
+        // purchase orders raised for a converted quotation (customer order)
+        if (!HasColumn(db, "PurchaseOrders", "QuotationId"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `PurchaseOrders` ADD COLUMN `QuotationId` int NULL, ADD COLUMN `QuotationReference` varchar(50) NULL, ADD COLUMN `SaleReference` varchar(50) NULL, ADD INDEX `IX_PurchaseOrders_QuotationId` (`QuotationId`)");
         // owner's capital / drawings, loans, fixed assets (for the balance sheet)
         db.Database.ExecuteSqlRaw(@"
 CREATE TABLE IF NOT EXISTS `FinanceEntries` (

@@ -92,6 +92,10 @@ public class PurchaseOrderDto
     public int? SupersededById { get; set; }
     /// <summary>Paid to the supplier across all receipts (payments - refunds)</summary>
     public decimal PaidTotal { get; set; }
+    /// <summary>The converted quotation / sale this order buys goods for (null = stock order)</summary>
+    public int? QuotationId { get; set; }
+    public string? QuotationReference { get; set; }
+    public string? SaleReference { get; set; }
 }
 
 public class SavePurchaseOrderItemDto
@@ -119,6 +123,8 @@ public class SavePurchaseOrderDto
     /// <summary>When sent, OrderTax is their total (base = items total - discount)</summary>
     public List<AppliedTaxDto>? Taxes { get; set; }
     public List<SavePurchaseOrderItemDto> Items { get; set; } = new();
+    /// <summary>Create only: the converted quotation this order buys goods for</summary>
+    public int? QuotationId { get; set; }
 }
 
 public class ReceivePurchaseOrderLineDto

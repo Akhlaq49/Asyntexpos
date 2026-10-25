@@ -73,6 +73,13 @@ public class PurchaseOrder : ITenantEntity
     /// <summary>Set when a newer revision exists (the older version is kept unchanged)</summary>
     public int? SupersededById { get; set; }
 
+    /* ---- bought for a customer's order: the converted quotation (and its sale) this order supplies ---- */
+    public int? QuotationId { get; set; }
+    [MaxLength(50)]
+    public string? QuotationReference { get; set; }
+    [MaxLength(50)]
+    public string? SaleReference { get; set; }
+
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 

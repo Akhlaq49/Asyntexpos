@@ -59,6 +59,17 @@ public class PurchaseOrderService : IPurchaseOrderService
             CreatedBy = createdBy,
             CreatedAt = DateTime.UtcNow,
         };
+        if (dto.QuotationId != null)
+        {
+            // goods bought for a customer's order: only a quotation that became a sale
+            var quotation = await _db.Quotations.FirstOrDefaultAsync(q => q.Id == dto.QuotationId)
+                ?? throw new PurchaseOrderException("That quotation no longer exists.");
+            if (quotation.SaleId == null)
+                throw new PurchaseOrderException($"{quotation.Reference} hasn't been converted to a sale yet - convert it first.");
+            po.QuotationId = quotation.Id;
+            po.QuotationReference = quotation.Reference;
+            po.SaleReference = quotation.SaleReference;
+        }
         await ApplyAsync(po, dto);
         _db.PurchaseOrders.Add(po);
         await _db.SaveChangesAsync();
@@ -394,6 +405,9 @@ public class PurchaseOrderService : IPurchaseOrderService
             RevisionNo = po.RevisionNo,
             SupersededById = po.SupersededById,
             PaidTotal = receipts.Where(r => r.PurchaseOrderId == po.Id).Sum(r => r.Paid),
+            QuotationId = po.QuotationId,
+            QuotationReference = po.QuotationReference,
+            SaleReference = po.SaleReference,
             OrderedUnits = po.Items.Sum(i => i.Quantity),
             ReceivedUnits = po.Items.Sum(i => i.ReceivedQuantity),
             ReceivedValue = receipts.Where(r => r.PurchaseOrderId == po.Id).Sum(r => r.Total),
