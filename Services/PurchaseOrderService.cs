@@ -66,6 +66,11 @@ public class PurchaseOrderService : IPurchaseOrderService
                 ?? throw new PurchaseOrderException("That quotation no longer exists.");
             if (quotation.SaleId == null)
                 throw new PurchaseOrderException($"{quotation.Reference} hasn't been converted to a sale yet - convert it first.");
+            // one purchase order per quotation (a cancelled one can be replaced)
+            var existing = await _db.PurchaseOrders.Where(o => o.QuotationId == quotation.Id && o.Status != PurchaseOrderStatus.Cancelled)
+                .Select(o => o.PoNumber).FirstOrDefaultAsync();
+            if (existing != null)
+                throw new PurchaseOrderException($"{quotation.Reference} already has purchase order {existing} - change that order instead.");
             po.QuotationId = quotation.Id;
             po.QuotationReference = quotation.Reference;
             po.SaleReference = quotation.SaleReference;
