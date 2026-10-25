@@ -94,7 +94,7 @@ public class ProductService : IProductService
         entity.Category = dto.Category ?? entity.Category;
         entity.ProductName = dto.ProductName ?? entity.ProductName;
         entity.Quantity = dto.Quantity ?? entity.Quantity;
-        entity.QuantityAlert = dto.QuantityAlert ?? entity.QuantityAlert;
+        entity.QuantityAlert = Math.Max(0, dto.QuantityAlert ?? entity.QuantityAlert);   // never negative
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -145,7 +145,7 @@ public class ProductService : IProductService
             TaxesJson = form.TaxesJson != null ? AppliedTaxes.Serialize(ProductTaxes(form)) : null,
             DiscountType = form.DiscountType,
             DiscountValue = form.DiscountValue,
-            QuantityAlert = form.QuantityAlert,
+            QuantityAlert = Math.Max(0, form.QuantityAlert),   // never negative
             Warranty = form.Warranty,
             Manufacturer = form.Manufacturer,
             ManufacturedDate = form.ManufacturedDate,
@@ -247,7 +247,7 @@ public class ProductService : IProductService
             else entity.Tax = form.Tax;
             entity.DiscountType = form.DiscountType;
             entity.DiscountValue = form.DiscountValue;
-            entity.QuantityAlert = form.QuantityAlert;
+            entity.QuantityAlert = Math.Max(0, form.QuantityAlert);   // never negative
             entity.Warranty = form.Warranty;
             entity.Manufacturer = form.Manufacturer ?? entity.Manufacturer;
             entity.ManufacturedDate = form.ManufacturedDate ?? entity.ManufacturedDate;
