@@ -51,6 +51,7 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseReturn> PurchaseReturns => Set<PurchaseReturn>();
     public DbSet<PurchaseReturnItem> PurchaseReturnItems => Set<PurchaseReturnItem>();
     public DbSet<PurchaseReturnRefund> PurchaseReturnRefunds => Set<PurchaseReturnRefund>();
+    public DbSet<FinanceEntry> FinanceEntries => Set<FinanceEntry>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();

@@ -19,6 +19,23 @@ public static class SchemaUpgrades
         BackfillQuotationReferences(db);
         AddSalesReturnSaleLink(db);
         AddPurchaseReturns(db);
+        // owner's capital / drawings, loans, fixed assets (for the balance sheet)
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `FinanceEntries` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Type` varchar(30) NOT NULL,
+  `Name` varchar(150) NOT NULL,
+  `Amount` decimal(18,2) NOT NULL,
+  `Method` varchar(30) NOT NULL,
+  `Date` datetime(6) NOT NULL,
+  `Reference` varchar(60) NULL,
+  `Notes` varchar(500) NULL,
+  `CreatedBy` varchar(150) NULL,
+  `CreatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_FinanceEntries_TenantId_Type` (`TenantId`, `Type`)
+) CHARACTER SET utf8mb4");
         // product colour and model
         if (!HasColumn(db, "Products", "Color"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Products` ADD COLUMN `Color` varchar(100) NULL");

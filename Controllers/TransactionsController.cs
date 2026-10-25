@@ -10,7 +10,8 @@ namespace ReactPosApi.Controllers;
 
 /// <summary>
 /// Every money movement in one list: payments received on sales (in), payments to suppliers (out),
-/// refunds from suppliers (in) and expenses (out).
+/// refunds from suppliers (in), refunds to customers (out), expenses (out) and the owner's capital,
+/// drawings, loans and fixed-asset purchases.
 /// </summary>
 [Authorize]
 [ApiController]
@@ -20,6 +21,9 @@ public class TransactionsController : ControllerBase
     private readonly AppDbContext _db;
     public TransactionsController(AppDbContext db) => _db = db;
 
+    /// <summary>Stock the owner brought in (opening stock / Manage Stock) is booked as a "paid purchase" - no money moved</summary>
+    public static readonly string[] InternalSuppliers = { "Opening Stock", "Stock Entry" };
+
     /// <param name="from">yyyy-MM-dd, inclusive (optional)</param>
     /// <param name="to">yyyy-MM-dd, inclusive (optional)</param>
     [HttpGet]
@@ -27,10 +31,19 @@ public class TransactionsController : ControllerBase
     {
         var start = from?.Date ?? DateTime.MinValue;
         var end = to.HasValue ? to.Value.Date.AddDays(1) : DateTime.MaxValue;
+        var ordered = (await LoadAsync(_db, start, end)).OrderByDescending(t => t.Date).ThenByDescending(t => t.Key).ToList();
+        var moneyIn = ordered.Where(t => t.Direction == "In").Sum(t => t.Amount);
+        var moneyOut = ordered.Where(t => t.Direction == "Out").Sum(t => t.Amount);
+        return new TransactionsSummaryDto { MoneyIn = moneyIn, MoneyOut = moneyOut, Net = moneyIn - moneyOut, Transactions = ordered };
+    }
+
+    /// <summary>All money movements with start &lt;= date &lt; end (also used by the balance sheet for cash)</summary>
+    public static async Task<List<TransactionDto>> LoadAsync(AppDbContext db, DateTime start, DateTime end)
+    {
         var list = new List<TransactionDto>();
 
         // sale payments (money in)
-        var salePayments = await _db.SalePayments.Include(p => p.Sale)
+        var salePayments = await db.SalePayments.Include(p => p.Sale)
             .Where(p => p.PaymentDate >= start && p.PaymentDate < end).ToListAsync();
         list.AddRange(salePayments.Select(p => new TransactionDto
         {
@@ -40,13 +53,15 @@ public class TransactionsController : ControllerBase
         }));
 
         // supplier payments (out) and refunds (in)
-        // (return credits only lower what is owed - no money moves, so they are not transactions)
-        var purchasePayments = await _db.PurchasePayments.Where(p => p.Date >= start && p.Date < end && p.Method != PurchasePaymentRules.ReturnCredit).ToListAsync();
+        // (return credits only lower what is owed, and stock the owner brought in wasn't paid for - neither is a money movement)
+        var internalIds = await db.Purchases.Where(p => InternalSuppliers.Contains(p.SupplierName)).Select(p => p.Id).ToListAsync();
+        var purchasePayments = await db.PurchasePayments
+            .Where(p => p.Date >= start && p.Date < end && p.Method != PurchasePaymentRules.ReturnCredit && !internalIds.Contains(p.PurchaseId)).ToListAsync();
         var purchaseIds = purchasePayments.Select(p => p.PurchaseId).Distinct().ToList();
-        var purchases = await _db.Purchases.Where(p => purchaseIds.Contains(p.Id))
+        var purchases = await db.Purchases.Where(p => purchaseIds.Contains(p.Id))
             .Select(p => new { p.Id, p.Reference, p.SupplierName }).ToDictionaryAsync(p => p.Id);
         var poIds = purchasePayments.Where(p => p.PurchaseOrderId != null).Select(p => p.PurchaseOrderId!.Value).Distinct().ToList();
-        var poNumbers = await _db.PurchaseOrders.Where(p => poIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.PoNumber);
+        var poNumbers = await db.PurchaseOrders.Where(p => poIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.PoNumber);
         list.AddRange(purchasePayments.Select(p =>
         {
             purchases.TryGetValue(p.PurchaseId, out var purchase);
@@ -62,8 +77,8 @@ public class TransactionsController : ControllerBase
         }));
 
         // money back from suppliers for goods returned (in)
-        var prRefunds = await (from f in _db.PurchaseReturnRefunds
-                               join r in _db.PurchaseReturns on f.PurchaseReturnId equals r.Id
+        var prRefunds = await (from f in db.PurchaseReturnRefunds
+                               join r in db.PurchaseReturns on f.PurchaseReturnId equals r.Id
                                where f.Date >= start && f.Date < end
                                select new { f, r.Reference, r.PurchaseReference, r.SupplierName, r.PurchaseOrderId }).ToListAsync();
         list.AddRange(prRefunds.Select(x => new TransactionDto
@@ -74,7 +89,7 @@ public class TransactionsController : ControllerBase
         }));
 
         // refunds to customers on sales returns (out)
-        var returns = await _db.SalesReturns.Where(r => r.Paid > 0 && r.ReturnDate >= start && r.ReturnDate < end).ToListAsync();
+        var returns = await db.SalesReturns.Where(r => r.Paid > 0 && r.ReturnDate >= start && r.ReturnDate < end).ToListAsync();
         list.AddRange(returns.Select(r => new TransactionDto
         {
             Key = $"SR-{r.Id}", Date = r.ReturnDate, Kind = "Customer refund", Direction = "Out", Amount = r.Paid,
@@ -83,7 +98,7 @@ public class TransactionsController : ControllerBase
         }));
 
         // expenses (out)
-        var expenses = await _db.Expenses.Include(e => e.ExpenseCategory)
+        var expenses = await db.Expenses.Include(e => e.ExpenseCategory)
             .Where(e => e.Date >= start && e.Date < end).ToListAsync();
         list.AddRange(expenses.Select(e => new TransactionDto
         {
@@ -92,9 +107,14 @@ public class TransactionsController : ControllerBase
             Notes = e.Description,
         }));
 
-        var ordered = list.OrderByDescending(t => t.Date).ThenByDescending(t => t.Key).ToList();
-        var moneyIn = ordered.Where(t => t.Direction == "In").Sum(t => t.Amount);
-        var moneyOut = ordered.Where(t => t.Direction == "Out").Sum(t => t.Amount);
-        return new TransactionsSummaryDto { MoneyIn = moneyIn, MoneyOut = moneyOut, Net = moneyIn - moneyOut, Transactions = ordered };
+        // owner's capital / drawings, loans, fixed-asset purchases (depreciation moves no money)
+        var finance = await db.FinanceEntries.Where(f => f.Date >= start && f.Date < end && f.Type != FinanceEntryType.Depreciation).ToListAsync();
+        list.AddRange(finance.Select(f => new TransactionDto
+        {
+            Key = $"FE-{f.Id}", Date = f.Date, Kind = FinanceEntryType.Label(f.Type), Direction = FinanceEntryType.Direction(f.Type) ?? "Out",
+            Amount = f.Amount, Method = f.Method, Reference = f.Reference, Document = f.Reference, Party = f.Name, Notes = f.Notes, CreatedBy = f.CreatedBy,
+        }));
+
+        return list;
     }
 }
