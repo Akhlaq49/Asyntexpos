@@ -43,15 +43,6 @@ public class PurchaseOrdersController : ControllerBase
     public Task<ActionResult<PurchaseOrderDto>> Receive(int id, [FromBody] ReceivePurchaseOrderDto dto)
         => Run(() => _service.ReceiveAsync(id, dto, User.FindFirstValue(ClaimTypes.Name)));
 
-    /// <summary>New version (PO-0001_R1, _R2 ...) from this version; every version is kept</summary>
-    [HttpPost("{id}/revise")]
-    public Task<ActionResult<PurchaseOrderDto>> Revise(int id, [FromBody] SavePurchaseOrderDto dto)
-        => Run(() => _service.ReviseAsync(id, dto, User.FindFirstValue(ClaimTypes.Name)));
-
-    /// <summary>All versions of the order, original first</summary>
-    [HttpGet("{id}/revisions")]
-    public async Task<ActionResult<List<PurchaseOrderDto>>> Revisions(int id) => Ok(await _service.GetRevisionsAsync(id));
-
     [HttpPost("{id}/cancel")]
     public Task<ActionResult<PurchaseOrderDto>> Cancel(int id)
         => Run(() => _service.CancelAsync(id));

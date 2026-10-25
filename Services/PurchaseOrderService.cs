@@ -15,10 +15,6 @@ public interface IPurchaseOrderService
     Task<PurchaseOrderDto?> ReceiveAsync(int id, ReceivePurchaseOrderDto dto, string? receivedBy = null);
     Task<PurchaseOrderDto?> CancelAsync(int id);
     Task<bool> DeleteAsync(int id);
-    /// <summary>New version PO-0001_R1, _R2 ... from any version; every version is kept</summary>
-    Task<PurchaseOrderDto?> ReviseAsync(int id, SavePurchaseOrderDto dto, string? createdBy);
-    /// <summary>Every version of the order, original first</summary>
-    Task<List<PurchaseOrderDto>> GetRevisionsAsync(int id);
 }
 
 /// <summary>Business-rule violation shown to the user (HTTP 400)</summary>
@@ -253,66 +249,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         return true;
     }
 
-    // ─────────────── revisions ───────────────
-
-    /// <summary>
-    /// PO-0001 -> PO-0001_R1 -> PO-0001_R2: a new full version from any version (the supplier may come back on any of them).
-    /// Every version is kept unchanged and can still be ordered, received or cancelled on its own -
-    /// but once goods are received against one version the order can't be revised any more.
-    /// </summary>
-    public async Task<PurchaseOrderDto?> ReviseAsync(int id, SavePurchaseOrderDto dto, string? createdBy)
-    {
-        var source = await LoadAsync(id);
-        if (source == null) return null;
-        var received = await ReceivedVersionAsync(source);
-        if (received != null)
-            throw new PurchaseOrderException($"Goods were already received against {received}, so this order can't be revised any more.");
-
-        var rootId = source.RootPurchaseOrderId ?? source.Id;
-        var root = rootId == source.Id ? source : await _db.PurchaseOrders.FirstAsync(p => p.Id == rootId);
-        var family = await _db.PurchaseOrders.Where(p => p.Id == rootId || p.RootPurchaseOrderId == rootId).ToListAsync();
-        var revisionNo = family.Max(p => p.RevisionNo) + 1;
-        var suffix = $"_R{revisionNo}";
-        var baseNo = root.PoNumber.Length + suffix.Length > 30 ? root.PoNumber[..(30 - suffix.Length)] : root.PoNumber;
-
-        using var transaction = await _db.Database.BeginTransactionAsync();
-        try
-        {
-            var revision = new PurchaseOrder
-            {
-                PoNumber = baseNo + suffix,
-                RootPurchaseOrderId = rootId,
-                RevisionNo = revisionNo,
-                CreatedBy = createdBy,
-                CreatedAt = DateTime.UtcNow,
-            };
-            await ApplyAsync(revision, dto, source.ExpectedDate);   // an unchanged (already passed) expected date may be kept
-            if (dto.Taxes == null) revision.TaxesJson = source.TaxesJson;
-            _db.PurchaseOrders.Add(revision);
-            await _db.SaveChangesAsync();
-
-            var newest = family.FirstOrDefault(p => p.SupersededById == null);
-            if (newest != null) newest.SupersededById = revision.Id;   // older versions stay exactly as they were
-            await _db.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return await GetByIdAsync(revision.Id);
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
-    }
-
-    public async Task<List<PurchaseOrderDto>> GetRevisionsAsync(int id)
-    {
-        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
-        if (po == null) return new();
-        var rootId = po.RootPurchaseOrderId ?? po.Id;
-        var family = await _db.PurchaseOrders.Include(p => p.Items)
-            .Where(p => p.Id == rootId || p.RootPurchaseOrderId == rootId).OrderBy(p => p.RevisionNo).ToListAsync();
-        return await MapAsync(family);
-    }
+    // Revisions (PO-0001_R1 ...) are switched off; orders revised earlier keep their links,
+    // so only one version of such an order can be received.
 
     /// <summary>PO number of the version of this order that has goods received (optionally ignoring this one), or null</summary>
     private async Task<string?> ReceivedVersionAsync(PurchaseOrder po, bool excludeSelf = false)
