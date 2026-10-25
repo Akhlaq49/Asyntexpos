@@ -85,7 +85,7 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         _db.PurchaseOrderItems.RemoveRange(po.Items);
         po.Items = new List<PurchaseOrderItem>();
-        await ApplyAsync(po, dto);
+        await ApplyAsync(po, dto, po.ExpectedDate);
         await _db.SaveChangesAsync();
         return await GetByIdAsync(po.Id);
     }
@@ -286,7 +286,7 @@ public class PurchaseOrderService : IPurchaseOrderService
                 CreatedBy = createdBy,
                 CreatedAt = DateTime.UtcNow,
             };
-            await ApplyAsync(revision, dto);
+            await ApplyAsync(revision, dto, source.ExpectedDate);   // an unchanged (already passed) expected date may be kept
             if (dto.Taxes == null) revision.TaxesJson = source.TaxesJson;
             _db.PurchaseOrders.Add(revision);
             await _db.SaveChangesAsync();
@@ -333,8 +333,12 @@ public class PurchaseOrderService : IPurchaseOrderService
     private Task<PurchaseOrder?> LoadAsync(int id) =>
         _db.PurchaseOrders.Include(p => p.Items).FirstOrDefaultAsync(p => p.Id == id);
 
-    private async Task ApplyAsync(PurchaseOrder po, SavePurchaseOrderDto dto)
+    /// <param name="previousExpected">the order's current expected date: kept as it is even if it has passed</param>
+    private async Task ApplyAsync(PurchaseOrder po, SavePurchaseOrderDto dto, DateTime? previousExpected = null)
     {
+        // expected delivery: today or later (a date that already passed can only stay if it isn't changed)
+        if (dto.ExpectedDate.HasValue && dto.ExpectedDate.Value.Date < DateTime.UtcNow.Date && dto.ExpectedDate.Value.Date != previousExpected?.Date)
+            throw new PurchaseOrderException("The expected delivery date can't be in the past - choose today or a later date.");
         if (string.IsNullOrWhiteSpace(dto.SupplierName) && dto.SupplierId == null)
             throw new PurchaseOrderException("Select a supplier.");
         if (dto.Items == null || dto.Items.Count == 0)
