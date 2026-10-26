@@ -22,13 +22,7 @@ public class AuthService : IAuthService
         _formFieldConfigService = formFieldConfigService;
     }
 
-    /// <summary>Roles allowed to sign in via <see cref="LoginAsync"/> — align with <c>UserService</c> staff roles.</summary>
-    private static readonly string[] LoginRoles =
-    {
-        "SuperAdmin", "Admin", "Manager", "Salesman", "Supervisor",
-        "Store Keeper", "Delivery Biker", "Maintenance", "Quality Analyst",
-        "Accountant", "Purchase", "User"
-    };
+    // Who may sign in: a staff role of the user's company (Roles table) or SuperAdmin - see RoleCatalog
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
     {
@@ -97,12 +91,14 @@ public class AuthService : IAuthService
             throw new ArgumentException("Email and password are required.");
 
         // Bypass tenant query filter — login must search across all tenants
-        var party = await _db.Parties
+        var email = dto.Email.ToLower();
+        var candidates = await _db.Parties
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(p => p.Email == dto.Email.ToLower()
-                                   && p.Role != null
-                                   && LoginRoles.Contains(p.Role)
-                                   && p.PasswordHash != null);
+            .Where(p => p.Email == email && p.Role != null && p.PasswordHash != null)
+            .ToListAsync();
+        Party? party = null;
+        foreach (var c in candidates)
+            if ((await RoleCatalog.UserRoleNamesAsync(_db, c.TenantId)).Contains(c.Role)) { party = c; break; }
         if (party == null)
             throw new UnauthorizedAccessException("Invalid email or password.");
 

@@ -10,19 +10,12 @@ public class UserService : IUserService
     private readonly AppDbContext _db;
     private readonly IFormFieldConfigService _formFieldConfigService;
 
-    /// <summary>
-    /// Must stay in sync with <c>Users.tsx</c> role dropdown plus <c>SuperAdmin</c> (tenant owners).
-    /// </summary>
-    private static readonly string[] UserRoles =
-    {
-        "SuperAdmin", "Admin", "Manager", "Salesman", "Supervisor",
-        "Store Keeper", "Delivery Biker", "Maintenance", "Quality Analyst",
-        "Accountant", "Purchase", "User"
-    };
+    /// <summary>Staff roles of the current company (Roles table, plus SuperAdmin = the owner)</summary>
+    private Task<List<string>> UserRolesAsync() => RoleCatalog.UserRoleNamesAsync(_db, _db.CurrentTenantId);
 
-    private static bool IsUserRole(string? role)
+    private async Task<bool> IsUserRoleAsync(string? role)
         => !string.IsNullOrWhiteSpace(role)
-           && UserRoles.Contains(role.Trim(), StringComparer.OrdinalIgnoreCase);
+           && (await UserRolesAsync()).Contains(role.Trim(), StringComparer.OrdinalIgnoreCase);
 
     public UserService(AppDbContext db, IFormFieldConfigService formFieldConfigService)
     {
@@ -33,8 +26,9 @@ public class UserService : IUserService
     public async Task<PagedResult<UserDto>> GetAllPagedAsync(PaginationQuery query)
     {
         // Filter by valid user roles (roles are normalized during create/update, so exact match is safe)
+        var userRoles = await UserRolesAsync();
         var q = _db.Parties
-            .Where(p => p.Role != null && UserRoles.Contains(p.Role))
+            .Where(p => p.Role != null && userRoles.Contains(p.Role))
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(query.Search))
@@ -74,9 +68,10 @@ public class UserService : IUserService
 
     public async Task<List<UserDto>> GetAllAsync()
     {
+        var userRoles = await UserRolesAsync();
         return await _db.Parties
             .IgnoreQueryFilters()
-            .Where(p => p.Role != null && UserRoles.Contains(p.Role))
+            .Where(p => p.Role != null && userRoles.Contains(p.Role))
             .Where(p => p.TenantId == _db.CurrentTenantId)
             .OrderByDescending(p => p.CreatedAt)
             .Select(p => new UserDto
@@ -95,7 +90,7 @@ public class UserService : IUserService
     public async Task<UserDto?> GetByIdAsync(int id)
     {
         var p = await _db.Parties.FindAsync(id);
-        if (p == null || !IsUserRole(p.Role)) return null;
+        if (p == null || !await IsUserRoleAsync(p.Role)) return null;
         return MapToDto(p);
     }
 
@@ -117,12 +112,10 @@ public class UserService : IUserService
 
         var role = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
 
-        // Validate role is in the allowed list
-        if (!IsUserRole(role))
-            throw new ArgumentException($"Invalid role: {role}. Must be one of: {string.Join(", ", UserRoles)}");
-
-        // Normalize role to match exact casing from UserRoles array
-        role = UserRoles.First(r => r.Equals(role, StringComparison.OrdinalIgnoreCase));
+        // Validate role against the company's roles (Roles table) and keep its exact spelling
+        var allowedRoles = await UserRolesAsync();
+        role = allowedRoles.FirstOrDefault(r => r.Equals(role, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"Invalid role: {role}. Must be one of: {string.Join(", ", allowedRoles.Where(r => r != RoleCatalog.SuperAdmin))}");
 
         var party = new Party
         {
@@ -179,7 +172,7 @@ public class UserService : IUserService
     public async Task<UserDto?> UpdateAsync(int id, UpdateUserDto dto)
     {
         var party = await _db.Parties.FindAsync(id);
-        if (party == null || !IsUserRole(party.Role)) return null;
+        if (party == null || !await IsUserRoleAsync(party.Role)) return null;
 
         if (string.IsNullOrWhiteSpace(dto.FullName))
             throw new ArgumentException("Full name is required.");
@@ -202,12 +195,10 @@ public class UserService : IUserService
         party.Phone = dto.Phone?.Trim();
         var newRole = string.IsNullOrWhiteSpace(dto.Role) ? "User" : dto.Role.Trim();
 
-        // Validate role is in the allowed list
-        if (!IsUserRole(newRole))
-            throw new ArgumentException($"Invalid role: {newRole}. Must be one of: {string.Join(", ", UserRoles)}");
-
-        // Normalize role to match exact casing from UserRoles array
-        newRole = UserRoles.First(r => r.Equals(newRole, StringComparison.OrdinalIgnoreCase));
+        // Validate role against the company's roles (Roles table) and keep its exact spelling
+        var allowedRoles = await UserRolesAsync();
+        newRole = allowedRoles.FirstOrDefault(r => r.Equals(newRole, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"Invalid role: {newRole}. Must be one of: {string.Join(", ", allowedRoles.Where(r => r != RoleCatalog.SuperAdmin))}");
 
         party.IsActive = dto.IsActive;
 
@@ -266,7 +257,7 @@ public class UserService : IUserService
     public async Task<bool> DeleteAsync(int id)
     {
         var party = await _db.Parties.FindAsync(id);
-        if (party == null || !IsUserRole(party.Role)) return false;
+        if (party == null || !await IsUserRoleAsync(party.Role)) return false;
         _db.Parties.Remove(party);
         await _db.SaveChangesAsync();
         return true;

@@ -24,6 +24,19 @@ public static class SchemaUpgrades
         BackfillQuotationReferences(db);
         AddSalesReturnSaleLink(db);
         AddPurchaseReturns(db);
+        // staff roles per company (were hard-coded); every company gets the default list once
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `Roles` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Name` varchar(50) NOT NULL,
+  `IsSystem` tinyint(1) NOT NULL DEFAULT 0,
+  `CreatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Id`),
+  UNIQUE KEY `IX_Roles_TenantId_Name` (`TenantId`, `Name`)
+) CHARACTER SET utf8mb4");
+        foreach (var tenantId in db.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToList())
+            Services.RoleCatalog.EnsureDefaultsAsync(db, tenantId).GetAwaiter().GetResult();
         // purchase orders raised for a converted quotation (customer order)
         if (!HasColumn(db, "PurchaseOrders", "QuotationId"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `PurchaseOrders` ADD COLUMN `QuotationId` int NULL, ADD COLUMN `QuotationReference` varchar(50) NULL, ADD COLUMN `SaleReference` varchar(50) NULL, ADD INDEX `IX_PurchaseOrders_QuotationId` (`QuotationId`)");

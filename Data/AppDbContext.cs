@@ -52,6 +52,7 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseReturnItem> PurchaseReturnItems => Set<PurchaseReturnItem>();
     public DbSet<PurchaseReturnRefund> PurchaseReturnRefunds => Set<PurchaseReturnRefund>();
     public DbSet<FinanceEntry> FinanceEntries => Set<FinanceEntry>();
+    public DbSet<Role> Roles => Set<Role>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();
@@ -281,6 +282,7 @@ public class AppDbContext : DbContext
         // one terms & conditions document per tenant
         modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
         modelBuilder.Entity<TaxType>(e => e.HasIndex(t => new { t.TenantId, t.Name }).IsUnique());
+        modelBuilder.Entity<Role>(e => e.HasIndex(r => new { r.TenantId, r.Name }).IsUnique());
         modelBuilder.Entity<PurchasePayment>(e => { e.HasIndex(p => p.PurchaseId); e.HasIndex(p => p.PurchaseOrderId); });
         // goods sent back to the supplier from a received purchase
         modelBuilder.Entity<PurchaseReturn>(e =>
