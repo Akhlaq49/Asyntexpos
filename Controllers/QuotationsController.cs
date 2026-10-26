@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ReactPosApi.DTOs;
 using ReactPosApi.Services;
 
@@ -64,8 +65,18 @@ public class QuotationsController : ControllerBase
 
     /// <summary>Quotation -> sale: deducts stock and records the payment received now</summary>
     [HttpPost("{id}/convert-to-sale")]
-    public async Task<IActionResult> ConvertToSale(int id, [FromBody] ConvertQuotationToSaleDto dto, [FromServices] ISaleService sales)
+    public async Task<IActionResult> ConvertToSale(int id, [FromBody] ConvertQuotationToSaleDto dto, [FromServices] ISaleService sales, [FromServices] ReactPosApi.Data.AppDbContext db)
     {
+        // staff (not Admin / SuperAdmin) can only convert a quotation an admin has approved
+        var callerRole = User.FindFirstValue(ClaimTypes.Role) ?? "";
+        if (callerRole != RoleCatalog.SuperAdmin && callerRole != RoleCatalog.Admin)
+        {
+            var approval = await db.Quotations.Where(q => q.Id == id).Select(q => new { q.ApprovalStatus, q.Reference }).FirstOrDefaultAsync();
+            if (approval != null && approval.ApprovalStatus != "Approved")
+                return BadRequest(new { message = approval.ApprovalStatus == "Pending"
+                    ? $"{approval.Reference} is waiting for approval - it can be converted once an admin approves it."
+                    : $"{approval.Reference} needs an admin's approval before it can be converted to a sale. Use \"Send for approval\"." });
+        }
         try
         {
             var sale = await sales.ConvertQuotationAsync(id, dto, User.FindFirstValue(ClaimTypes.Name) ?? "");

@@ -522,6 +522,12 @@ public class QuotationDto
     public int? RootQuotationId { get; set; }
     public int RevisionNo { get; set; }
     public int? SupersededById { get; set; }
+    /// <summary>Staff approval: null, Pending, Approved, Discarded</summary>
+    public string? ApprovalStatus { get; set; }
+    public string? ApprovalSentTo { get; set; }
+    public string? ApprovalBy { get; set; }
+    public DateTime? ApprovalAt { get; set; }
+    public string? ApprovalNote { get; set; }
     /// <summary>Number of product lines and their names (for the list, which has no line items)</summary>
     public int ItemCount { get; set; }
     public List<string> ProductNames { get; set; } = new();

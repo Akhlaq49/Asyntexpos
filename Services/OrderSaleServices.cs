@@ -901,6 +901,7 @@ public class QuotationService : IQuotationService
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
+                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
                 GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
@@ -931,6 +932,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
+                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
@@ -948,6 +950,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
+                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
@@ -1041,7 +1044,8 @@ public class QuotationService : IQuotationService
             .Select(x => new QuotationDto
             {
                 Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId, CustomerName = x.CustomerName,
-                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges, GrandTotal = x.GrandTotal,
+                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
+                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote, GrandTotal = x.GrandTotal,
                 Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
                 RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
@@ -1119,6 +1123,13 @@ public class QuotationService : IQuotationService
             entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
             entity.InstallationCharges = Math.Max(0, dto.InstallationCharges);
             entity.Status = dto.Status; entity.Description = dto.Description;
+            // the quotation changed: an earlier approval / pending request no longer applies - it has to be sent again
+            if (entity.ApprovalStatus != null)
+            {
+                entity.ApprovalStatus = null; entity.ApprovalSentTo = null; entity.ApprovalBy = null; entity.ApprovalAt = null; entity.ApprovalNote = null;
+                foreach (var a in await _db.QuotationApprovals.Where(a => a.QuotationId == entity.Id && a.Status == QuotationApprovalStatus.Pending).ToListAsync())
+                { a.Status = QuotationApprovalStatus.Cancelled; a.DecidedAt = DateTime.UtcNow; a.DecisionNote = "The quotation was edited after it was sent."; }
+            }
             if (dto.QuotationDate != null) entity.QuotationDate = DateTime.Parse(dto.QuotationDate);
 
             _db.QuotationItems.RemoveRange(entity.Items);
@@ -1160,6 +1171,8 @@ public class QuotationService : IQuotationService
         // deleting the latest revision makes the previous version the current one again
         var previous = await _db.Quotations.FirstOrDefaultAsync(q => q.SupersededById == entity.Id);
         if (previous != null) previous.SupersededById = null;
+        foreach (var a in await _db.QuotationApprovals.Where(a => a.QuotationId == entity.Id && a.Status == QuotationApprovalStatus.Pending).ToListAsync())
+        { a.Status = QuotationApprovalStatus.Cancelled; a.DecidedAt = DateTime.UtcNow; a.DecisionNote = "The quotation was deleted."; }
         _db.Quotations.Remove(entity);
         await _db.SaveChangesAsync();
         return true;

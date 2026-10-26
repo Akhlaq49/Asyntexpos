@@ -16,6 +16,32 @@ public static class SchemaUpgrades
         foreach (var table in new[] { "Quotations", "Sales" })
             if (!HasColumn(db, table, "InstallationCharges"))
                 db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `InstallationCharges` decimal(18,2) NOT NULL DEFAULT 0");
+        // staff approval of quotations
+        if (!HasColumn(db, "Quotations", "ApprovalStatus"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `Quotations` ADD COLUMN `ApprovalStatus` varchar(20) NULL, ADD COLUMN `ApprovalSentTo` varchar(500) NULL, ADD COLUMN `ApprovalBy` varchar(150) NULL, ADD COLUMN `ApprovalAt` datetime(6) NULL, ADD COLUMN `ApprovalNote` varchar(500) NULL");
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `QuotationApprovals` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `QuotationId` int NOT NULL,
+  `QuotationReference` varchar(50) NOT NULL,
+  `CustomerName` varchar(150) NOT NULL,
+  `GrandTotal` decimal(18,2) NOT NULL,
+  `RequestedById` int NOT NULL,
+  `RequestedByName` varchar(150) NOT NULL,
+  `RequestedAt` datetime(6) NOT NULL,
+  `Message` varchar(500) NULL,
+  `RecipientIds` varchar(500) NOT NULL,
+  `RecipientNames` varchar(500) NOT NULL,
+  `Status` varchar(20) NOT NULL,
+  `DecidedById` int NULL,
+  `DecidedByName` varchar(150) NULL,
+  `DecidedAt` datetime(6) NULL,
+  `DecisionNote` varchar(500) NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_QuotationApprovals_QuotationId` (`QuotationId`),
+  KEY `IX_QuotationApprovals_TenantId_Status` (`TenantId`, `Status`)
+) CHARACTER SET utf8mb4");
         AddPurchaseOrders(db);
         AddQuotationSaleLink(db);
         AddTermsConditions(db);
@@ -83,7 +109,7 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
             .AsEnumerable().FirstOrDefault();
         if (string.IsNullOrEmpty(target) || !System.Text.RegularExpressions.Regex.IsMatch(target, "^[A-Za-z0-9_]+$")) return;
         var created = new[] { "PurchaseOrders", "PurchaseOrderItems", "TermsConditions", "TaxTypes", "PurchasePayments", "PurchaseReturns",
-                              "PurchaseReturnItems", "PurchaseReturnRefunds", "FinanceEntries", "Roles" };
+                              "PurchaseReturnItems", "PurchaseReturnRefunds", "FinanceEntries", "Roles", "QuotationApprovals" };
         var different = db.Database.SqlQueryRaw<string>(
             "SELECT TABLE_NAME AS `Value` FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION <> {0}", target)
             .AsEnumerable().ToList();

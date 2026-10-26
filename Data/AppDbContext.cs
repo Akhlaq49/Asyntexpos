@@ -53,6 +53,7 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseReturnRefund> PurchaseReturnRefunds => Set<PurchaseReturnRefund>();
     public DbSet<FinanceEntry> FinanceEntries => Set<FinanceEntry>();
     public DbSet<Role> Roles => Set<Role>();
+    public DbSet<QuotationApproval> QuotationApprovals => Set<QuotationApproval>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();
@@ -283,6 +284,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
         modelBuilder.Entity<TaxType>(e => e.HasIndex(t => new { t.TenantId, t.Name }).IsUnique());
         modelBuilder.Entity<Role>(e => e.HasIndex(r => new { r.TenantId, r.Name }).IsUnique());
+        modelBuilder.Entity<QuotationApproval>(e => { e.HasIndex(a => a.QuotationId); e.HasIndex(a => new { a.TenantId, a.Status }); });
         modelBuilder.Entity<PurchasePayment>(e => { e.HasIndex(p => p.PurchaseId); e.HasIndex(p => p.PurchaseOrderId); });
         // goods sent back to the supplier from a received purchase
         modelBuilder.Entity<PurchaseReturn>(e =>

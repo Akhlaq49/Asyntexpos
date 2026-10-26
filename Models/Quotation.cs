@@ -68,6 +68,20 @@ public class Quotation : ITenantEntity
 
     /// <summary>Set when a newer revision replaced this version; it is then read-only history</summary>
     public int? SupersededById { get; set; }
+
+    /* ---- staff approval before converting to a sale (Admin / SuperAdmin don't need it) ---- */
+    /// <summary>null (not sent), Pending, Approved or Discarded</summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(20)]
+    public string? ApprovalStatus { get; set; }
+    /// <summary>Admins it is waiting for / who decided</summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(500)]
+    public string? ApprovalSentTo { get; set; }
+    [System.ComponentModel.DataAnnotations.MaxLength(150)]
+    public string? ApprovalBy { get; set; }
+    public DateTime? ApprovalAt { get; set; }
+    /// <summary>Approval note / reason for discarding</summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(500)]
+    public string? ApprovalNote { get; set; }
 }
 
 public class QuotationItem : ITenantEntity
