@@ -522,6 +522,9 @@ public class QuotationDto
     public int? RootQuotationId { get; set; }
     public int RevisionNo { get; set; }
     public int? SupersededById { get; set; }
+    /// <summary>Who made it (staff only see their own)</summary>
+    public int? CreatedById { get; set; }
+    public string? CreatedByName { get; set; }
     /// <summary>Staff approval: null, Pending, Approved, Discarded</summary>
     public string? ApprovalStatus { get; set; }
     public string? ApprovalSentTo { get; set; }
@@ -550,6 +553,9 @@ public class QuotationItemDto
 
 public class CreateQuotationDto
 {
+    /// <summary>Set by the server from the signed-in user (not by the client)</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public int? CreatedById { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? CreatedByName { get; set; }
     public string? Reference { get; set; }
     public int? CustomerId { get; set; }
     public string CustomerName { get; set; } = string.Empty;

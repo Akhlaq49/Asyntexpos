@@ -901,7 +901,7 @@ public class QuotationService : IQuotationService
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
-                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
+                CreatedById = x.CreatedById, CreatedByName = x.CreatedByName, ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
                 GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
@@ -932,7 +932,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
-                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
+                CreatedById = x.CreatedById, CreatedByName = x.CreatedByName, ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
@@ -950,7 +950,7 @@ public class QuotationService : IQuotationService
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
             OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
-                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
+                CreatedById = x.CreatedById, CreatedByName = x.CreatedByName, ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote,
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
@@ -1018,6 +1018,7 @@ public class QuotationService : IQuotationService
             revision.RevisionNo = revisionNo;
             if (dto.TermsContent == null) revision.TermsContent = current.TermsContent;   // keep the previous version's terms
             if (dto.Taxes == null) revision.TaxesJson = current.TaxesJson;
+            if (current.CreatedById != null) { revision.CreatedById = current.CreatedById; revision.CreatedByName = current.CreatedByName; }
             _db.Quotations.Add(revision);
             await _db.SaveChangesAsync();
 
@@ -1045,7 +1046,7 @@ public class QuotationService : IQuotationService
             {
                 Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId, CustomerName = x.CustomerName,
                 OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
-                ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote, GrandTotal = x.GrandTotal,
+                CreatedById = x.CreatedById, CreatedByName = x.CreatedByName, ApprovalStatus = x.ApprovalStatus, ApprovalSentTo = x.ApprovalSentTo, ApprovalBy = x.ApprovalBy, ApprovalAt = x.ApprovalAt, ApprovalNote = x.ApprovalNote, GrandTotal = x.GrandTotal,
                 Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
                 RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
@@ -1077,6 +1078,7 @@ public class QuotationService : IQuotationService
             ProductName = dto.ProductName, ProductImage = dto.ProductImage,
             OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
             InstallationCharges = Math.Max(0, dto.InstallationCharges),
+            CreatedById = dto.CreatedById, CreatedByName = dto.CreatedByName,
             GrandTotal = dto.GrandTotal, Status = dto.Status, Description = dto.Description,
             QuotationDate = dto.QuotationDate != null ? DateTime.Parse(dto.QuotationDate) : DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,

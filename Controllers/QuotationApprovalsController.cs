@@ -45,7 +45,7 @@ public class QuotationApprovalsController : ControllerBase
     [HttpPost("api/quotations/{id:int}/approval-request")]
     public async Task<IActionResult> Send(int id, [FromBody] SendDto dto)
     {
-        var q = await _db.Quotations.FirstOrDefaultAsync(x => x.Id == id);
+        var q = await _db.Quotations.FirstOrDefaultAsync(x => x.Id == id && (IAmAdmin || x.CreatedById == MyId));
         if (q == null) return NotFound(new { message = "This quotation no longer exists." });
         if (q.SaleId != null) return BadRequest(new { message = $"{q.Reference} was already converted to sale {q.SaleReference}." });
         if (q.SupersededById != null) return BadRequest(new { message = $"{q.Reference} is an older version - send the latest version." });
@@ -78,7 +78,7 @@ public class QuotationApprovalsController : ControllerBase
     [HttpPost("api/quotations/{id:int}/approval-request/withdraw")]
     public async Task<IActionResult> Withdraw(int id)
     {
-        var q = await _db.Quotations.FirstOrDefaultAsync(x => x.Id == id);
+        var q = await _db.Quotations.FirstOrDefaultAsync(x => x.Id == id && (IAmAdmin || x.CreatedById == MyId));
         if (q == null) return NotFound(new { message = "This quotation no longer exists." });
         if (q.ApprovalStatus != QuotationApprovalStatus.Pending) return BadRequest(new { message = $"{q.Reference} isn't waiting for approval." });
         foreach (var a in await _db.QuotationApprovals.Where(a => a.QuotationId == q.Id && a.Status == QuotationApprovalStatus.Pending).ToListAsync())

@@ -69,6 +69,11 @@ public class Quotation : ITenantEntity
     /// <summary>Set when a newer revision replaced this version; it is then read-only history</summary>
     public int? SupersededById { get; set; }
 
+    /* ---- who made it: staff only see their own quotations (admins see all); null = made before this was recorded ---- */
+    public int? CreatedById { get; set; }
+    [System.ComponentModel.DataAnnotations.MaxLength(150)]
+    public string? CreatedByName { get; set; }
+
     /* ---- staff approval before converting to a sale (Admin / SuperAdmin don't need it) ---- */
     /// <summary>null (not sent), Pending, Approved or Discarded</summary>
     [System.ComponentModel.DataAnnotations.MaxLength(20)]
