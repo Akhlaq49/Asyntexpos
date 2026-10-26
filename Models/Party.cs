@@ -42,6 +42,17 @@ public class Party : ITenantEntity
     [MaxLength(100)]
     public string? City { get; set; }
 
+    /* ---- customer's building (site for the automation work) ---- */
+    /// <summary>House, Villa, Apartment ...</summary>
+    [MaxLength(50)]
+    public string? BuildingType { get; set; }
+    /// <summary>Size: 10 Marla, 1 Kanal, 2 BHK ...</summary>
+    [MaxLength(50)]
+    public string? BuildingSpace { get; set; }
+    /// <summary>Construction stage: Initial, Grey Structure, Finishing ...</summary>
+    [MaxLength(50)]
+    public string? BuildingStage { get; set; }
+
     [MaxLength(100)]
     public string? State { get; set; }
 

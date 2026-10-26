@@ -16,6 +16,9 @@ public static class SchemaUpgrades
         foreach (var table in new[] { "Quotations", "Sales" })
             if (!HasColumn(db, table, "InstallationCharges"))
                 db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `InstallationCharges` decimal(18,2) NOT NULL DEFAULT 0");
+        // customer's building: type, size, construction stage
+        if (!HasColumn(db, "Parties", "BuildingType"))
+            db.Database.ExecuteSqlRaw("ALTER TABLE `Parties` ADD COLUMN `BuildingType` varchar(50) NULL, ADD COLUMN `BuildingSpace` varchar(50) NULL, ADD COLUMN `BuildingStage` varchar(50) NULL");
         // who made the quotation (staff only see their own)
         if (!HasColumn(db, "Quotations", "CreatedById"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Quotations` ADD COLUMN `CreatedById` int NULL, ADD COLUMN `CreatedByName` varchar(150) NULL, ADD INDEX `IX_Quotations_CreatedById` (`CreatedById`)");

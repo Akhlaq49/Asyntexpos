@@ -40,6 +40,7 @@ public class CustomersController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateCustomerDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest(new { message = "Enter the customer name." });
+        if (string.IsNullOrWhiteSpace(dto.Phone)) return BadRequest(new { message = "Enter the customer's phone number." });
         var customer = await _service.CreateAsync(dto);
         return CreatedAtAction(nameof(GetById), new { id = customer.Id }, customer);
     }
@@ -48,6 +49,7 @@ public class CustomersController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] CreateCustomerDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest(new { message = "Enter the customer name." });
+        if (string.IsNullOrWhiteSpace(dto.Phone)) return BadRequest(new { message = "Enter the customer's phone number." });
         var customer = await _service.UpdateAsync(id, dto);
         if (customer == null) return NotFound();
         return Ok(customer);

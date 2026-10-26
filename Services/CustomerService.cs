@@ -83,6 +83,7 @@ public class CustomerService : ICustomerService
             Email = Opt(dto.Email),
             Address = Opt(dto.Address),
             City = Opt(dto.City),
+            BuildingType = Opt(dto.BuildingType), BuildingSpace = Opt(dto.BuildingSpace), BuildingStage = Opt(dto.BuildingStage),
             Status = string.IsNullOrWhiteSpace(dto.Status) ? "active" : dto.Status,
             Role = "Customer"
         };
@@ -104,6 +105,7 @@ public class CustomerService : ICustomerService
         entity.Email = Opt(dto.Email);
         entity.Address = Opt(dto.Address);
         entity.City = Opt(dto.City);
+        entity.BuildingType = Opt(dto.BuildingType); entity.BuildingSpace = Opt(dto.BuildingSpace); entity.BuildingStage = Opt(dto.BuildingStage);
         entity.Status = string.IsNullOrWhiteSpace(dto.Status) ? entity.Status : dto.Status;
         await _db.SaveChangesAsync();
 
@@ -141,6 +143,7 @@ public class CustomerService : ICustomerService
         Email = c.Email ?? "",
         Address = c.Address ?? "",
         City = c.City ?? "",
+        BuildingType = c.BuildingType, BuildingSpace = c.BuildingSpace, BuildingStage = c.BuildingStage,
         Picture = c.Picture,
         Status = c.Status
     };
