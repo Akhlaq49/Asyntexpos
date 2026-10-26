@@ -11,6 +11,11 @@ public static class SchemaUpgrades
 {
     public static void Apply(AppDbContext db)
     {
+        // columns read by the entity queries below (e.g. the quotation reference backfill) must exist first
+        // installation, testing and commissioning charge on quotations (and the sales made from them)
+        foreach (var table in new[] { "Quotations", "Sales" })
+            if (!HasColumn(db, table, "InstallationCharges"))
+                db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `InstallationCharges` decimal(18,2) NOT NULL DEFAULT 0");
         AddPurchaseOrders(db);
         AddQuotationSaleLink(db);
         AddTermsConditions(db);

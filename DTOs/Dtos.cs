@@ -227,6 +227,7 @@ public class SaleDto
     public decimal OrderTax { get; set; }
     public decimal Discount { get; set; }
     public decimal Shipping { get; set; }
+    public decimal InstallationCharges { get; set; }
     public string Status { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
     public string? Notes { get; set; }
@@ -508,6 +509,7 @@ public class QuotationDto
     public decimal OrderTax { get; set; }
     public decimal Discount { get; set; }
     public decimal Shipping { get; set; }
+    public decimal InstallationCharges { get; set; }
     public decimal GrandTotal { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -552,6 +554,7 @@ public class CreateQuotationDto
     public decimal OrderTax { get; set; }
     public decimal Discount { get; set; }
     public decimal Shipping { get; set; }
+    public decimal InstallationCharges { get; set; }
     public decimal GrandTotal { get; set; }
     public string Status { get; set; } = "Pending";
     public string? Description { get; set; }

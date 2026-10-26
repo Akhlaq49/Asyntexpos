@@ -32,6 +32,8 @@ public class Quotation : ITenantEntity
     public decimal OrderTax { get; set; }
     public decimal Discount { get; set; }
     public decimal Shipping { get; set; }
+    /// <summary>Installation, testing and commissioning (added to the total)</summary>
+    public decimal InstallationCharges { get; set; }
     public decimal GrandTotal { get; set; }
 
     [MaxLength(30)]

@@ -280,6 +280,7 @@ public class SaleService : ISaleService
                 Source = "pos", // listed under Sales > POS Orders
                 GrandTotal = quotation.GrandTotal, Paid = 0, Due = quotation.GrandTotal,
                 OrderTax = quotation.OrderTax, Discount = quotation.Discount, Shipping = quotation.Shipping,
+                InstallationCharges = quotation.InstallationCharges,
                 TaxesJson = quotation.TaxesJson,
                 Status = "Pending", PaymentStatus = "Unpaid",
                 Notes = string.IsNullOrWhiteSpace(dto.Notes) ? $"Converted from quotation {quotation.Reference}" : dto.Notes,
@@ -544,7 +545,7 @@ public class SaleService : ISaleService
         CustomerId = s.CustomerId,
         CustomerName = s.CustomerName, CustomerImage = s.CustomerImage, Biller = s.Biller,
         GrandTotal = s.GrandTotal, Paid = s.Paid, Due = s.Due,
-        OrderTax = s.OrderTax, Discount = s.Discount, Shipping = s.Shipping,
+        OrderTax = s.OrderTax, Discount = s.Discount, Shipping = s.Shipping, InstallationCharges = s.InstallationCharges,
         Taxes = AppliedTaxes.Parse(s.TaxesJson),
         Status = NormalizeOrderStatusForDto(s), PaymentStatus = s.PaymentStatus, Notes = s.Notes, Source = s.Source,
         ExpectedDate = s.ExpectedDate?.ToString("yyyy-MM-dd"),
@@ -899,7 +900,7 @@ public class QuotationService : IQuotationService
                 Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId,
                 CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
                 ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
-                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
+                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
                 GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
                 CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
@@ -929,7 +930,7 @@ public class QuotationService : IQuotationService
             Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId,
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
-            OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
+            OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy")
@@ -946,7 +947,7 @@ public class QuotationService : IQuotationService
             Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId,
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
-            OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping,
+            OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges,
             GrandTotal = x.GrandTotal, Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference, Taxes = AppliedTaxes.Parse(x.TaxesJson), RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById, ItemCount = x.Items.Count, ProductNames = x.Items.OrderBy(i => i.Id).Select(i => i.ProductName).ToList(),
             QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
             CreatedAt = x.CreatedAt.ToString("dd MMM yyyy"),
@@ -1040,7 +1041,7 @@ public class QuotationService : IQuotationService
             .Select(x => new QuotationDto
             {
                 Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId, CustomerName = x.CustomerName,
-                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, GrandTotal = x.GrandTotal,
+                OrderTax = x.OrderTax, Discount = x.Discount, Shipping = x.Shipping, InstallationCharges = x.InstallationCharges, GrandTotal = x.GrandTotal,
                 Status = x.Status, Description = x.Description, SaleId = x.SaleId, SaleReference = x.SaleReference,
                 RootQuotationId = x.RootQuotationId, RevisionNo = x.RevisionNo, SupersededById = x.SupersededById,
                 QuotationDate = x.QuotationDate.ToString("dd MMM yyyy"),
@@ -1071,6 +1072,7 @@ public class QuotationService : IQuotationService
             CustomerImage = dto.CustomerImage, ProductId = dto.ProductId,
             ProductName = dto.ProductName, ProductImage = dto.ProductImage,
             OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
+            InstallationCharges = Math.Max(0, dto.InstallationCharges),
             GrandTotal = dto.GrandTotal, Status = dto.Status, Description = dto.Description,
             QuotationDate = dto.QuotationDate != null ? DateTime.Parse(dto.QuotationDate) : DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,
@@ -1115,6 +1117,7 @@ public class QuotationService : IQuotationService
             entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
             entity.OrderTax = dto.OrderTax; entity.Discount = dto.Discount;
             entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
+            entity.InstallationCharges = Math.Max(0, dto.InstallationCharges);
             entity.Status = dto.Status; entity.Description = dto.Description;
             if (dto.QuotationDate != null) entity.QuotationDate = DateTime.Parse(dto.QuotationDate);
 
@@ -1145,7 +1148,7 @@ public class QuotationService : IQuotationService
         var itemsTotal = dto.Items.Sum(i => i.TotalCost);
         dto.Taxes = AppliedTaxes.Calculate(dto.Taxes, itemsTotal - dto.Discount);
         dto.OrderTax = dto.Taxes.Sum(t => t.Amount);
-        dto.GrandTotal = Math.Max(0, Math.Round(itemsTotal - dto.Discount + dto.OrderTax + dto.Shipping, 2));
+        dto.GrandTotal = Math.Max(0, Math.Round(itemsTotal - dto.Discount + dto.OrderTax + dto.Shipping + Math.Max(0, dto.InstallationCharges), 2));
     }
 
     public async Task<bool> DeleteAsync(int id)
