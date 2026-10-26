@@ -69,6 +69,26 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
         db.Database.ExecuteSqlRaw("DELETE FROM `TenantMenuConfigs` WHERE `MenuKey` = 'Sales/Sales'");
         // customers saved with a blank email before it became optional: NULL, so they don't clash on the unique email index
         db.Database.ExecuteSqlRaw("UPDATE `Parties` SET `Email` = NULL WHERE `Role` = 'Customer' AND `Email` = ''");
+        AlignCollations(db);
+    }
+
+    /// <summary>
+    /// Tables created here get the server's default collation, which can differ from the tables EF created
+    /// (comparing text across them then fails with "Illegal mix of collations") - give them the same one.
+    /// </summary>
+    private static void AlignCollations(AppDbContext db)
+    {
+        var target = db.Database.SqlQueryRaw<string>(
+            "SELECT TABLE_COLLATION AS `Value` FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = 'parties'")
+            .AsEnumerable().FirstOrDefault();
+        if (string.IsNullOrEmpty(target) || !System.Text.RegularExpressions.Regex.IsMatch(target, "^[A-Za-z0-9_]+$")) return;
+        var created = new[] { "PurchaseOrders", "PurchaseOrderItems", "TermsConditions", "TaxTypes", "PurchasePayments", "PurchaseReturns",
+                              "PurchaseReturnItems", "PurchaseReturnRefunds", "FinanceEntries", "Roles" };
+        var different = db.Database.SqlQueryRaw<string>(
+            "SELECT TABLE_NAME AS `Value` FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION <> {0}", target)
+            .AsEnumerable().ToList();
+        foreach (var table in different.Where(t => created.Contains(t, StringComparer.OrdinalIgnoreCase)))
+            db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE {target}");
     }
 
     private static bool HasColumn(AppDbContext db, string table, string column) =>
