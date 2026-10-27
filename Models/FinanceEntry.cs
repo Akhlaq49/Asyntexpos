@@ -54,11 +54,11 @@ public static class FinanceEntryType
     public static string Label(string type) => type switch
     {
         OwnerInvestment => "Owner investment",
-        OwnerDrawing => "Owner drawing",
+        OwnerDrawing => "Owner withdrawal",
         LoanReceived => "Loan received",
         LoanRepayment => "Loan repayment",
-        AssetPurchase => "Fixed asset purchase",
-        Depreciation => "Depreciation",
+        AssetPurchase => "Equipment bought",
+        Depreciation => "Value lost (depreciation)",
         _ => type,
     };
 

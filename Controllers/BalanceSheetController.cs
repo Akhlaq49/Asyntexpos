@@ -140,27 +140,27 @@ public class BalanceSheetController : ControllerBase
         {
             new("cash", "Cash in hand", cashInHand, "Cash received minus cash paid out (sales, suppliers, expenses, capital, loans)", cashDetails),
             new("bank", "Bank & digital accounts", bank, "Money moved by bank transfer, online, cheque or card", bankDetails),
-            L("receivables", "Customers owe you (receivables)", receivables, "Unpaid part of sales"),
+            L("receivables", "Customers owe you", receivables, "Unpaid part of sales"),
             L("inventory", "Stock on hand (at cost)", inventory, "Quantity in stock x average purchase cost"),
             L("supplierRefunds", "Suppliers owe you (returns)", supplierRefundsDue, "Goods returned to suppliers, not yet refunded or deducted"),
-            L("supplierAdvances", "Advances paid to suppliers", supplierAdvances, "Paid more than the purchase total"),
+            L("supplierAdvances", "Paid to suppliers in advance", supplierAdvances, "Paid more than the purchase total"),
         };
-        var nonCurrentAssets = new List<Line> { L("fixedAssets", "Fixed assets (after depreciation)", fixedAssets, "Furniture, equipment, vehicles ... from Capital & Loans") };
+        var nonCurrentAssets = new List<Line> { L("fixedAssets", "Business equipment (current value)", fixedAssets, "Furniture, equipment, vehicles ... from Capital & Loans") };
         var currentLiabilities = new List<Line>
         {
-            L("payables", "You owe suppliers (payables)", payables, "Unpaid part of received purchases"),
+            L("payables", "You owe suppliers", payables, "Unpaid part of received purchases"),
             L("customerRefunds", "Refunds owed to customers", salesReturnsDue, "Sales returns not yet refunded"),
-            L("customerAdvances", "Advances from customers", customerAdvances, "Customers paid more than the sale total"),
+            L("customerAdvances", "Paid by customers in advance", customerAdvances, "Customers paid more than the sale total"),
         };
         var nonCurrentLiabilities = new List<Line> { L("loans", "Loans", loans, "Borrowed minus repaid, per lender") };
 
         var totalAssets = Math.Round(currentAssets.Sum(l => l.Amount) + nonCurrentAssets.Sum(l => l.Amount), 2);
         var totalLiabilities = Math.Round(currentLiabilities.Sum(l => l.Amount) + nonCurrentLiabilities.Sum(l => l.Amount), 2);
-        var capital = new Line("capital", "Owner's capital invested", invested.Sum(f => f.Amount), "Money the owner put into the business",
+        var capital = new Line("capital", "Money the owner put in", invested.Sum(f => f.Amount), "Money the owner put into the business",
             invested.Select(f => new Detail(f.Reference ?? "", f.Name, f.Date, f.Amount, f.Notes)).ToList());
         var stockIn = new Line("stockBroughtIn", "Stock brought in by the owner", stockBroughtIn.Sum(p => p.Total), "Opening stock and stock added in Manage Stock (not bought from a supplier)",
             stockBroughtIn.Select(p => new Detail(p.Reference, p.SupplierName, p.Date, p.Total, p.Notes)).ToList());
-        var drawn = new Line("drawings", "Less: owner's drawings", -drawings.Sum(f => f.Amount), "Money the owner took out",
+        var drawn = new Line("drawings", "Less: money the owner took out", -drawings.Sum(f => f.Amount), "Money the owner took out",
             drawings.Select(f => new Detail(f.Reference ?? "", f.Name, f.Date, -f.Amount, f.Notes)).ToList());
         var retained = Math.Round(totalAssets - totalLiabilities - (capital.Amount + stockIn.Amount + drawn.Amount), 2);
         var profit = new Line("retained", "Profit kept in the business", retained,
@@ -171,11 +171,11 @@ public class BalanceSheetController : ControllerBase
         return Ok(new
         {
             asOf = date,
-            assets = new { current = new Section("Current assets", currentAssets, Math.Round(currentAssets.Sum(l => l.Amount), 2)),
-                           nonCurrent = new Section("Non-current assets", nonCurrentAssets, Math.Round(nonCurrentAssets.Sum(l => l.Amount), 2)), total = totalAssets },
-            liabilities = new { current = new Section("Current liabilities", currentLiabilities, Math.Round(currentLiabilities.Sum(l => l.Amount), 2)),
-                                nonCurrent = new Section("Non-current liabilities", nonCurrentLiabilities, Math.Round(nonCurrentLiabilities.Sum(l => l.Amount), 2)), total = totalLiabilities },
-            equity = new Section("Owner's equity", equityLines, totalEquity),
+            assets = new { current = new Section("Cash, stock & money owed to you", currentAssets, Math.Round(currentAssets.Sum(l => l.Amount), 2)),
+                           nonCurrent = new Section("Equipment (long-term)", nonCurrentAssets, Math.Round(nonCurrentAssets.Sum(l => l.Amount), 2)), total = totalAssets },
+            liabilities = new { current = new Section("Bills to pay soon", currentLiabilities, Math.Round(currentLiabilities.Sum(l => l.Amount), 2)),
+                                nonCurrent = new Section("Loans (long-term)", nonCurrentLiabilities, Math.Round(nonCurrentLiabilities.Sum(l => l.Amount), 2)), total = totalLiabilities },
+            equity = new Section("Owner's share", equityLines, totalEquity),
             totalLiabilitiesAndEquity = Math.Round(totalLiabilities + totalEquity, 2),
             balanced = Math.Abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01m,
             ratios = new
