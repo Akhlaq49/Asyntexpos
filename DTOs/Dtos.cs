@@ -531,6 +531,8 @@ public class QuotationDto
     /// <summary>Who made it (staff only see their own)</summary>
     public int? CreatedById { get; set; }
     public string? CreatedByName { get; set; }
+    /// <summary>The maker's current role (looked up when listed)</summary>
+    public string? CreatedByRole { get; set; }
     /// <summary>Staff approval: null, Pending, Approved, Discarded</summary>
     public string? ApprovalStatus { get; set; }
     public string? ApprovalSentTo { get; set; }

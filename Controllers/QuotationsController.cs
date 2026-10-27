@@ -21,6 +21,21 @@ public class QuotationsController : ControllerBase
     private int MyId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : 0;
     private async Task<bool> CanAccessAsync(int id) => IsAdmin || await _db.Quotations.AnyAsync(q => q.Id == id && q.CreatedById == MyId);
 
+    /// <summary>Adds each maker's current name and role ("Super Admin", "Admin", "Manager" ...)</summary>
+    private async Task<List<QuotationDto>> WithCreatorsAsync(List<QuotationDto> list)
+    {
+        var ids = list.Where(q => q.CreatedById != null).Select(q => q.CreatedById!.Value).Distinct().ToList();
+        if (ids.Count == 0) return list;
+        var people = await _db.Parties.Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.FullName, p.Role }).ToDictionaryAsync(p => p.Id);
+        foreach (var q in list)
+            if (q.CreatedById != null && people.TryGetValue(q.CreatedById.Value, out var p))
+            {
+                q.CreatedByName = p.FullName;
+                q.CreatedByRole = p.Role == RoleCatalog.SuperAdmin ? "Super Admin" : p.Role;
+            }
+        return list;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? product,
@@ -33,7 +48,7 @@ public class QuotationsController : ControllerBase
     {
         if (!IsAdmin)
         {
-            var mine = (await _service.GetAllAsync(product, customer, status, sort)).Where(q => q.CreatedById == MyId).ToList();
+            var mine = await WithCreatorsAsync((await _service.GetAllAsync(product, customer, status, sort)).Where(q => q.CreatedById == MyId).ToList());
             if (!page.HasValue) return Ok(mine);
             if (!string.IsNullOrWhiteSpace(search))
                 mine = mine.Where(q => (q.Reference + " " + q.CustomerName).Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -43,9 +58,11 @@ public class QuotationsController : ControllerBase
         if (page.HasValue)
         {
             var query = new PaginationQuery { Page = page.Value, PageSize = pageSize ?? 10, Search = search, Status = status };
-            return Ok(await _service.GetAllPagedAsync(query));
+            var paged = await _service.GetAllPagedAsync(query);
+            await WithCreatorsAsync(paged.Items);
+            return Ok(paged);
         }
-        return Ok(await _service.GetAllAsync(product, customer, status, sort));
+        return Ok(await WithCreatorsAsync(await _service.GetAllAsync(product, customer, status, sort)));
     }
 
     [HttpGet("{id}")]
