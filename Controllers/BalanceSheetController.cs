@@ -52,14 +52,17 @@ public class BalanceSheetController : ControllerBase
             notes.Add("Cash is below zero: more has been paid out than received. Record the owner's starting capital under Finance > Capital & Loans.");
 
         /* ---------- customers: unpaid sales, advances ---------- */
-        var sales = await _db.Sales.Where(s => s.SaleDate < end || s.Status == ReactPosApi.Models.SaleStatus.Queued).Select(s => new { s.Id, s.Reference, s.CustomerName, s.SaleDate, s.GrandTotal, s.Status }).ToListAsync();
         var salePaid = await _db.SalePayments.Where(p => p.PaymentDate < end).GroupBy(p => p.SaleId)
             .Select(g => new { SaleId = g.Key, Paid = g.Sum(p => p.PayingAmount) }).ToDictionaryAsync(x => x.SaleId, x => x.Paid);
+        var paidSaleIds = salePaid.Keys.ToList();
+        // sold by the date, still in the sale queue, or paid for by the date (an advance on an order sold later)
+        var sales = await _db.Sales.Where(s => s.SaleDate < end || s.Status == ReactPosApi.Models.SaleStatus.Queued || paidSaleIds.Contains(s.Id))
+            .Select(s => new { s.Id, s.Reference, s.CustomerName, s.SaleDate, s.GrandTotal, s.Status }).ToListAsync();
         var receivables = new List<Detail>(); var customerAdvances = new List<Detail>();
         foreach (var s in sales.Where(s => !string.Equals(s.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)))
         {
-            // a queued order is not sold yet: money received for it is a customer advance
-            var queued = s.Status == ReactPosApi.Models.SaleStatus.Queued;
+            // not sold yet on the date (in the sale queue, or converted to a sale later): money received for it is a customer advance
+            var queued = s.Status == ReactPosApi.Models.SaleStatus.Queued || s.SaleDate >= end;
             var due = Math.Round((queued ? 0 : s.GrandTotal) - (salePaid.TryGetValue(s.Id, out var p) ? p : 0), 2);
             if (due > 0) receivables.Add(new Detail(s.Reference, s.CustomerName, s.SaleDate, due, $"of Rs {s.GrandTotal:N2}"));
             else if (due < 0) customerAdvances.Add(new Detail(s.Reference, s.CustomerName, s.SaleDate, -due, queued ? "advance - order in the sale queue" : "paid more than the sale"));
