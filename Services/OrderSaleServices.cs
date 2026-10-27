@@ -147,12 +147,13 @@ public class SaleService : ISaleService
             sale.CustomerImage = dto.CustomerImage; sale.Biller = dto.Biller;
             sale.GrandTotal = dto.GrandTotal; sale.OrderTax = dto.OrderTax;
             sale.Discount = dto.Discount; sale.Shipping = dto.Shipping;
-            sale.Status = dto.Status; sale.Notes = dto.Notes;
+            var queued = SaleStatus.IsQueued(sale.Status);   // waiting in the sale queue: no stock was taken out
+            sale.Status = queued ? SaleStatus.Queued : dto.Status; sale.Notes = dto.Notes;
             sale.ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null;
             RecalculateSalePaymentState(sale);
 
             // ── Restore old item quantities to inventory ──
-            foreach (var oldItem in sale.Items)
+            foreach (var oldItem in sale.Items.Where(_ => !queued))
             {
                 var product = await _db.Products.FindAsync(oldItem.ProductId);
                 if (product != null)
@@ -168,7 +169,7 @@ public class SaleService : ISaleService
             }).ToList();
 
             // ── Deduct new item quantities from inventory ──
-            foreach (var newItem in sale.Items)
+            foreach (var newItem in sale.Items.Where(_ => !queued))
             {
                 var product = await _db.Products.FindAsync(newItem.ProductId);
                 if (product != null)
@@ -194,8 +195,8 @@ public class SaleService : ISaleService
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
-            // ── Restore product quantities to inventory ──
-            foreach (var item in sale.Items)
+            // ── Restore product quantities to inventory (a queued order never took any out) ──
+            foreach (var item in sale.Items.Where(_ => !SaleStatus.IsQueued(sale.Status)))
             {
                 var product = await _db.Products.FindAsync(item.ProductId);
                 if (product != null)
@@ -258,18 +259,18 @@ public class SaleService : ISaleService
         if (dto.PaidAmount < 0)
             throw new InvalidOperationException("The amount received can't be negative.");
 
-        // every product must still exist and have enough stock
+        // every product must still exist; stock is NOT needed - the order waits in the sale queue
+        // until the goods arrive and it is marked as sold
         var productIds = quotation.Items.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         var problems = new List<string>();
         foreach (var g in quotation.Items.GroupBy(i => i.ProductId))
         {
             var needed = g.Sum(i => i.Quantity);
-            if (!products.TryGetValue(g.Key, out var p)) problems.Add($"{g.First().ProductName}: product no longer exists");
-            else if (p.Quantity < needed) problems.Add($"{p.ProductName}: {p.Quantity} in stock, {needed} needed");
+            if (!products.ContainsKey(g.Key)) problems.Add($"{g.First().ProductName}: product no longer exists");
         }
         if (problems.Count > 0)
-            throw new InvalidOperationException("Not enough stock - " + string.Join("; ", problems) + ".");
+            throw new InvalidOperationException("Some products can't be found - " + string.Join("; ", problems) + ".");
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
@@ -291,8 +292,8 @@ public class SaleService : ISaleService
                 OrderTax = quotation.OrderTax, Discount = quotation.Discount, Shipping = quotation.Shipping,
                 InstallationCharges = quotation.InstallationCharges,
                 TaxesJson = quotation.TaxesJson,
-                Status = "Pending", PaymentStatus = "Unpaid",
-                Notes = string.IsNullOrWhiteSpace(dto.Notes) ? $"Converted from quotation {quotation.Reference}" : dto.Notes,
+                Status = SaleStatus.Queued, PaymentStatus = "Unpaid",
+                Notes = string.IsNullOrWhiteSpace(dto.Notes) ? $"Sale queue - from quotation {quotation.Reference}" : dto.Notes,
                 SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
                 Items = quotation.Items.Select(i => new SaleItem
                 {
@@ -302,9 +303,7 @@ public class SaleService : ISaleService
                 }).ToList()
             };
             _db.Sales.Add(sale);
-
-            foreach (var item in sale.Items)              // stock out
-                products[item.ProductId].Quantity -= item.Quantity;
+            // no stock out here: that happens when the queued order is marked as sold
 
             if (paid > 0)                                  // payment received now
             {
@@ -312,7 +311,7 @@ public class SaleService : ISaleService
                 {
                     Reference = $"{sale.Reference}-P1", ReceivedAmount = dto.PaidAmount, PayingAmount = paid,
                     PaymentType = string.IsNullOrWhiteSpace(dto.PaymentType) ? "Cash" : dto.PaymentType,
-                    Description = $"Payment on conversion of quotation {quotation.Reference}",
+                    Description = $"Advance for quotation {quotation.Reference} (sale queue)",
                     PaymentDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
                 });
                 sale.Paid = paid;
@@ -332,6 +331,44 @@ public class SaleService : ISaleService
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    /// <summary>Sale queue -> sold: the goods have arrived; takes them out of stock and counts the sale from today</summary>
+    public async Task<SaleDto?> MarkQueuedAsSoldAsync(int saleId)
+    {
+        var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == saleId);
+        if (sale == null) return null;
+        if (!SaleStatus.IsQueued(sale.Status))
+            throw new InvalidOperationException($"{sale.Reference} is already sold.");
+        var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
+        var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        var problems = new List<string>();
+        foreach (var g in sale.Items.GroupBy(i => i.ProductId))
+        {
+            var needed = g.Sum(i => i.Quantity);
+            if (!products.TryGetValue(g.Key, out var p)) problems.Add($"{g.First().ProductName}: product no longer exists");
+            else if (p.Quantity < needed) problems.Add($"{p.ProductName}: {p.Quantity} in stock, {needed} needed");
+        }
+        if (problems.Count > 0)
+            throw new InvalidOperationException("The goods have not all arrived yet - " + string.Join("; ", problems) + ". Receive them on the purchase order first.");
+
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            foreach (var item in sale.Items)              // stock out
+                products[item.ProductId].Quantity -= item.Quantity;
+            sale.Status = "Pending";
+            sale.SaleDate = DateTime.UtcNow;             // counted as a sale from today (dashboard, reports)
+            RecalculateSalePaymentState(sale);            // fully paid -> Completed
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+        return await GetByIdAsync(sale.Id);
     }
 
     public async Task<object?> CreatePaymentAsync(int saleId, CreateSalePaymentDto dto)

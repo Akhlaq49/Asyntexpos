@@ -33,7 +33,7 @@ public class DashboardController : ControllerBase
         var lastMonthStart = thisMonthStart.AddMonths(-1);
 
         // ── Sales ──
-        var allSales = await _db.Sales.ToListAsync();
+        var allSales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();   // a queued order counts once marked as sold
         var totalSalesAmount = allSales.Sum(s => s.GrandTotal);
         var salesThisMonth = allSales.Where(s => s.SaleDate >= thisMonthStart).Sum(s => s.GrandTotal);
         var salesLastMonth = allSales.Where(s => s.SaleDate >= lastMonthStart && s.SaleDate < thisMonthStart).Sum(s => s.GrandTotal);
@@ -86,7 +86,7 @@ public class DashboardController : ControllerBase
         }
 
         // ── Best selling products (by quantity sold) ──
-        var bestSellers = await _db.SaleItems
+        var bestSellers = await _db.SaleItems.Where(si => si.Sale!.Status != ReactPosApi.Models.SaleStatus.Queued)
             .GroupBy(si => si.ProductName)
             .Select(g => new
             {
@@ -99,7 +99,7 @@ public class DashboardController : ControllerBase
             .ToListAsync();
 
         // ── Recent sales ──
-        var recentSales = await _db.Sales
+        var recentSales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued)
             .OrderByDescending(s => s.SaleDate)
             .Take(10)
             .Select(s => new

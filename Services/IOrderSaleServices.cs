@@ -5,6 +5,7 @@ namespace ReactPosApi.Services;
 public interface ISaleService
 {
     Task<SaleDto?> ConvertQuotationAsync(int quotationId, ConvertQuotationToSaleDto dto, string biller);
+    Task<SaleDto?> MarkQueuedAsSoldAsync(int saleId);
     Task<List<SaleDto>> GetAllAsync(string? source);
     Task<PagedResult<SaleDto>> GetAllPagedAsync(string? source, PaginationQuery query, string? paymentStatus = null);
     Task<SaleDto?> GetByIdAsync(int id);

@@ -117,3 +117,12 @@ public class SalePayment : ITenantEntity
     public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>Sale order states that change how a sale is counted</summary>
+public static class SaleStatus
+{
+    /// <summary>Converted quotation waiting for its goods: no stock taken out and not counted as a sale
+    /// (dashboard, reports) until it is marked as sold</summary>
+    public const string Queued = "Queued";
+    public static bool IsQueued(string? status) => string.Equals(status?.Trim(), Queued, StringComparison.OrdinalIgnoreCase);
+}

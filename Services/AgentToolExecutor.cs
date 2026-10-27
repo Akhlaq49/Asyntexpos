@@ -137,7 +137,7 @@ public class AgentToolExecutor : IAgentToolExecutor
         var from = ParseDate(GetStr(args, "from"));
         var to = ParseDate(GetStr(args, "to"));
 
-        var sales = await _db.Sales.ToListAsync();
+        var sales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
         if (from.HasValue) sales = sales.Where(s => s.SaleDate >= from.Value).ToList();
         if (to.HasValue) sales = sales.Where(s => s.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -154,7 +154,7 @@ public class AgentToolExecutor : IAgentToolExecutor
     private async Task<string> GetTodaySales()
     {
         var today = DateTime.UtcNow.Date;
-        var sales = await _db.Sales.Where(s => s.SaleDate >= today && s.SaleDate < today.AddDays(1)).ToListAsync();
+        var sales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued && s.SaleDate >= today && s.SaleDate < today.AddDays(1)).ToListAsync();
         return ToJson(new
         {
             date = today.ToString("yyyy-MM-dd"),
@@ -244,7 +244,7 @@ public class AgentToolExecutor : IAgentToolExecutor
         var from = ParseDate(GetStr(args, "from"));
         var to = ParseDate(GetStr(args, "to"));
 
-        var saleItems = await _db.SaleItems.Include(si => si.Sale).ToListAsync();
+        var saleItems = await _db.SaleItems.Include(si => si.Sale).Where(si => si.Sale!.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
         if (from.HasValue) saleItems = saleItems.Where(si => si.Sale?.SaleDate >= from.Value).ToList();
         if (to.HasValue) saleItems = saleItems.Where(si => si.Sale?.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -272,10 +272,10 @@ public class AgentToolExecutor : IAgentToolExecutor
         var today = DateTime.UtcNow.Date;
         var totalProducts = await _db.Products.CountAsync();
         var totalCustomers = await _db.Parties.CountAsync(p => p.Role == "Customer" || p.Role == "customer");
-        var totalSales = await _db.Sales.CountAsync();
-        var todaySales = await _db.Sales.Where(s => s.SaleDate >= today).SumAsync(s => s.GrandTotal);
+        var totalSales = await _db.Sales.CountAsync(s => s.Status != ReactPosApi.Models.SaleStatus.Queued);
+        var todaySales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued && s.SaleDate >= today).SumAsync(s => s.GrandTotal);
         var lowStock = await _db.Products.CountAsync(p => p.Quantity <= p.QuantityAlert);
-        var totalRevenue = await _db.Sales.SumAsync(s => s.GrandTotal);
+        var totalRevenue = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).SumAsync(s => s.GrandTotal);
 
         return ToJson(new
         {

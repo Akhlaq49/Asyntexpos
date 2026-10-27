@@ -49,7 +49,7 @@ public class StockTaxReportsController : ControllerBase
         // sales
         var saleLines = await (from i in _db.SaleItems
                                join s in _db.Sales on i.SaleId equals s.Id
-                               where s.SaleDate >= start && s.SaleDate < end && (productId == null || i.ProductId == productId)
+                               where s.SaleDate >= start && s.SaleDate < end && s.Status != ReactPosApi.Models.SaleStatus.Queued && (productId == null || i.ProductId == productId)
                                select new { s.SaleDate, i.ProductId, i.ProductName, i.Quantity, s.Reference, s.CustomerName })
                               .ToListAsync();
         rows.AddRange(saleLines.Select(l => new StockMovement(l.SaleDate, l.ProductId, names.TryGetValue(l.ProductId, out var n) ? n.Name : l.ProductName,
@@ -90,7 +90,7 @@ public class StockTaxReportsController : ControllerBase
         var skus = await _db.Products.ToDictionaryAsync(p => p.Id, p => p.SKU);
         var lines = await (from i in _db.SaleItems
                            join s in _db.Sales on i.SaleId equals s.Id
-                           where s.SaleDate >= start && s.SaleDate < end
+                           where s.SaleDate >= start && s.SaleDate < end && s.Status != ReactPosApi.Models.SaleStatus.Queued
                            orderby s.SaleDate descending, s.Id descending
                            select new { s.SaleDate, s.Reference, s.CustomerName, i.ProductId, i.ProductName, i.Quantity, i.PurchasePrice, i.Discount, i.TotalCost })
                           .ToListAsync();
@@ -111,7 +111,7 @@ public class StockTaxReportsController : ControllerBase
         var (start, end) = Range(from, to);
         var rows = new List<TaxLine>();
 
-        var sales = await _db.Sales.Include(s => s.Items).Where(s => s.SaleDate >= start && s.SaleDate < end).ToListAsync();
+        var sales = await _db.Sales.Include(s => s.Items).Where(s => s.SaleDate >= start && s.SaleDate < end && s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
         foreach (var s in sales)
         {
             var taxes = AppliedTaxes.Parse(s.TaxesJson);

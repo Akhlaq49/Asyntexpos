@@ -32,6 +32,7 @@ public class SaleReturnFromSaleController : ControllerBase
         if (r.Length == 0) return BadRequest(new { message = "Enter the sale reference (e.g. SL001)." });
         var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Reference == r);
         if (sale == null) return NotFound(new { message = $"No sale with reference {r} was found." });
+        if (ReactPosApi.Models.SaleStatus.IsQueued(sale.Status)) return BadRequest(new { message = $"{sale.Reference} is still in the sale queue - it hasn't been sold, so nothing can be returned." });
         return Ok(await BuildLookupAsync(sale));
     }
 
@@ -40,6 +41,7 @@ public class SaleReturnFromSaleController : ControllerBase
     {
         var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == dto.SaleId);
         if (sale == null) return NotFound(new { message = "The sale no longer exists." });
+        if (ReactPosApi.Models.SaleStatus.IsQueued(sale.Status)) return BadRequest(new { message = $"{sale.Reference} is still in the sale queue - it hasn't been sold, so nothing can be returned." });
         var lookup = await BuildLookupAsync(sale);
         var lines = (dto.Lines ?? new()).Where(l => l.Quantity != 0).ToList();
         if (lines.Count == 0) return BadRequest(new { message = "Enter the quantity coming back for at least one product." });
