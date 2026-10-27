@@ -10,6 +10,7 @@
 [Ll]og/
 [Ll]ogs/
 publish/
+publish_output/
 [Tt]est[Rr]esult*/
 *.pdb
 *.cache
