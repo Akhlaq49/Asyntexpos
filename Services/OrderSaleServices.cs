@@ -334,12 +334,14 @@ public class SaleService : ISaleService
     }
 
     /// <summary>Sale queue -> sold: the goods have arrived; takes them out of stock and counts the sale from today</summary>
-    public async Task<SaleDto?> MarkQueuedAsSoldAsync(int saleId)
+    public async Task<SaleDto?> MarkQueuedAsSoldAsync(int saleId, MarkSoldDto? payment = null)
     {
-        var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == saleId);
+        var sale = await _db.Sales.Include(s => s.Items).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == saleId);
         if (sale == null) return null;
         if (!SaleStatus.IsQueued(sale.Status))
             throw new InvalidOperationException($"{sale.Reference} is already sold.");
+        if (payment != null && payment.PaidAmount < 0)
+            throw new InvalidOperationException("The amount received can't be negative.");
         var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         var problems = new List<string>();
@@ -357,9 +359,23 @@ public class SaleService : ISaleService
         {
             foreach (var item in sale.Items)              // stock out
                 products[item.ProductId].Quantity -= item.Quantity;
+            // the balance received now (capped at what is still due)
+            var due = Math.Max(0, sale.GrandTotal - sale.Paid);
+            var paid = Math.Min(payment?.PaidAmount ?? 0, due);
+            if (paid > 0)
+            {
+                sale.Payments.Add(new SalePayment
+                {
+                    Reference = $"{sale.Reference}-P{sale.Payments.Count + 1}", ReceivedAmount = payment!.PaidAmount, PayingAmount = paid,
+                    PaymentType = string.IsNullOrWhiteSpace(payment.PaymentType) ? "Cash" : payment.PaymentType,
+                    Description = "Balance received on converting the sale queue order to a sale",
+                    PaymentDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+                });
+                sale.Paid += paid;
+            }
             sale.Status = "Pending";
             sale.SaleDate = DateTime.UtcNow;             // counted as a sale from today (dashboard, reports)
-            RecalculateSalePaymentState(sale);            // fully paid -> Completed
+            RecalculateSalePaymentState(sale);            // fully paid -> Completed / Paid
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
         }

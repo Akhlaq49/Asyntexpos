@@ -310,6 +310,14 @@ public class ConvertQuotationToSaleDto
     public string? Notes { get; set; }
 }
 
+/// <summary>Sale queue -> sale: the balance received from the customer when the order is converted</summary>
+public class MarkSoldDto
+{
+    /// <summary>Amount received now (0 = nothing, the rest stays due)</summary>
+    public decimal PaidAmount { get; set; }
+    public string PaymentType { get; set; } = "Cash";
+}
+
 public class CreateSalePaymentDto
 {
     public string Reference { get; set; } = string.Empty;

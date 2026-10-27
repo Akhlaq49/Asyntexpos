@@ -63,11 +63,11 @@ public class SalesController : ControllerBase
 
     /// <summary>Sale queue: the goods have arrived - take them out of stock and count the sale from today</summary>
     [HttpPost("{id:int}/mark-sold")]
-    public async Task<IActionResult> MarkSold(int id)
+    public async Task<IActionResult> MarkSold(int id, [FromBody] MarkSoldDto? dto = null)
     {
         try
         {
-            var sale = await _service.MarkQueuedAsSoldAsync(id);
+            var sale = await _service.MarkQueuedAsSoldAsync(id, dto);
             return sale == null ? NotFound() : Ok(sale);
         }
         catch (InvalidOperationException ex)
