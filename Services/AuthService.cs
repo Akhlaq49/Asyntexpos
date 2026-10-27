@@ -105,6 +105,10 @@ public class AuthService : IAuthService
         if (!BCrypt.Net.BCrypt.Verify(dto.Password, party.PasswordHash!))
             throw new UnauthorizedAccessException("Invalid email or password.");
 
+        // frozen by an admin (checked after the password so it doesn't reveal which emails exist)
+        if (party.IsFrozen)
+            throw new AccountFrozenException();
+
         var token = GenerateJwtToken(party);
         return new AuthResponseDto { Token = token, User = MapToDto(party) };
     }

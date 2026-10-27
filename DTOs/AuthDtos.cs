@@ -32,6 +32,9 @@ public class UserDto
     public string Phone { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public bool IsActive { get; set; }
+    public bool IsFrozen { get; set; }
+    public DateTime? FrozenAt { get; set; }
+    public string? FrozenBy { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

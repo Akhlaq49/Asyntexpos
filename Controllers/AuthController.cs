@@ -36,6 +36,7 @@ public class AuthController : ControllerBase
             return Ok(result);
         }
         catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (AccountFrozenException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message, code = AccountFrozenException.Code }); }
         catch (UnauthorizedAccessException ex) { return Unauthorized(new { message = ex.Message }); }
     }
 

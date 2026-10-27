@@ -94,6 +94,12 @@ public class Party : ITenantEntity
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Frozen by an admin: the user cannot sign in until unfrozen</summary>
+    public bool IsFrozen { get; set; }
+    public DateTime? FrozenAt { get; set; }
+    [MaxLength(150)]
+    public string? FrozenBy { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 

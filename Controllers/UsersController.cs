@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ReactPosApi.DTOs;
@@ -55,6 +56,28 @@ public class UsersController : ControllerBase
         }
         catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    /// <summary>SuperAdmin / Admin: freeze a user (they can't sign in) or unfreeze them</summary>
+    [HttpPost("{id}/freeze")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public Task<IActionResult> Freeze(int id) => SetFrozen(id, true);
+
+    [HttpPost("{id}/unfreeze")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public Task<IActionResult> Unfreeze(int id) => SetFrozen(id, false);
+
+    private async Task<IActionResult> SetFrozen(int id, bool frozen)
+    {
+        try
+        {
+            var actorId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var result = await _service.SetFrozenAsync(id, frozen, actorId,
+                User.FindFirstValue(ClaimTypes.Role) ?? "", User.FindFirstValue(ClaimTypes.Name) ?? "");
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
     [HttpDelete("{id}")]

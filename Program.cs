@@ -126,6 +126,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowReactApp");
 app.UseStaticFiles(); // serve wwwroot/uploads
 app.UseAuthentication();
+app.UseMiddleware<FrozenAccountMiddleware>(); // a frozen user is signed out on their next request
 app.UseAuthorization();
 app.MapControllers();
 

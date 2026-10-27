@@ -53,6 +53,9 @@ public class UserService : IUserService
                 Phone = p.Phone ?? "",
                 Role = p.Role,
                 IsActive = p.IsActive,
+                IsFrozen = p.IsFrozen,
+                FrozenAt = p.FrozenAt,
+                FrozenBy = p.FrozenBy,
                 CreatedAt = p.CreatedAt
             })
             .ToListAsync();
@@ -82,6 +85,9 @@ public class UserService : IUserService
                 Phone = p.Phone ?? "",
                 Role = p.Role,
                 IsActive = p.IsActive,
+                IsFrozen = p.IsFrozen,
+                FrozenAt = p.FrozenAt,
+                FrozenBy = p.FrozenBy,
                 CreatedAt = p.CreatedAt
             })
             .ToListAsync();
@@ -263,6 +269,29 @@ public class UserService : IUserService
         return true;
     }
 
+    public async Task<UserDto?> SetFrozenAsync(int id, bool frozen, int actorId, string actorRole, string actorName)
+    {
+        var party = await _db.Parties.FindAsync(id);
+        if (party == null || !await IsUserRoleAsync(party.Role)) return null;
+        if (frozen)
+        {
+            if (party.Id == actorId) throw new ArgumentException("You cannot freeze your own account.");
+            if (party.Role == RoleCatalog.SuperAdmin && actorRole != RoleCatalog.SuperAdmin)
+                throw new ArgumentException("Only a SuperAdmin can freeze a SuperAdmin account.");
+            party.IsFrozen = true;
+            party.FrozenAt = DateTime.UtcNow;
+            party.FrozenBy = actorName;
+        }
+        else
+        {
+            party.IsFrozen = false;
+            party.FrozenAt = null;
+            party.FrozenBy = null;
+        }
+        await _db.SaveChangesAsync();
+        return MapToDto(party);
+    }
+
     private static UserDto MapToDto(Party p) => new()
     {
         Id = p.Id,
@@ -271,6 +300,9 @@ public class UserService : IUserService
         Phone = p.Phone ?? "",
         Role = p.Role,
         IsActive = p.IsActive,
+        IsFrozen = p.IsFrozen,
+        FrozenAt = p.FrozenAt,
+        FrozenBy = p.FrozenBy,
         CreatedAt = p.CreatedAt
     };
 }
