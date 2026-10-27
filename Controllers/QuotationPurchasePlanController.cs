@@ -18,7 +18,7 @@ public class QuotationPurchasePlanController : ControllerBase
     private readonly AppDbContext _db;
     public QuotationPurchasePlanController(AppDbContext db) => _db = db;
 
-    public record PlanLine(int ProductId, string ProductName, string? Sku, int Quoted, int InStock, int AlreadyOrdered, int Suggested, decimal LastCost);
+    public record PlanLine(int ProductId, string ProductName, string? Sku, int Quoted, int InStock, int AlreadyOrdered, int Suggested, decimal LastCost, decimal Price);
     public record LinkedOrder(int Id, string PoNumber, string Status, string SupplierName, decimal Total);
 
     [HttpGet("{id:int}/purchase-plan")]
@@ -50,7 +50,8 @@ public class QuotationPurchasePlanController : ControllerBase
             var quoted = g.Sum(i => i.Quantity);
             var already = ordered.TryGetValue(g.Key, out var o) ? o : 0;
             var cost = poCosts.TryGetValue(g.Key, out var c1) ? c1 : purchaseCosts.TryGetValue(g.Key, out var c2) ? c2 : 0;
-            return new PlanLine(g.Key, p?.ProductName ?? g.First().ProductName, p?.SKU, quoted, p?.Quantity ?? 0, already, Math.Max(0, quoted - already), cost);
+            // Price = the price set on the product in inventory (used as the purchase order cost)
+            return new PlanLine(g.Key, p?.ProductName ?? g.First().ProductName, p?.SKU, quoted, p?.Quantity ?? 0, already, Math.Max(0, quoted - already), cost, p?.Price ?? 0);
         }).ToList();
 
         return Ok(new
