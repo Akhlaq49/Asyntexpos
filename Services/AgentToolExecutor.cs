@@ -147,7 +147,7 @@ public class AgentToolExecutor : IAgentToolExecutor
             total_amount = sales.Sum(s => s.GrandTotal),
             total_paid = sales.Sum(s => s.Paid),
             total_unpaid = sales.Sum(s => s.Due),
-            overdue = sales.Where(s => s.PaymentStatus == "Overdue").Sum(s => s.Due)
+            overdue = sales.Where(s => s.PaymentStatus == "Partial" || s.PaymentStatus == "Overdue").Sum(s => s.Due)
         });
     }
 

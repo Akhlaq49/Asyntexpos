@@ -46,7 +46,7 @@ public class ReportService : IReportService
             };
         }).OrderByDescending(x => x.SoldAmount).ToList();
 
-        var overdue = sales.Where(s => s.PaymentStatus == "Overdue").Sum(s => s.Due);
+        var overdue = sales.Where(s => s.PaymentStatus == "Partial" || s.PaymentStatus == "Overdue").Sum(s => s.Due);
         return new SalesReportDto
         {
             TotalAmount = sales.Sum(s => s.GrandTotal), TotalPaid = sales.Sum(s => s.Paid),
@@ -183,7 +183,7 @@ public class ReportService : IReportService
                 Reference = first.Reference, Code = first.CustomerId?.ToString() ?? "",
                 Customer = g.Key.CustomerName, TotalAmount = g.Sum(s => s.GrandTotal),
                 Paid = g.Sum(s => s.Paid), Due = g.Sum(s => s.Due),
-                Status = g.Any(s => s.PaymentStatus == "Overdue") ? "Overdue" : "Unpaid"
+                Status = g.Any(s => s.PaymentStatus == "Partial" || s.PaymentStatus == "Overdue") ? "Partial" : "Unpaid"
             };
         }).OrderByDescending(c => c.Due).ToList();
         return grouped;

@@ -202,6 +202,15 @@ public class SaleService : ISaleService
                     product.Quantity += item.Quantity;
             }
 
+            // a sale made from a quotation: the quotation is free again (it can be converted once more)
+            var quotations = await _db.Quotations.Where(q => q.SaleId == sale.Id).ToListAsync();
+            foreach (var q in quotations)
+            {
+                q.SaleId = null;
+                q.SaleReference = null;
+                if (q.Status == "Converted") q.Status = "Pending";
+            }
+
             _db.Sales.Remove(sale);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -515,7 +524,7 @@ public class SaleService : ISaleService
                 sale.Status = "Completed";
         }
         else if (sale.Paid > 0)
-            sale.PaymentStatus = "Overdue";
+            sale.PaymentStatus = "Partial";   // part paid, the rest still due (older rows say "Overdue")
         else
             sale.PaymentStatus = "Unpaid";
     }

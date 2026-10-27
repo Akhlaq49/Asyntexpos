@@ -19,6 +19,10 @@ public static class SchemaUpgrades
         // customer's building: type, size, construction stage
         if (!HasColumn(db, "Parties", "BuildingType"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Parties` ADD COLUMN `BuildingType` varchar(50) NULL, ADD COLUMN `BuildingSpace` varchar(50) NULL, ADD COLUMN `BuildingStage` varchar(50) NULL");
+        // a part-paid sale is "Partial" (it used to be called "Overdue" straight away)
+        db.Database.ExecuteSqlRaw("UPDATE `Sales` SET `PaymentStatus` = 'Partial' WHERE `PaymentStatus` = 'Overdue'");
+        // quotations whose sale was deleted are free to convert again
+        db.Database.ExecuteSqlRaw("UPDATE `Quotations` SET `SaleId` = NULL, `SaleReference` = NULL, `Status` = IF(`Status` = 'Converted', 'Pending', `Status`) WHERE `SaleId` IS NOT NULL AND `SaleId` NOT IN (SELECT `Id` FROM `Sales`)");
         // a user frozen by an admin cannot sign in
         if (!HasColumn(db, "Parties", "IsFrozen"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Parties` ADD COLUMN `IsFrozen` tinyint(1) NOT NULL DEFAULT 0, ADD COLUMN `FrozenAt` datetime(6) NULL, ADD COLUMN `FrozenBy` varchar(150) NULL");
