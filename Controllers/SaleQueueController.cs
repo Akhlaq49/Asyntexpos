@@ -19,7 +19,7 @@ public class SaleQueueController : ControllerBase
     public SaleQueueController(AppDbContext db) => _db = db;
 
     public record QueueLine(int ProductId, string ProductName, int Needed, int Ordered, int Received, int InStock, string Stage);
-    public record QueuePo(int Id, string PoNumber, string Status, string SupplierName);
+    public record QueuePo(int Id, string PoNumber, string Status, string SupplierName, decimal Total);
     public record QueueOrder(int SaleId, string Reference, int? QuotationId, string? QuotationReference, string CustomerName, DateTime QueuedAt,
         decimal GrandTotal, decimal Paid, decimal Due, string PaymentStatus, string Stage, List<QueueLine> Lines, List<QueuePo> PurchaseOrders);
     public record SoldOrder(int SaleId, string Reference, string? QuotationReference, string CustomerName, DateTime SaleDate, decimal GrandTotal, decimal Paid, decimal Due);
@@ -55,7 +55,7 @@ public class SaleQueueController : ControllerBase
             }).ToList();
             var orderStage = lines.All(l => l.Stage == Ready) ? Ready : lines.Any(l => l.Stage == NotOrdered) ? NotOrdered : Waiting;
             return new QueueOrder(s.Id, s.Reference, q?.Id, q?.Reference, s.CustomerName, s.CreatedAt, s.GrandTotal, s.Paid, s.Due,
-                s.PaymentStatus, orderStage, lines, pos.Select(o => new QueuePo(o.Id, o.PoNumber, o.Status, o.SupplierName)).ToList());
+                s.PaymentStatus, orderStage, lines, pos.Select(o => new QueuePo(o.Id, o.PoNumber, o.Status, o.SupplierName, o.Total)).ToList());
         }).ToList();
 
         // sold from the queue: sales made from a quotation, most recent first
