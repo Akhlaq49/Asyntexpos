@@ -503,6 +503,16 @@ public class CreateSalesReturnItemDto
 public class QuotationDto
 {
     public int Id { get; set; }
+    /// <summary>From the customer's record (shown and printed on the quotation)</summary>
+    public string? CustomerAddress { get; set; }
+    public string? CustomerCity { get; set; }
+    public string? CustomerPhone { get; set; }
+    /// <summary>House, Villa, Apartment ...</summary>
+    public string? CustomerBuildingType { get; set; }
+    /// <summary>Size of the house, e.g. 10 Marla</summary>
+    public string? CustomerBuildingSpace { get; set; }
+    /// <summary>Condition / stage of the house, e.g. Under construction</summary>
+    public string? CustomerBuildingStage { get; set; }
     public int? SaleId { get; set; }
     public string? SaleReference { get; set; }
     public string Reference { get; set; } = string.Empty;

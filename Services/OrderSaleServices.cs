@@ -992,9 +992,14 @@ public class QuotationService : IQuotationService
     {
         var x = await _db.Quotations.Include(q => q.Items).FirstOrDefaultAsync(q => q.Id == id);
         if (x == null) return null;
+        // the customer's address and house details (shown and printed on the quotation)
+        var cust = x.CustomerId == null ? null : await _db.Parties.Where(p => p.Id == x.CustomerId)
+            .Select(p => new { p.Address, p.City, p.Phone, p.BuildingType, p.BuildingSpace, p.BuildingStage }).FirstOrDefaultAsync();
 
         return new QuotationDto
         {
+            CustomerAddress = cust?.Address, CustomerCity = cust?.City, CustomerPhone = cust?.Phone,
+            CustomerBuildingType = cust?.BuildingType, CustomerBuildingSpace = cust?.BuildingSpace, CustomerBuildingStage = cust?.BuildingStage,
             Id = x.Id, Reference = x.Reference, CustomerId = x.CustomerId,
             CustomerName = x.CustomerName, CustomerImage = x.CustomerImage,
             ProductId = x.ProductId, ProductName = x.ProductName, ProductImage = x.ProductImage,
