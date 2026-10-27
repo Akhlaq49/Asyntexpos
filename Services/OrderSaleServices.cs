@@ -417,7 +417,7 @@ public class SaleService : ISaleService
             payment.Description = dto.Description;
 
             sale.Paid += dto.PayingAmount;
-            RecalculateSalePaymentState(sale);
+            RecalculateSalePaymentState(sale, paymentReduced: true);
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -441,7 +441,7 @@ public class SaleService : ISaleService
         try
         {
             sale.Paid -= payment.PayingAmount;
-            RecalculateSalePaymentState(sale);
+            RecalculateSalePaymentState(sale, paymentReduced: true);
 
             _db.SalePayments.Remove(payment);
             await _db.SaveChangesAsync();
@@ -548,10 +548,13 @@ public class SaleService : ISaleService
 
     private const decimal SaleMoneyEpsilon = 0.01m;
 
-    /// <summary>Sets Due and PaymentStatus from GrandTotal/Paid. When fully paid, promotes order Status from Pending to Completed.</summary>
-    private static void RecalculateSalePaymentState(Sale sale)
+    /// <summary>Sets Due and PaymentStatus from GrandTotal/Paid. When fully paid, promotes order Status from Pending to Completed.
+    /// paymentReduced: a payment was removed or lowered - a Completed sale that now has money due goes back to Pending.</summary>
+    private static void RecalculateSalePaymentState(Sale sale, bool paymentReduced = false)
     {
         sale.Due = sale.GrandTotal - sale.Paid;
+        if (paymentReduced && sale.Due > SaleMoneyEpsilon && string.Equals((sale.Status ?? string.Empty).Trim(), "Completed", StringComparison.OrdinalIgnoreCase))
+            sale.Status = "Pending";
         if (sale.Due <= SaleMoneyEpsilon)
         {
             sale.Due = 0;
