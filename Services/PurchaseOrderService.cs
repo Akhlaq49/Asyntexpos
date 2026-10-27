@@ -426,6 +426,7 @@ public class PurchaseOrderService : IPurchaseOrderService
                     ProductName = i.ProductName,
                     Sku = i.Sku,
                     ProductImage = product?.Images.FirstOrDefault()?.ImagePath ?? "",
+                    Description = product?.Description,
                     Quantity = i.Quantity,
                     ReceivedQuantity = i.ReceivedQuantity,
                     UnitCost = i.UnitCost,
