@@ -1,6 +1,10 @@
+using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Metadata;
 using ReactPosApi.Models;
 using ReactPosApi.Services;
 
@@ -9,11 +13,13 @@ namespace ReactPosApi.Data;
 public class AppDbContext : DbContext
 {
     private readonly int _tenantId;
+    private readonly IHttpContextAccessor? _http;
 
-    public AppDbContext(DbContextOptions<AppDbContext> options, ITenantProvider tenantProvider)
+    public AppDbContext(DbContextOptions<AppDbContext> options, ITenantProvider tenantProvider, IHttpContextAccessor? http = null)
         : base(options)
     {
         _tenantId = tenantProvider.TenantId;
+        _http = http;
     }
 
     /// <summary>
@@ -87,10 +93,24 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // ═══════════════════════════════════════════════════════════
+        // SOFT DELETE: IsDeleted / DeletedAt / DeletedBy on every table except settings (shadow properties).
+        // Declared first: the unique indexes below include DeletedKey.
+        // ═══════════════════════════════════════════════════════════
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes().Where(t => !t.IsOwned() && SoftDelete.Applies(t.ClrType)).ToList())
+        {
+            var b = modelBuilder.Entity(entityType.ClrType);
+            b.Property<bool>(SoftDelete.IsDeleted);
+            b.Property<DateTime?>(SoftDelete.DeletedAt);
+            b.Property<string?>(SoftDelete.DeletedBy).HasMaxLength(150);
+            if (SoftDelete.UniqueKeyTypes.Contains(entityType.ClrType))
+                b.Property<int>(SoftDelete.DeletedKey);
+        }
+
         // Category
         modelBuilder.Entity<Category>(e =>
         {
-            e.HasIndex(c => new { c.TenantId, c.Slug }).IsUnique();
+            e.HasIndex(nameof(Category.TenantId), nameof(Category.Slug), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_Categories_TenantId_Slug");
             e.Property(c => c.Status).HasDefaultValue("active");
         });
 
@@ -114,9 +134,9 @@ public class AppDbContext : DbContext
         // Party (unified: Admin, Manager, User, Customer, Guarantor, Supplier, Biller, Store, Warehouse, Employee)
         modelBuilder.Entity<Party>(e =>
         {
-            e.HasIndex(p => new { p.TenantId, p.Email, p.Role })
+            e.HasIndex(nameof(Party.TenantId), nameof(Party.Email), nameof(Party.Role), SoftDelete.DeletedKey)
              .IsUnique()
-             .HasDatabaseName("IX_Parties_Tenant_Email_Role");
+             .HasDatabaseName("UX_Parties_TenantId_Email_Role");
             e.Property(p => p.Role).HasDefaultValue("Customer");
             e.Property(p => p.Status).HasDefaultValue("active");
             e.Property(p => p.IsActive).HasDefaultValue(true);
@@ -282,14 +302,14 @@ public class AppDbContext : DbContext
         // PurchaseOrder -> items (receipts become Purchases with PurchaseOrderId)
         // one terms & conditions document per tenant
         modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
-        modelBuilder.Entity<TaxType>(e => e.HasIndex(t => new { t.TenantId, t.Name }).IsUnique());
-        modelBuilder.Entity<Role>(e => e.HasIndex(r => new { r.TenantId, r.Name }).IsUnique());
+        modelBuilder.Entity<TaxType>(e => e.HasIndex(nameof(TaxType.TenantId), nameof(TaxType.Name), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_TaxTypes_TenantId_Name"));
+        modelBuilder.Entity<Role>(e => e.HasIndex(nameof(Role.TenantId), nameof(Role.Name), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_Roles_TenantId_Name"));
         modelBuilder.Entity<QuotationApproval>(e => { e.HasIndex(a => a.QuotationId); e.HasIndex(a => new { a.TenantId, a.Status }); });
         modelBuilder.Entity<PurchasePayment>(e => { e.HasIndex(p => p.PurchaseId); e.HasIndex(p => p.PurchaseOrderId); });
         // goods sent back to the supplier from a received purchase
         modelBuilder.Entity<PurchaseReturn>(e =>
         {
-            e.HasIndex(r => new { r.TenantId, r.Reference }).IsUnique();
+            e.HasIndex(nameof(PurchaseReturn.TenantId), nameof(PurchaseReturn.Reference), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_PurchaseReturns_TenantId_Reference");
             e.HasIndex(r => r.PurchaseId);
             e.HasMany(r => r.Items).WithOne(i => i.PurchaseReturn).HasForeignKey(i => i.PurchaseReturnId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(r => r.Refunds).WithOne(i => i.PurchaseReturn).HasForeignKey(i => i.PurchaseReturnId).OnDelete(DeleteBehavior.Cascade);
@@ -297,7 +317,7 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<PurchaseOrder>(e =>
         {
-            e.HasIndex(po => new { po.TenantId, po.PoNumber }).IsUnique();
+            e.HasIndex(nameof(PurchaseOrder.TenantId), nameof(PurchaseOrder.PoNumber), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_PurchaseOrders_TenantId_PoNumber");
             e.Property(po => po.Status).HasDefaultValue(PurchaseOrderStatus.Draft);
         });
         modelBuilder.Entity<PurchaseOrderItem>(e =>
@@ -334,29 +354,40 @@ public class AppDbContext : DbContext
         });
 
         // ═══════════════════════════════════════════════════════════
-        // MULTI-TENANCY: Apply global query filters dynamically
+        // MULTI-TENANCY + SOFT DELETE: Apply global query filters dynamically
+        //   tenant tables:            e => e.TenantId == CurrentTenantId && !e.IsDeleted
+        //   soft-deleted, no tenant:  e => !e.IsDeleted
         // ═══════════════════════════════════════════════════════════
         // For every entity implementing ITenantEntity, add a query filter:
         //   e => e.TenantId == this.CurrentTenantId
         // EF Core parameterizes the DbContext property reference, so the
         // filter evaluates CurrentTenantId from the CURRENT DbContext instance
         // on every query, even though the model is cached.
+        var efProperty = typeof(EF).GetMethod(nameof(EF.Property))!.MakeGenericMethod(typeof(bool));
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (!typeof(ITenantEntity).IsAssignableFrom(entityType.ClrType))
+            var isTenant = typeof(ITenantEntity).IsAssignableFrom(entityType.ClrType);
+            var isSoft = !entityType.IsOwned() && SoftDelete.Applies(entityType.ClrType);
+            if (!isTenant && !isSoft)
                 continue;
 
             var parameter = Expression.Parameter(entityType.ClrType, "e");
-            var tenantIdProperty = Expression.Property(parameter, nameof(ITenantEntity.TenantId));
-            var currentTenantId = Expression.Property(
-                Expression.Constant(this),
-                nameof(CurrentTenantId)
-            );
-            var filter = Expression.Lambda(
-                Expression.Equal(tenantIdProperty, currentTenantId),
-                parameter
-            );
-            entityType.SetQueryFilter(filter);
+            Expression? body = null;
+            if (isTenant)
+            {
+                var tenantIdProperty = Expression.Property(parameter, nameof(ITenantEntity.TenantId));
+                var currentTenantId = Expression.Property(
+                    Expression.Constant(this),
+                    nameof(CurrentTenantId)
+                );
+                body = Expression.Equal(tenantIdProperty, currentTenantId);
+            }
+            if (isSoft)
+            {
+                var notDeleted = Expression.Not(Expression.Call(efProperty, parameter, Expression.Constant(SoftDelete.IsDeleted)));
+                body = body == null ? notDeleted : Expression.AndAlso(body, notDeleted);
+            }
+            entityType.SetQueryFilter(Expression.Lambda(body!, parameter));
         }
     }
 
@@ -366,6 +397,7 @@ public class AppDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         SetTenantIdOnNewEntities();
+        ApplySoftDeletes();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -374,8 +406,114 @@ public class AppDbContext : DbContext
         CancellationToken cancellationToken = default)
     {
         SetTenantIdOnNewEntities();
+        ApplySoftDeletes();
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // SOFT DELETE: a removed record is marked deleted instead (and so are the records that
+    // a real delete would have removed with it - sale lines, payments ...)
+    // ═══════════════════════════════════════════════════════════
+    private void ApplySoftDeletes()
+    {
+        var done = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var pending = DeletedSoftEntries(done);
+        if (pending.Count == 0) return;
+
+        // 1) follow the relationships like a real delete would
+        while (pending.Count > 0)
+        {
+            foreach (var entry in pending)
+            {
+                done.Add(entry.Entity);
+                foreach (var fk in entry.Metadata.GetReferencingForeignKeys())
+                {
+                    if (!IsSoft(fk.DeclaringEntityType)) continue;   // settings tables are not linked to business records
+                    switch (fk.DeleteBehavior)
+                    {
+                        case DeleteBehavior.Cascade:
+                        case DeleteBehavior.ClientCascade:
+                            foreach (var dependent in LoadDependents(entry, fk))
+                            {
+                                var d = Entry(dependent);
+                                if (d.State is EntityState.Unchanged or EntityState.Modified) d.State = EntityState.Deleted;
+                            }
+                            break;
+                        case DeleteBehavior.Restrict:
+                        case DeleteBehavior.NoAction:
+                        case DeleteBehavior.ClientNoAction:
+                            // a real delete would be refused by the database while something still uses the record
+                            if (LoadDependents(entry, fk).Any(x => Entry(x).State is not (EntityState.Deleted or EntityState.Detached)))
+                                throw new DbUpdateException($"This {entry.Metadata.ClrType.Name} is still used by {fk.DeclaringEntityType.ClrType.Name} records and can't be deleted.");
+                            break;
+                        // SetNull / ClientSetNull: the record is only hidden, so the links to it can stay as they are
+                    }
+                }
+            }
+            pending = DeletedSoftEntries(done);
+        }
+
+        // 2) turn every delete into an update that only marks the record
+        var now = DateTime.UtcNow;
+        var by = _http?.HttpContext?.User?.FindFirstValue(ClaimTypes.Name);
+        if (by is { Length: > 150 }) by = by[..150];
+        foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted && IsSoft(e.Metadata)).ToList())
+        {
+            entry.State = EntityState.Modified;
+            foreach (var p in entry.Properties) p.IsModified = false;   // the row stays as it was
+            SetMark(entry, SoftDelete.IsDeleted, true);
+            SetMark(entry, SoftDelete.DeletedAt, now);
+            SetMark(entry, SoftDelete.DeletedBy, by ?? "system");
+            var pk = entry.Metadata.FindPrimaryKey();
+            if (entry.Metadata.FindProperty(SoftDelete.DeletedKey) != null && pk?.Properties.Count == 1
+                && entry.Property(pk.Properties[0].Name).CurrentValue is int id)
+                SetMark(entry, SoftDelete.DeletedKey, id);
+        }
+    }
+
+    private static void SetMark(EntityEntry entry, string property, object value)
+    {
+        var p = entry.Property(property);
+        p.CurrentValue = value;
+        p.IsModified = true;
+    }
+
+    private static bool IsSoft(IReadOnlyEntityType t) => !t.IsOwned() && SoftDelete.Applies(t.ClrType) && t.FindProperty(SoftDelete.IsDeleted) != null;
+
+    private List<EntityEntry> DeletedSoftEntries(HashSet<object> done) =>
+        ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted && IsSoft(e.Metadata) && !done.Contains(e.Entity)).ToList();
+
+    /// <summary>The live records that point at this one through the given relationship (loaded if needed)</summary>
+    private List<object> LoadDependents(EntityEntry principal, IForeignKey fk)
+    {
+        var nav = fk.PrincipalToDependent;
+        if (nav != null)
+        {
+            if (nav.IsCollection)
+            {
+                var c = principal.Collection(nav.Name);
+                if (!c.IsLoaded) c.Load();
+                return (c.CurrentValue as IEnumerable)?.Cast<object>().ToList() ?? new List<object>();
+            }
+            var r = principal.Reference(nav.Name);
+            if (!r.IsLoaded) r.Load();
+            return r.CurrentValue == null ? new List<object>() : new List<object> { r.CurrentValue };
+        }
+        // no navigation: query the dependent table by its foreign key
+        if (fk.Properties.Count != 1 || fk.PrincipalKey.Properties.Count != 1) return new List<object>();
+        var keyValue = principal.Property(fk.PrincipalKey.Properties[0].Name).CurrentValue;
+        if (keyValue == null) return new List<object>();
+        var clr = fk.DeclaringEntityType.ClrType;
+        var setMethod = typeof(DbContext).GetMethods().First(m => m.Name == nameof(Set) && m.IsGenericMethod && m.GetParameters().Length == 0).MakeGenericMethod(clr);
+        var set = (IQueryable)setMethod.Invoke(this, null)!;
+        var param = Expression.Parameter(clr, "d");
+        var propType = fk.Properties[0].ClrType;
+        var efProp = typeof(EF).GetMethod(nameof(EF.Property))!.MakeGenericMethod(propType);
+        var cmp = Expression.Equal(Expression.Call(efProp, param, Expression.Constant(fk.Properties[0].Name)), Expression.Constant(keyValue, propType));
+        var where = Expression.Call(typeof(Queryable), nameof(Queryable.Where), new[] { clr }, set.Expression, Expression.Lambda(cmp, param));
+        return set.Provider.CreateQuery(where).Cast<object>().ToList();
+    }
+
 
     private void SetTenantIdOnNewEntities()
     {

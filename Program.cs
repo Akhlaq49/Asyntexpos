@@ -154,7 +154,7 @@ using (var scope = app.Services.CreateScope())
     // ── MULTI-TENANCY: Seed default tenant + SuperAdmin ──
     // Use IgnoreQueryFilters() because there's no authenticated user at startup
     var existingAdmin = db.Parties
-        .IgnoreQueryFilters()
+        .IgnoreQueryFilters().NotDeleted()
         .FirstOrDefault(p => p.Email == "admin@reactpos.com" && (p.Role == "SuperAdmin" || p.Role == "Admin"));
 
     if (existingAdmin == null)

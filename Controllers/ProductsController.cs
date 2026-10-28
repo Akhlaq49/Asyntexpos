@@ -66,7 +66,12 @@ public class ProductsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var (success, error) = await _service.DeleteAsync(id);
+        bool success; string? error;
+        try { (success, error) = await _service.DeleteAsync(id); }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            return Conflict(new { message = "This product is on a purchase order, so it can't be deleted. Remove it from the purchase order first." });
+        }
         if (error != null) return Conflict(new { message = error });
         if (!success) return NotFound();
         return NoContent();

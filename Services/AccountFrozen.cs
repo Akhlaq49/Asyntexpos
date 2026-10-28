@@ -26,8 +26,16 @@ public class FrozenAccountMiddleware
         if (context.User.Identity?.IsAuthenticated == true
             && int.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
         {
-            var frozen = await db.Parties.IgnoreQueryFilters().AsNoTracking()
-                .Where(p => p.Id == userId).Select(p => p.IsFrozen).FirstOrDefaultAsync();
+            // a frozen user - or one who was deleted - is signed out
+            var state = await db.Parties.IgnoreQueryFilters().AsNoTracking()
+                .Where(p => p.Id == userId).Select(p => new { p.IsFrozen, Deleted = EF.Property<bool>(p, ReactPosApi.Data.SoftDelete.IsDeleted) }).FirstOrDefaultAsync();
+            if (state != null && state.Deleted)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { message = "This account has been removed." });
+                return;
+            }
+            var frozen = state?.IsFrozen == true;
             if (frozen)
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;

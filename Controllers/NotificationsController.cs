@@ -154,7 +154,7 @@ public class NotificationsController : ControllerBase
 
         // Bypass tenant filter to fetch ALL pending SMS across tenants
         var pending = await _db.SmsMessages
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .Where(m => m.Status == "pending")
             .OrderBy(m => m.CreatedAt)
             .Take(50)
@@ -193,7 +193,7 @@ public class NotificationsController : ControllerBase
             return BadRequest(new { error = "Invalid message ID." });
 
         var msg = await _db.SmsMessages
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .FirstOrDefaultAsync(m => m.Id == msgId);
 
         if (msg == null)

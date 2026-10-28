@@ -11,6 +11,8 @@ public static class SchemaUpgrades
 {
     public static void Apply(AppDbContext db)
     {
+        // soft delete columns first: every entity query below reads them (run again at the end for tables created here)
+        AddSoftDeleteColumns(db);
         // columns read by the entity queries below (e.g. the quotation reference backfill) must exist first
         // installation, testing and commissioning charge on quotations (and the sales made from them)
         foreach (var table in new[] { "Quotations", "Sales" })
@@ -22,7 +24,7 @@ public static class SchemaUpgrades
         // a part-paid sale is "Partial" (it used to be called "Overdue" straight away)
         db.Database.ExecuteSqlRaw("UPDATE `Sales` SET `PaymentStatus` = 'Partial' WHERE `PaymentStatus` = 'Overdue'");
         // quotations whose sale was deleted are free to convert again
-        db.Database.ExecuteSqlRaw("UPDATE `Quotations` SET `SaleId` = NULL, `SaleReference` = NULL, `Status` = IF(`Status` = 'Converted', 'Pending', `Status`) WHERE `SaleId` IS NOT NULL AND `SaleId` NOT IN (SELECT `Id` FROM `Sales`)");
+        db.Database.ExecuteSqlRaw("UPDATE `Quotations` SET `SaleId` = NULL, `SaleReference` = NULL, `Status` = IF(`Status` = 'Converted', 'Pending', `Status`) WHERE `SaleId` IS NOT NULL AND `SaleId` NOT IN (SELECT `Id` FROM `Sales` WHERE `IsDeleted` = 0)");
         // a user frozen by an admin cannot sign in
         if (!HasColumn(db, "Parties", "IsFrozen"))
             db.Database.ExecuteSqlRaw("ALTER TABLE `Parties` ADD COLUMN `IsFrozen` tinyint(1) NOT NULL DEFAULT 0, ADD COLUMN `FrozenAt` datetime(6) NULL, ADD COLUMN `FrozenBy` varchar(150) NULL");
@@ -108,8 +110,57 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
         db.Database.ExecuteSqlRaw("DELETE FROM `TenantMenuConfigs` WHERE `MenuKey` = 'Sales/Sales'");
         // customers saved with a blank email before it became optional: NULL, so they don't clash on the unique email index
         db.Database.ExecuteSqlRaw("UPDATE `Parties` SET `Email` = NULL WHERE `Role` = 'Customer' AND `Email` = ''");
+        AddSoftDeleteColumns(db);
         AlignCollations(db);
     }
+
+    /// <summary>
+    /// Soft delete: IsDeleted / DeletedAt / DeletedBy on every table in the model except the settings tables,
+    /// and DeletedKey (0 = live, the Id once deleted) in the unique indexes, so a deleted record never blocks
+    /// a new one with the same email / number / name. Idempotent.
+    /// </summary>
+    private static void AddSoftDeleteColumns(AppDbContext db)
+    {
+        foreach (var et in db.Model.GetEntityTypes().Where(t => !t.IsOwned() && t.FindProperty(SoftDelete.IsDeleted) != null))
+        {
+            var table = et.GetTableName();
+            if (table == null || !HasTable(db, table)) continue;   // created later in Apply - handled on the second run
+            if (!HasColumn(db, table, SoftDelete.IsDeleted))
+                db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `IsDeleted` tinyint(1) NOT NULL DEFAULT 0, ADD COLUMN `DeletedAt` datetime(6) NULL, ADD COLUMN `DeletedBy` varchar(150) NULL");
+            if (et.FindProperty(SoftDelete.DeletedKey) == null) continue;
+            if (!HasColumn(db, table, SoftDelete.DeletedKey))
+                db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD COLUMN `DeletedKey` int NOT NULL DEFAULT 0");
+            // unique indexes: (..columns) -> (..columns, DeletedKey); add the new one first (a foreign key may need an index on TenantId)
+            foreach (var ix in et.GetIndexes().Where(i => i.IsUnique))
+            {
+                var cols = ix.Properties.Select(p => p.GetColumnName()).ToList();
+                var name = ix.GetDatabaseName() ?? $"UX_{table}_{string.Join("_", cols)}";
+                var existing = UniqueIndexes(db, table);
+                if (!existing.Any(x => x.Columns.SequenceEqual(cols, StringComparer.OrdinalIgnoreCase)))
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` ADD UNIQUE INDEX `{name}` ({string.Join(", ", cols.Select(c => $"`{c}`"))})");
+                var old = cols.Where(c => !c.Equals(SoftDelete.DeletedKey, StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var x in UniqueIndexes(db, table).Where(x => x.Columns.SequenceEqual(old, StringComparer.OrdinalIgnoreCase)))
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE `{table}` DROP INDEX `{x.Name}`");
+            }
+        }
+    }
+
+    private record UniqueIndex(string Name, List<string> Columns);
+
+    private static List<UniqueIndex> UniqueIndexes(AppDbContext db, string table) =>
+        db.Database.SqlQueryRaw<string>(
+            "SELECT CONCAT(INDEX_NAME, ':', GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)) AS `Value` FROM information_schema.STATISTICS " +
+            $"WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = '{table.ToLower()}' AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY' GROUP BY INDEX_NAME")
+            .AsEnumerable()
+            .Select(v => { var i = v.IndexOf(':'); return new UniqueIndex(v[..i], v[(i + 1)..].Split(',').ToList()); })
+            .ToList();
+
+    private static bool HasTable(AppDbContext db, string table) =>
+        db.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS `Value` FROM information_schema.TABLES " +
+            $"WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = '{table.ToLower()}'")
+            .AsEnumerable().First() > 0;
+
 
     /// <summary>
     /// Tables created here get the server's default collation, which can differ from the tables EF created

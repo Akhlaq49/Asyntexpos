@@ -73,7 +73,7 @@ public class UserService : IUserService
     {
         var userRoles = await UserRolesAsync();
         return await _db.Parties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .Where(p => p.Role != null && userRoles.Contains(p.Role))
             .Where(p => p.TenantId == _db.CurrentTenantId)
             .OrderByDescending(p => p.CreatedAt)
@@ -111,7 +111,7 @@ public class UserService : IUserService
 
         // Bypass tenant filter — emails must be globally unique for login-capable roles
         var exists = await _db.Parties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .AnyAsync(p => p.Email == dto.Email.ToLower().Trim());
         if (exists)
             throw new InvalidOperationException("Email is already registered.");
@@ -190,7 +190,7 @@ public class UserService : IUserService
         {
             // Bypass tenant filter — emails must be globally unique for login-capable roles
             var exists = await _db.Parties
-                .IgnoreQueryFilters()
+                .IgnoreQueryFilters().NotDeleted()
                 .AnyAsync(p => p.Email == emailLower && p.Id != id);
             if (exists)
                 throw new InvalidOperationException("Email is already registered.");

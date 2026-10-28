@@ -37,7 +37,7 @@ public class AuthService : IAuthService
 
         // Bypass tenant query filter — email must be globally unique for auth
         var exists = await _db.Parties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .AnyAsync(p => p.Email == dto.Email.ToLower());
         if (exists)
             throw new InvalidOperationException("Email is already registered.");
@@ -93,7 +93,7 @@ public class AuthService : IAuthService
         // Bypass tenant query filter — login must search across all tenants
         var email = dto.Email.ToLower();
         var candidates = await _db.Parties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .Where(p => p.Email == email && p.Role != null && p.PasswordHash != null)
             .ToListAsync();
         Party? party = null;
@@ -165,7 +165,7 @@ public class AuthService : IAuthService
             return false;
 
         var admins = await _db.Parties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters().NotDeleted()
             .Where(p => p.TenantId == tenantId
                      && AdminRoles.Contains(p.Role)
                      && p.PasswordHash != null)

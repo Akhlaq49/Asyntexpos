@@ -26,7 +26,7 @@ public static class RoleCatalog
     public static async Task EnsureDefaultsAsync(AppDbContext db, int tenantId)
     {
         if (tenantId <= 0) return;
-        if (await db.Roles.IgnoreQueryFilters().AnyAsync(r => r.TenantId == tenantId)) return;
+        if (await db.Roles.IgnoreQueryFilters().NotDeleted().AnyAsync(r => r.TenantId == tenantId)) return;
         db.Roles.AddRange(Defaults.Select(n => new Role { TenantId = tenantId, Name = n, IsSystem = n == Admin, CreatedAt = DateTime.UtcNow }));
         await db.SaveChangesAsync();
     }
@@ -35,7 +35,7 @@ public static class RoleCatalog
     public static async Task<List<string>> UserRoleNamesAsync(AppDbContext db, int tenantId)
     {
         await EnsureDefaultsAsync(db, tenantId);
-        var names = await db.Roles.IgnoreQueryFilters().Where(r => r.TenantId == tenantId).Select(r => r.Name).ToListAsync();
+        var names = await db.Roles.IgnoreQueryFilters().NotDeleted().Where(r => r.TenantId == tenantId).Select(r => r.Name).ToListAsync();
         names.Add(SuperAdmin);
         return names;
     }
