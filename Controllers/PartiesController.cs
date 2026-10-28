@@ -87,6 +87,15 @@ public class PartiesController : ControllerBase
         return Ok(MapToDto(entity));
     }
 
+    /// <summary>Every field is optional: a blank email is stored as none (so many parties can have no email),
+    /// and a party saved without a name is listed by phone, else as "Unnamed supplier" ...</summary>
+    private static void Clean(CreatePartyDto dto)
+    {
+        dto.Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+            dto.FullName = string.IsNullOrWhiteSpace(dto.Phone) ? $"Unnamed {(dto.Role ?? "supplier").ToLowerInvariant()}" : dto.Phone.Trim();
+    }
+
     /// <summary>
     /// POST api/parties
     /// </summary>
@@ -95,6 +104,7 @@ public class PartiesController : ControllerBase
     {
         if (!ValidRoles.Contains(dto.Role))
             return BadRequest("Invalid role. Must be Supplier, Biller, Store, or Warehouse.");
+        Clean(dto);
 
         // Auto-generate code if not provided
         if (string.IsNullOrEmpty(dto.Code))
@@ -138,6 +148,7 @@ public class PartiesController : ControllerBase
     {
         var entity = await _db.Parties.FindAsync(id);
         if (entity == null) return NotFound();
+        Clean(dto);
 
         entity.FullName = dto.FullName;
         entity.LastName = dto.LastName;

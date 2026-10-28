@@ -39,17 +39,22 @@ public class CustomersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCustomerDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest(new { message = "Enter the customer name." });
-        if (string.IsNullOrWhiteSpace(dto.Phone)) return BadRequest(new { message = "Enter the customer's phone number." });
+        FillName(dto);
         var customer = await _service.CreateAsync(dto);
         return CreatedAtAction(nameof(GetById), new { id = customer.Id }, customer);
+    }
+
+    /// <summary>Every field is optional; a customer saved without a name is listed by phone, else as "Unnamed customer"</summary>
+    private static void FillName(CreateCustomerDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            dto.Name = string.IsNullOrWhiteSpace(dto.Phone) ? "Unnamed customer" : dto.Phone.Trim();
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] CreateCustomerDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest(new { message = "Enter the customer name." });
-        if (string.IsNullOrWhiteSpace(dto.Phone)) return BadRequest(new { message = "Enter the customer's phone number." });
+        FillName(dto);
         var customer = await _service.UpdateAsync(id, dto);
         if (customer == null) return NotFound();
         return Ok(customer);
