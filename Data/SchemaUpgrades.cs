@@ -110,8 +110,12 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
         db.Database.ExecuteSqlRaw("DELETE FROM `TenantMenuConfigs` WHERE `MenuKey` = 'Sales/Sales'");
         // customers saved with a blank email before it became optional: NULL, so they don't clash on the unique email index
         db.Database.ExecuteSqlRaw("UPDATE `Parties` SET `Email` = NULL WHERE `Role` = 'Customer' AND `Email` = ''");
+        AddSolutionPackages(db);
         AddSoftDeleteColumns(db);
         AlignCollations(db);
+        // every company gets the starting solution data once (after the soft delete columns: the seed reads them)
+        foreach (var tenantId in db.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToList())
+            SolutionPackageDefaults.Ensure(db, tenantId);
     }
 
     /// <summary>
@@ -173,7 +177,8 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
             .AsEnumerable().FirstOrDefault();
         if (string.IsNullOrEmpty(target) || !System.Text.RegularExpressions.Regex.IsMatch(target, "^[A-Za-z0-9_]+$")) return;
         var created = new[] { "PurchaseOrders", "PurchaseOrderItems", "TermsConditions", "TaxTypes", "PurchasePayments", "PurchaseReturns",
-                              "PurchaseReturnItems", "PurchaseReturnRefunds", "FinanceEntries", "Roles", "QuotationApprovals" };
+                              "PurchaseReturnItems", "PurchaseReturnRefunds", "FinanceEntries", "Roles", "QuotationApprovals",
+                              "SolutionGroups", "SolutionProductLines", "PackageSizes", "PackageItems", "PackageQuantities" };
         var different = db.Database.SqlQueryRaw<string>(
             "SELECT TABLE_NAME AS `Value` FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION <> {0}", target)
             .AsEnumerable().ToList();
@@ -186,6 +191,68 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
             "SELECT COUNT(*) AS `Value` FROM information_schema.COLUMNS " +
             $"WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = '{table.ToLower()}' AND COLUMN_NAME = '{column}'")
             .AsEnumerable().First() > 0;
+
+    /// <summary>Solution packages: product categorization (groups, lines, Standard / Premium) and package quantities per building size</summary>
+    private static void AddSolutionPackages(AppDbContext db)
+    {
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `SolutionGroups` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Name` varchar(100) NOT NULL,
+  `SortOrder` int NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Id`),
+  KEY `IX_SolutionGroups_TenantId` (`TenantId`)
+) CHARACTER SET utf8mb4");
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `SolutionProductLines` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `GroupId` int NOT NULL,
+  `Name` varchar(150) NOT NULL,
+  `InStandard` tinyint(1) NOT NULL DEFAULT 0,
+  `InPremium` tinyint(1) NOT NULL DEFAULT 0,
+  `SortOrder` int NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Id`),
+  KEY `IX_SolutionProductLines_GroupId` (`GroupId`),
+  CONSTRAINT `FK_SolutionProductLines_SolutionGroups_GroupId` FOREIGN KEY (`GroupId`) REFERENCES `SolutionGroups` (`Id`) ON DELETE CASCADE
+) CHARACTER SET utf8mb4");
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PackageSizes` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Name` varchar(50) NOT NULL,
+  `SortOrder` int NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Id`),
+  KEY `IX_PackageSizes_TenantId` (`TenantId`)
+) CHARACTER SET utf8mb4");
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PackageItems` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `Name` varchar(150) NOT NULL,
+  `ProductLineId` int NULL,
+  `ProductId` int NULL,
+  `SortOrder` int NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Id`),
+  KEY `IX_PackageItems_TenantId` (`TenantId`),
+  KEY `IX_PackageItems_ProductLineId` (`ProductLineId`),
+  CONSTRAINT `FK_PackageItems_SolutionProductLines_ProductLineId` FOREIGN KEY (`ProductLineId`) REFERENCES `SolutionProductLines` (`Id`) ON DELETE SET NULL
+) CHARACTER SET utf8mb4");
+        db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS `PackageQuantities` (
+  `Id` int NOT NULL AUTO_INCREMENT,
+  `TenantId` int NOT NULL,
+  `PackageItemId` int NOT NULL,
+  `PackageSizeId` int NOT NULL,
+  `Quantity` int NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Id`),
+  UNIQUE KEY `IX_PackageQuantities_PackageItemId_PackageSizeId` (`PackageItemId`, `PackageSizeId`),
+  KEY `IX_PackageQuantities_PackageSizeId` (`PackageSizeId`),
+  CONSTRAINT `FK_PackageQuantities_PackageItems_PackageItemId` FOREIGN KEY (`PackageItemId`) REFERENCES `PackageItems` (`Id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_PackageQuantities_PackageSizes_PackageSizeId` FOREIGN KEY (`PackageSizeId`) REFERENCES `PackageSizes` (`Id`) ON DELETE CASCADE
+) CHARACTER SET utf8mb4");
+    }
 
     /// <summary>Terms & conditions printed on quotations / purchase orders: one row per tenant, filled with the default text</summary>
     private static void AddTermsConditions(AppDbContext db)

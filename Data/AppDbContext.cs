@@ -89,6 +89,13 @@ public class AppDbContext : DbContext
     public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
     public DbSet<SmsWhitelistedNumber> SmsWhitelistedNumbers => Set<SmsWhitelistedNumber>();
 
+    // Solution packages (calculation engine data)
+    public DbSet<SolutionGroup> SolutionGroups => Set<SolutionGroup>();
+    public DbSet<SolutionProductLine> SolutionProductLines => Set<SolutionProductLine>();
+    public DbSet<PackageSize> PackageSizes => Set<PackageSize>();
+    public DbSet<PackageItem> PackageItems => Set<PackageItem>();
+    public DbSet<PackageQuantity> PackageQuantities => Set<PackageQuantity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -344,6 +351,16 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TenantMenuConfig>(e =>
         {
             e.HasIndex(c => new { c.TenantId, c.MenuKey }).IsUnique();
+        });
+
+        // Solution packages: categorization lines under groups; package quantities per item and building size
+        modelBuilder.Entity<SolutionProductLine>(e => e.HasOne(l => l.Group).WithMany(g => g.ProductLines).HasForeignKey(l => l.GroupId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<PackageItem>(e => e.HasOne(i => i.ProductLine).WithMany().HasForeignKey(i => i.ProductLineId).OnDelete(DeleteBehavior.SetNull));
+        modelBuilder.Entity<PackageQuantity>(e =>
+        {
+            e.HasOne(q => q.PackageItem).WithMany(i => i.Quantities).HasForeignKey(q => q.PackageItemId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(q => q.PackageSize).WithMany().HasForeignKey(q => q.PackageSizeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(q => new { q.PackageItemId, q.PackageSizeId }).IsUnique();
         });
 
         // Finance & Accounting
