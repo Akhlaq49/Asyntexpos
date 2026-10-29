@@ -25,6 +25,7 @@ public class SolutionPackagesController : ControllerBase
     public record LineDto(int GroupId, string? Name, bool InStandard, bool InPremium);
     public record ItemDto(string? Name, int? ProductLineId, int? ProductId, Dictionary<int, int>? Quantities);
     public record CellDto(int ItemId, int SizeId, int Quantity);
+    public record DesignDto(int SizeId, string? Solution, List<int>? ConfirmedItemIds);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -52,7 +53,7 @@ public class SolutionPackagesController : ControllerBase
             groups = groups.Select(g => new
             {
                 g.Id, g.Name, g.SortOrder,
-                lines = lines.Where(l => l.GroupId == g.Id).Select(l => new { l.Id, l.GroupId, l.Name, l.InStandard, l.InPremium, l.SortOrder }),
+                lines = lines.Where(l => l.GroupId == g.Id).Select(l => new { l.Id, l.GroupId, l.Name, l.InStandard, l.InPremium, usage = SolutionUsage.Of(l), l.SortOrder }),
             }),
             sizes = sizes.Select(s => new { s.Id, s.Name, s.SortOrder }),
             items = items.Select(i =>
@@ -66,6 +67,7 @@ public class SolutionPackagesController : ControllerBase
                     groupName = line != null && groupName.TryGetValue(line.GroupId, out var gn) ? gn : null,
                     inStandard = line?.InStandard ?? false,
                     inPremium = line?.InPremium ?? false,
+                    usage = SolutionUsage.Of(line),
                     productId = i.ProductId != null && products.ContainsKey(i.ProductId.Value) ? i.ProductId : null,
                     productName = i.ProductId != null && products.TryGetValue(i.ProductId.Value, out var pn) ? pn : null,
                     quantities = qty.Where(q => q.PackageItemId == i.Id && sizeIds.Contains(q.PackageSizeId) && q.Quantity > 0)
@@ -282,6 +284,58 @@ public class SolutionPackagesController : ControllerBase
         }
         if (save) await _db.SaveChangesAsync();
     }
+
+    // ── Designing a package ──
+
+    /// <summary>
+    /// The items a building size needs for a Standard or Premium package, following the categorization ticks.
+    /// Premium: products ticked for both are listed in toConfirm until the user answers - send their ids back in
+    /// confirmedItemIds (an empty list = use none of them); unconfirmed ones stay out of the package.
+    /// </summary>
+    [HttpPost("design")]
+    public async Task<IActionResult> Design([FromBody] DesignDto dto)
+    {
+        var solution = dto.Solution?.Trim().ToLowerInvariant();
+        if (!SolutionUsage.IsSolution(solution)) return BadRequest(new { message = "Choose Standard or Premium." });
+        var size = await _db.PackageSizes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == dto.SizeId);
+        if (size == null) return BadRequest(new { message = "Choose the building size." });
+
+        var rows = await (from q in _db.PackageQuantities.AsNoTracking()
+                          join i in _db.PackageItems.AsNoTracking() on q.PackageItemId equals i.Id
+                          where q.PackageSizeId == size.Id && q.Quantity > 0
+                          orderby i.SortOrder, i.Id
+                          select new { Item = i, q.Quantity }).ToListAsync();
+        var lineIds = rows.Where(r => r.Item.ProductLineId != null).Select(r => r.Item.ProductLineId!.Value).Distinct().ToList();
+        var lines = await _db.SolutionProductLines.AsNoTracking().Where(l => lineIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id);
+        var groups = await _db.SolutionGroups.AsNoTracking().ToDictionaryAsync(g => g.Id, g => g.Name);
+        var confirmed = dto.ConfirmedItemIds?.ToHashSet();
+
+        var all = rows.Select(r =>
+        {
+            var line = r.Item.ProductLineId != null && lines.TryGetValue(r.Item.ProductLineId.Value, out var l) ? l : null;
+            var usage = SolutionUsage.Of(line);
+            return new
+            {
+                itemId = r.Item.Id, name = r.Item.Name, quantity = r.Quantity, usage,
+                productLineName = line?.Name,
+                groupName = line != null && groups.TryGetValue(line.GroupId, out var gn) ? gn : null,
+            };
+        }).ToList();
+
+        var ask = all.Where(x => SolutionUsage.NeedsConfirmation(x.usage, solution!)).ToList();
+        var items = all.Where(x => SolutionUsage.Included(x.usage, solution!)
+                                || (SolutionUsage.NeedsConfirmation(x.usage, solution!) && confirmed != null && confirmed.Contains(x.itemId))).ToList();
+        return Ok(new
+        {
+            sizeId = size.Id, sizeName = size.Name, solution,
+            items,
+            // asked only while the user hasn't answered yet
+            toConfirm = confirmed == null ? ask : ask.Take(0).ToList(),
+            // other solution's products, and products not in the categorization: left out
+            leftOut = all.Where(x => !items.Contains(x) && !(confirmed == null && ask.Contains(x))).ToList(),
+        });
+    }
+
 
     // ── Order (arrows on the page) ──
 
