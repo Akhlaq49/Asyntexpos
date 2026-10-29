@@ -17,7 +17,8 @@ public class DrawingServiceException : Exception
 /// <summary>
 /// Hybrid drawing -> solution: the Python service reads the drawing and works out the solution; this side
 /// checks the user, validates the upload and gives the service the company's solution data from the database
-/// (sizes, package items and quantities, the Standard / Premium rule, prices of the linked products).
+/// (sizes, package items and quantities, the Standard / Premium rule, the linked inventory products).
+/// No prices: the result is an estimate of products and quantities that the quotation form is filled from.
 /// Settings: DrawingService:Url (default http://127.0.0.1:8765) and DrawingService:Key (sent as X-Service-Key).
 /// </summary>
 public class DrawingService
@@ -112,7 +113,7 @@ public class DrawingService
             .GroupBy(q => q.PackageItemId).ToDictionary(g => g.Key, g => g.ToDictionary(q => q.PackageSizeId.ToString(), q => q.Quantity));
         var productIds = items.Where(i => i.ProductId != null).Select(i => i.ProductId!.Value).ToList();
         var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.ProductName, p.Price }).ToDictionaryAsync(p => p.Id, ct);
+            .Select(p => new { p.Id, p.ProductName }).ToDictionaryAsync(p => p.Id, ct);
 
         return new
         {
@@ -129,7 +130,6 @@ public class DrawingService
                     usage = SolutionUsage.Of(line),
                     productId = product?.Id,
                     productName = product?.ProductName,
-                    unitPrice = product?.Price,
                     quantities = qty.TryGetValue(i.Id, out var q) ? q : new Dictionary<string, int>(),
                 };
             }),
