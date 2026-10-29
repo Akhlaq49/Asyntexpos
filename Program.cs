@@ -51,6 +51,9 @@ builder.Services.AddHttpClient<IWhatsAppService, WhatsAppService>();
 builder.Services.AddScoped<IAgentToolExecutor, AgentToolExecutor>();
 builder.Services.AddHttpClient<IAgentService, AgentService>();
 
+// Drawing to Solution: the Python Drawing2Quote service reads drawings (DrawingService:Url)
+builder.Services.AddHttpClient<DrawingService>();
+
 // EF Core - MySQL (Pomelo)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
 var serverVersion = ServerVersion.AutoDetect(connectionString);
