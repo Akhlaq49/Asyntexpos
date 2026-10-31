@@ -67,7 +67,8 @@ public class DrawingService
                 message = detail.ValueKind == JsonValueKind.String ? detail.GetString()! : detail.ToString();
             }
             catch { /* not JSON */ }
-            throw new DrawingServiceException(res.StatusCode == HttpStatusCode.UnprocessableEntity ? 422 : 502, message);
+            var status = res.StatusCode switch { HttpStatusCode.UnprocessableEntity => 422, HttpStatusCode.NotFound => 404, _ => 502 };
+            throw new DrawingServiceException(status, message);
         }
     }
 
@@ -77,7 +78,9 @@ public class DrawingService
         catch { return false; }
     }
 
-    /// <summary>Floors, areas and point counts read from the drawing</summary>
+    /// <summary>Starts reading the drawing in the background (a printed PDF is read with OCR, about a minute per
+    /// sheet) and returns {jobId}; ask JobAsync for progress and, when done, the floors, areas and point counts.
+    /// A file that can't be read is refused straight away (422 with the reason).</summary>
     public async Task<JsonElement> ExtractAsync(IFormFile file, CancellationToken ct)
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -90,7 +93,15 @@ public class DrawingService
         var stream = new StreamContent(file.OpenReadStream());
         stream.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         form.Add(stream, "file", Path.GetFileName(file.FileName));
-        return await SendAsync(Request(HttpMethod.Post, "extract", form), ct);
+        return await SendAsync(Request(HttpMethod.Post, "jobs", form), ct);
+    }
+
+    /// <summary>{status: queued|running|done|failed, page, pages, message, result | detail}</summary>
+    public async Task<JsonElement> JobAsync(string jobId, CancellationToken ct)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(jobId, "^[0-9a-f]{32}$"))
+            throw new DrawingServiceException(404, "This reading is no longer available - upload the drawing again.");
+        return await SendAsync(Request(HttpMethod.Get, $"jobs/{jobId}"), ct);
     }
 
     /// <summary>The suggested solution for the (reviewed) drawing and plan; Premium lists the "both" products to confirm first</summary>

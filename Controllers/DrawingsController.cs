@@ -33,6 +33,14 @@ public class DrawingsController : ControllerBase
         catch (DrawingServiceException ex) { return StatusCode(ex.StatusCode, new { message = ex.Message }); }
     }
 
+    /// <summary>progress of a drawing being read; "done" carries the result</summary>
+    [HttpGet("extract/{jobId}")]
+    public async Task<IActionResult> ExtractStatus(string jobId, CancellationToken ct)
+    {
+        try { return Ok(await _service.JobAsync(jobId, ct)); }
+        catch (DrawingServiceException ex) { return StatusCode(ex.StatusCode, new { message = ex.Message }); }
+    }
+
     [HttpPost("suggest")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> Suggest([FromBody] SuggestDto dto, CancellationToken ct)
