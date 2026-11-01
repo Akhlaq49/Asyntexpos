@@ -105,9 +105,14 @@ public class DrawingService
     }
 
     /// <summary>The suggested solution for the (reviewed) drawing and plan; Premium lists the "both" products to confirm first</summary>
-    public async Task<JsonElement> SuggestAsync(JsonElement extraction, string plan, Dictionary<string, string>? choices, int? sizeId, CancellationToken ct)
+    public async Task<JsonElement> SuggestAsync(JsonElement extraction, string plan, Dictionary<string, string>? choices, int? sizeId,
+        Controllers.DrawingsController.OtherBrandDto? otherBrand, CancellationToken ct)
     {
-        var body = new { extraction, catalog = await CatalogAsync(ct), plan, choices, sizeId };
+        var body = new
+        {
+            extraction, catalog = await CatalogAsync(ct), plan, choices, sizeId,
+            otherBrand = otherBrand == null ? null : new { company = otherBrand.Company!.Trim(), areas = otherBrand.Areas },
+        };
         var content = new StringContent(JsonSerializer.Serialize(body, Json), Encoding.UTF8, "application/json");
         return await SendAsync(Request(HttpMethod.Post, "suggest", content), ct);
     }
