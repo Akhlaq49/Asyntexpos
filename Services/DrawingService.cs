@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using ReactPosApi.Data;
 
@@ -18,7 +19,8 @@ public class DrawingServiceException : Exception
 /// Hybrid drawing -> solution: the Python service reads the drawing and works out the solution; this side
 /// checks the user, validates the upload and gives the service the company's solution data from the database
 /// (sizes, package items and quantities, the Standard / Premium rule, the linked inventory products).
-/// No prices: the result is an estimate of products and quantities that the quotation form is filled from.
+/// The service estimates products and quantities only; the prices are then joined here from the Products table
+/// (each line's linked inventory product): unitPrice and lineTotal per line, the amount in totals.
 /// Settings: DrawingService:Url (default http://127.0.0.1:8765) and DrawingService:Key (sent as X-Service-Key).
 /// </summary>
 public class DrawingService
@@ -114,7 +116,44 @@ public class DrawingService
             otherBrand = otherBrand == null ? null : new { company = otherBrand.Company!.Trim(), areas = otherBrand.Areas },
         };
         var content = new StringContent(JsonSerializer.Serialize(body, Json), Encoding.UTF8, "application/json");
-        return await SendAsync(Request(HttpMethod.Post, "suggest", content), ct);
+        var result = await SendAsync(Request(HttpMethod.Post, "suggest", content), ct);
+        return await WithPricesAsync(result, ct);
+    }
+
+    /// <summary>Joins the suggested lines with the Products table on productId: unit price (the product's
+    /// current price), line total = price x quantity, and the solution's amount. Unlinked lines have no price.</summary>
+    private async Task<JsonElement> WithPricesAsync(JsonElement result, CancellationToken ct)
+    {
+        if (JsonNode.Parse(result.GetRawText()) is not JsonObject root) return result;
+        var lineLists = new[] { "lines", "toConfirm", "leftOut" }.Select(k => root[k] as JsonArray).Where(a => a != null).ToList();
+        var ids = lineLists.SelectMany(a => a!).OfType<JsonObject>()
+            .Select(l => l["productId"] is JsonValue v && v.TryGetValue<int>(out var id) ? id : 0).Where(id => id > 0).Distinct().ToList();
+        var prices = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Price, ct);
+
+        foreach (var line in lineLists.SelectMany(a => a!).OfType<JsonObject>())
+        {
+            var id = line["productId"] is JsonValue v && v.TryGetValue<int>(out var pid) ? pid : 0;
+            var qty = line["quantity"] is JsonValue q && q.TryGetValue<decimal>(out var n) ? n : 0;
+            if (prices.TryGetValue(id, out var price))
+            {
+                line["unitPrice"] = price;
+                line["lineTotal"] = Math.Round(price * qty, 2);
+            }
+            else
+            {
+                line["unitPrice"] = null;
+                line["lineTotal"] = null;
+            }
+        }
+
+        if (root["totals"] is JsonObject totals && root["lines"] is JsonArray solution)
+        {
+            var lines = solution.OfType<JsonObject>().ToList();
+            totals["amount"] = lines.Sum(l => l["lineTotal"] is JsonValue t && t.TryGetValue<decimal>(out var x) ? x : 0);
+            // linked to a product whose price is 0 - not counted in the amount until a price is set
+            totals["unpriced"] = lines.Count(l => l["unitPrice"] is JsonValue u && u.TryGetValue<decimal>(out var x) && x == 0);
+        }
+        return JsonSerializer.Deserialize<JsonElement>(root.ToJsonString());
     }
 
     /// <summary>The company's solution data (Inventory > Solution Packages) in the service's format</summary>
