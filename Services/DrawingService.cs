@@ -25,7 +25,9 @@ public class DrawingServiceException : Exception
 /// </summary>
 public class DrawingService
 {
-    public const long MaxBytes = 50L * 1024 * 1024;
+    // keep the same in Drawing2Quote (validator.py MAX_MB), web.config and the frontend's drawingService.ts
+    public const int MaxMb = 200;
+    public const long MaxBytes = MaxMb * 1024L * 1024;
     public static readonly string[] Extensions = { ".dxf", ".pdf" };
 
     private readonly HttpClient _http;
@@ -89,7 +91,7 @@ public class DrawingService
         if (ext == ".dwg") throw new DrawingServiceException(422, "DWG files can't be read. In AutoCAD use Save As -> DXF and upload the DXF file.");
         if (!Extensions.Contains(ext)) throw new DrawingServiceException(422, "Only DXF files and vector PDFs exported from CAD can be read.");
         if (file.Length == 0) throw new DrawingServiceException(422, "The file is empty.");
-        if (file.Length > MaxBytes) throw new DrawingServiceException(422, $"The file is {file.Length / 1024d / 1024:0.0} MB - the maximum is 50 MB.");
+        if (file.Length > MaxBytes) throw new DrawingServiceException(422, $"The file is {file.Length / 1024d / 1024:0.0} MB - the maximum is {MaxMb} MB.");
 
         using var form = new MultipartFormDataContent();
         var stream = new StreamContent(file.OpenReadStream());
