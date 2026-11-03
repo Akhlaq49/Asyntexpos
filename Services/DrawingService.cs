@@ -158,6 +158,34 @@ public class DrawingService
         return JsonSerializer.Deserialize<JsonElement>(root.ToJsonString());
     }
 
+    private static string NameKey(string? name) => string.Join(' ', (name ?? "").ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>Package item name -> inventory product name (Smartinn_Product_Mapping.xlsx), used when an item isn't linked</summary>
+    private static readonly Dictionary<string, string> ProductNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Smart Panel Echo"] = "Harmony HPAD Echo",
+        ["Smart Panel Q2"] = "Harmony HPAD Q2",
+        ["Wireless Zigbee Gateway"] = "Zigbee Gate Way Controller",
+        ["Smart Lock i5"] = "Innshield Smart Door Lock i5",
+        ["Smart Lock i9 Pro"] = "Innshield Smart Door Lock i9 Pro",
+        ["Piano Switch 1 Gang"] = "Innswitch Piano 1 Gang White",
+        ["Piano Switch 2 Gang"] = "Innswitch Piano 2 Gang White",
+        ["Piano Switch 3 Gang"] = "Innswitch Piano 3 Gang White",
+        ["Smart Curtain Motor 1.5Nm"] = "Motility Smart Curtain Motor 1.5Nm",
+        ["Curtain Rail 1 meter"] = "Curtain Track/1m",
+        ["Smart Roller Blind 1.8Nm"] = "Motility Tubular Motor 1.8Nm",
+        ["Smart Roller Blind 6Nm"] = "Motility Tubular Motor 6Nm",
+        ["Anti Glare Smart Light 7w"] = "Zigbee Spot Light 7W",
+        ["Anti Glare Smart Light 10w"] = "Zigbee Anti Glare Spot Light 10W",
+        ["Motion Sensor"] = "Zigbee Motion PIR Sensor",
+        ["Water Leakage Sensor"] = "water Leakge sensor",
+        ["Temp and Humidity Sensor"] = "Temp and humidity sensor",
+        ["Gas Sensor"] = "Combistable Gas sensor",
+        ["IR Remote Control"] = "IR Blaster",
+        ["Intercom Outdoor Unit Gate Keeper"] = "Touchmate / Video Door Bell",
+        ["Matter Gateway"] = "Zigbee Matter Gateway",
+    };
+
     /// <summary>The company's solution data (Inventory > Solution Packages) in the service's format</summary>
     public async Task<object> CatalogAsync(CancellationToken ct)
     {
@@ -171,6 +199,18 @@ public class DrawingService
         var productIds = items.Where(i => i.ProductId != null).Select(i => i.ProductId!.Value).ToList();
         var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
             .Select(p => new { p.Id, p.ProductName }).ToDictionaryAsync(p => p.Id, ct);
+        // an item not linked on Solution Packages: the inventory product with its name (or its name in the product mapping)
+        var byName = new Dictionary<string, (int Id, string ProductName)>();
+        if (items.Any(i => i.ProductId == null || !products.ContainsKey(i.ProductId.Value)))
+            foreach (var p in await _db.Products.AsNoTracking().OrderBy(p => p.Id).Select(p => new { p.Id, p.ProductName }).ToListAsync(ct))
+                byName.TryAdd(NameKey(p.ProductName), (p.Id, p.ProductName));
+        (int Id, string ProductName)? ProductOf(Models.PackageItem i)
+        {
+            if (i.ProductId != null && products.TryGetValue(i.ProductId.Value, out var linked)) return (linked.Id, linked.ProductName);
+            if (byName.TryGetValue(NameKey(i.Name), out var same)) return same;
+            if (ProductNames.TryGetValue(i.Name.Trim(), out var mapped) && byName.TryGetValue(NameKey(mapped), out var m)) return m;
+            return null;
+        }
 
         return new
         {
@@ -178,7 +218,7 @@ public class DrawingService
             items = items.Select(i =>
             {
                 var line = i.ProductLineId != null && lineById.TryGetValue(i.ProductLineId.Value, out var l) ? l : null;
-                var product = i.ProductId != null && products.TryGetValue(i.ProductId.Value, out var p) ? p : null;
+                var product = ProductOf(i);
                 return new
                 {
                     i.Id, i.Name,
