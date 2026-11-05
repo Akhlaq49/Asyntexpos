@@ -28,7 +28,8 @@ public class DrawingService
     // keep the same in Drawing2Quote (validator.py MAX_MB), web.config and the frontend's drawingService.ts
     public const int MaxMb = 200;
     public const long MaxBytes = MaxMb * 1024L * 1024;
-    public static readonly string[] Extensions = { ".dxf", ".pdf" };
+    // scanned PDFs and pictures of a drawing are read from the image by Drawing2Quote (OCR + tracing)
+    public static readonly string[] Extensions = { ".dxf", ".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".gif", ".webp" };
 
     private readonly HttpClient _http;
     private readonly AppDbContext _db;
@@ -89,7 +90,8 @@ public class DrawingService
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (ext == ".dwg") throw new DrawingServiceException(422, "DWG files can't be read. In AutoCAD use Save As -> DXF and upload the DXF file.");
-        if (!Extensions.Contains(ext)) throw new DrawingServiceException(422, "Only DXF files and vector PDFs exported from CAD can be read.");
+        if (ext is ".heic" or ".heif") throw new DrawingServiceException(422, "HEIC photos can't be read. On the phone choose \"Most Compatible\" (JPG) or send it as JPG.");
+        if (!Extensions.Contains(ext)) throw new DrawingServiceException(422, "Upload a DXF, a PDF, or a picture of the drawing (JPG, PNG or TIFF).");
         if (file.Length == 0) throw new DrawingServiceException(422, "The file is empty.");
         if (file.Length > MaxBytes) throw new DrawingServiceException(422, $"The file is {file.Length / 1024d / 1024:0.0} MB - the maximum is {MaxMb} MB.");
 
