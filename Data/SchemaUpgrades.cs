@@ -113,9 +113,11 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
         AddSolutionPackages(db);
         AddSoftDeleteColumns(db);
         AlignCollations(db);
-        // every company gets the starting solution data once (after the soft delete columns: the seed reads them)
-        foreach (var tenantId in db.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToList())
-            SolutionPackageDefaults.Ensure(db, tenantId);
+        // product catalogue, normalized per company: tables, keys, views, sp_delete_company; then each company's
+        // old solution data moved into it once (a new company starts empty and imports its own files)
+        var connection = db.Database.GetConnectionString()!;
+        SqlScript.RunResource(connection, "CatalogSchema.sql");
+        SqlScript.RunResource(connection, "CatalogMigrate.sql");
     }
 
     /// <summary>

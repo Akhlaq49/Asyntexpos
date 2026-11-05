@@ -38,6 +38,9 @@ public class ProductDto
     public string Brand { get; set; } = string.Empty;
     public string Color { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
+    /// <summary>The catalogue product this SKU is a colour of (its siblings are the other colours)</summary>
+    public int? CatalogProductId { get; set; }
+    public bool IsDefaultSku { get; set; }
     public string Unit { get; set; } = string.Empty;
     public string BarcodeSymbology { get; set; } = string.Empty;
     public string ItemBarcode { get; set; } = string.Empty;

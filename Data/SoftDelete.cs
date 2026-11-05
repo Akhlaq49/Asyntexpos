@@ -20,6 +20,10 @@ public static class SoftDelete
     public static readonly HashSet<Type> HardDeleteTypes = new()
     {
         typeof(Tenant), typeof(RolePermission), typeof(FormFieldConfig), typeof(TenantMenuConfig), typeof(TermsConditions),
+        // product catalogue: unique names per company and composite foreign keys (Database/CatalogSchema.sql)
+        typeof(CatalogTier), typeof(CatalogFamilyTier), typeof(CatalogColor), typeof(CatalogProduct), typeof(CatalogAlias),
+        typeof(CatalogPriceList), typeof(CatalogPriceListItem), typeof(CatalogPackageLine), typeof(CatalogDrawingRuleItem),
+        typeof(CatalogImportProfile), typeof(CatalogUnmatched),
     };
 
     /// <summary>Soft-deleted types that have a unique index (it gets DeletedKey added)</summary>

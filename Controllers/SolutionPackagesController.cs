@@ -19,7 +19,8 @@ public class SolutionPackagesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly ITenantProvider _tenant;
-    public SolutionPackagesController(AppDbContext db, ITenantProvider tenant) { _db = db; _tenant = tenant; }
+    private readonly CatalogService _catalog;
+    public SolutionPackagesController(AppDbContext db, ITenantProvider tenant, CatalogService catalog) { _db = db; _tenant = tenant; _catalog = catalog; }
 
     public record NameDto(string? Name);
     public record LineDto(int GroupId, string? Name, bool InStandard, bool InPremium);
@@ -30,8 +31,6 @@ public class SolutionPackagesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        // a company registered after the server started gets the starting data here
-        if (_tenant.TenantId > 0) SolutionPackageDefaults.Ensure(_db, _tenant.TenantId);
         return Ok(await LoadAsync());
     }
 
@@ -131,8 +130,10 @@ public class SolutionPackagesController : ControllerBase
         if (!await _db.SolutionGroups.AnyAsync(g => g.Id == dto.GroupId)) return BadRequest(new { message = "Choose the group." });
         if (await _db.SolutionProductLines.AnyAsync(l => l.Name == name)) return Problem409($"\"{name}\" is already in the categorization.");
         var order = (await _db.SolutionProductLines.Where(l => l.GroupId == dto.GroupId).MaxAsync(l => (int?)l.SortOrder) ?? 0) + 1;
-        _db.SolutionProductLines.Add(new SolutionProductLine { GroupId = dto.GroupId, Name = name, InStandard = dto.InStandard, InPremium = dto.InPremium, SortOrder = order });
+        var line = new SolutionProductLine { GroupId = dto.GroupId, Name = name, InStandard = dto.InStandard, InPremium = dto.InPremium, SortOrder = order };
+        _db.SolutionProductLines.Add(line);
         await _db.SaveChangesAsync();
+        await _catalog.SetFamilyTiersAsync(line.Id, dto.InStandard, dto.InPremium);   // the ticks are the family's tiers
         return Ok(await LoadAsync());
     }
 
@@ -149,6 +150,7 @@ public class SolutionPackagesController : ControllerBase
             l.SortOrder = (await _db.SolutionProductLines.Where(x => x.GroupId == dto.GroupId).MaxAsync(x => (int?)x.SortOrder) ?? 0) + 1;
         l.GroupId = dto.GroupId; l.Name = name; l.InStandard = dto.InStandard; l.InPremium = dto.InPremium;
         await _db.SaveChangesAsync();
+        await _catalog.SetFamilyTiersAsync(l.Id, dto.InStandard, dto.InPremium);       // the ticks are the family's tiers
         return Ok(await LoadAsync());
     }
 

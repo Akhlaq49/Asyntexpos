@@ -73,6 +73,9 @@ public class PackageItem : ITenantEntity
     /// <summary>The inventory product it is sold as (optional; for prices and stock in the calculation)</summary>
     public int? ProductId { get; set; }
 
+    /// <summary>The catalogue product it became (Database/CatalogMigrate.sql); kept until the old tables are removed</summary>
+    public int? CatalogProductId { get; set; }
+
     public int SortOrder { get; set; }
 
     public ICollection<PackageQuantity> Quantities { get; set; } = new List<PackageQuantity>();

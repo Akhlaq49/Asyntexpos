@@ -21,4 +21,13 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- run on start by Data/SchemaUpgrades.cs (also run by hand on a live database) -->
+    <EmbeddedResource Include="Database\CatalogSchema.sql" LogicalName="CatalogSchema.sql" />
+    <EmbeddedResource Include="Database\CatalogMigrate.sql" LogicalName="CatalogMigrate.sql" />
+    <!-- acceptance tests (Python) and their fixtures: not part of the app -->
+    <Content Remove="Tests\**" />
+    <None Remove="Tests\**" />
+  </ItemGroup>
+
 </Project>

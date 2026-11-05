@@ -33,13 +33,15 @@ public class DrawingService
 
     private readonly HttpClient _http;
     private readonly AppDbContext _db;
+    private readonly CatalogService _catalog;
     private readonly string? _key;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public DrawingService(HttpClient http, AppDbContext db, IConfiguration config)
+    public DrawingService(HttpClient http, AppDbContext db, CatalogService catalog, IConfiguration config)
     {
         _http = http;
         _db = db;
+        _catalog = catalog;
         _http.BaseAddress = new Uri((config["DrawingService:Url"] ?? "http://127.0.0.1:8765").TrimEnd('/') + "/");
         _http.Timeout = TimeSpan.FromMinutes(3);
         _key = config["DrawingService:Key"];
@@ -116,7 +118,7 @@ public class DrawingService
     {
         var body = new
         {
-            extraction, catalog = await CatalogAsync(ct), plan, choices, sizeId,
+            extraction, catalog = await CatalogAsync(plan, ct), plan, choices, sizeId,
             otherBrand = otherBrand == null ? null : new { company = otherBrand.Company!.Trim(), areas = otherBrand.Areas },
         };
         var content = new StringContent(JsonSerializer.Serialize(body, Json), Encoding.UTF8, "application/json");
@@ -124,79 +126,39 @@ public class DrawingService
         return await WithPricesAsync(result, ct);
     }
 
-    /// <summary>Joins the suggested lines with the Products table on productId: unit price (the product's
-    /// current price), line total = price x quantity, and the solution's amount. Unlinked lines have no price.</summary>
+    /// <summary>Prices of the suggested lines, never stored: each line is a catalogue product (itemId); its price is
+    /// its default SKU's price in the active price list, else - not on the price list - its packages-file price.
+    /// line total = price x quantity; the solution's amount = the sum. notInInventory = no SKU to sell.</summary>
     private async Task<JsonElement> WithPricesAsync(JsonElement result, CancellationToken ct)
     {
         if (JsonNode.Parse(result.GetRawText()) is not JsonObject root) return result;
         var lineLists = new[] { "lines", "toConfirm", "leftOut" }.Select(k => root[k] as JsonArray).Where(a => a != null).ToList();
-        var ids = lineLists.SelectMany(a => a!).OfType<JsonObject>()
-            .Select(l => l["productId"] is JsonValue v && v.TryGetValue<int>(out var id) ? id : 0).Where(id => id > 0).Distinct().ToList();
-        var prices = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Price, ct);
+        static int IdOf(JsonObject l, string key) => l[key] is JsonValue v && v.TryGetValue<int>(out var id) ? id : 0;
+        var prices = await _catalog.PricesAsync(lineLists.SelectMany(a => a!).OfType<JsonObject>().Select(l => IdOf(l, "itemId")).Where(id => id > 0), ct);
 
         foreach (var line in lineLists.SelectMany(a => a!).OfType<JsonObject>())
         {
-            var id = line["productId"] is JsonValue v && v.TryGetValue<int>(out var pid) ? pid : 0;
             var qty = line["quantity"] is JsonValue q && q.TryGetValue<decimal>(out var n) ? n : 0;
-            if (prices.TryGetValue(id, out var price))
-            {
-                line["unitPrice"] = price;
-                line["lineTotal"] = Math.Round(price * qty, 2);
-            }
-            else
-            {
-                line["unitPrice"] = null;
-                line["lineTotal"] = null;
-            }
+            var found = prices.TryGetValue(IdOf(line, "itemId"), out var p);
+            decimal? price = found ? p.Price : null;
+            line["unitPrice"] = price;
+            line["lineTotal"] = price == null ? null : Math.Round(price.Value * qty, 2);
+            line["notInInventory"] = !found || p.SkuId == null;
         }
 
         if (root["totals"] is JsonObject totals && root["lines"] is JsonArray solution)
         {
             var lines = solution.OfType<JsonObject>().ToList();
             totals["amount"] = lines.Sum(l => l["lineTotal"] is JsonValue t && t.TryGetValue<decimal>(out var x) ? x : 0);
-            // linked to a product whose price is 0 - not counted in the amount until a price is set
+            // a SKU whose price is 0 - not counted in the amount until a price is set
             totals["unpriced"] = lines.Count(l => l["unitPrice"] is JsonValue u && u.TryGetValue<decimal>(out var x) && x == 0);
         }
         return JsonSerializer.Deserialize<JsonElement>(root.ToJsonString());
     }
 
-    /// <summary>The company's solution data (Inventory > Solution Packages) in the service's format</summary>
-    public async Task<object> CatalogAsync(CancellationToken ct)
-    {
-        var sizes = await _db.PackageSizes.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).Select(s => new { s.Id, s.Name }).ToListAsync(ct);
-        var groups = await _db.SolutionGroups.AsNoTracking().ToDictionaryAsync(g => g.Id, g => g.Name, ct);
-        var lines = await _db.SolutionProductLines.AsNoTracking().OrderBy(l => l.SortOrder).ToListAsync(ct);
-        var lineById = lines.ToDictionary(l => l.Id);
-        var items = await _db.PackageItems.AsNoTracking().OrderBy(i => i.SortOrder).ThenBy(i => i.Id).ToListAsync(ct);
-        var qty = (await _db.PackageQuantities.AsNoTracking().Where(q => q.Quantity > 0).ToListAsync(ct))
-            .GroupBy(q => q.PackageItemId).ToDictionary(g => g.Key, g => g.ToDictionary(q => q.PackageSizeId.ToString(), q => q.Quantity));
-        var productIds = items.Where(i => i.ProductId != null).Select(i => i.ProductId!.Value).ToList();
-        var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.ProductName }).ToDictionaryAsync(p => p.Id, ct);
-        // the product is only the one linked on the package item (PackageItems.ProductId, see Database/SmartinnNamingComparison.sql);
-        // an unlinked item (not in the price list) has no price and is entered by hand on the quotation
-        (int Id, string ProductName)? ProductOf(Models.PackageItem i) =>
-            i.ProductId != null && products.TryGetValue(i.ProductId.Value, out var linked) ? (linked.Id, linked.ProductName) : null;
+    /// <summary>The company's catalogue for the plan, in the reader's format (CatalogService)</summary>
+    public Task<object> CatalogAsync(string plan, CancellationToken ct) => _catalog.ReaderCatalogAsync(plan, ct);
 
-        return new
-        {
-            sizes,
-            items = items.Select(i =>
-            {
-                var line = i.ProductLineId != null && lineById.TryGetValue(i.ProductLineId.Value, out var l) ? l : null;
-                var product = ProductOf(i);
-                return new
-                {
-                    i.Id, i.Name,
-                    groupName = line != null && groups.TryGetValue(line.GroupId, out var gn) ? gn : null,
-                    productLineName = line?.Name,
-                    usage = SolutionUsage.Of(line),
-                    productId = product?.Id,
-                    productName = product?.ProductName,
-                    quantities = qty.TryGetValue(i.Id, out var q) ? q : new Dictionary<string, int>(),
-                };
-            }),
-            lines = lines.Select(l => new { l.Name, groupName = groups.TryGetValue(l.GroupId, out var gn) ? gn : null, usage = SolutionUsage.Of(l) }),
-        };
-    }
+    /// <summary>The reader's drawing rules: [{name, gangs}] - which products each uses is the company's (CatalogDrawingRuleItems)</summary>
+    public async Task<JsonElement> RulesAsync(CancellationToken ct) => await SendAsync(Request(HttpMethod.Get, "rules"), ct);
 }

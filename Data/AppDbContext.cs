@@ -95,6 +95,18 @@ public class AppDbContext : DbContext
     public DbSet<PackageSize> PackageSizes => Set<PackageSize>();
     public DbSet<PackageItem> PackageItems => Set<PackageItem>();
     public DbSet<PackageQuantity> PackageQuantities => Set<PackageQuantity>();
+    // product catalogue (Database/CatalogSchema.sql)
+    public DbSet<CatalogTier> CatalogTiers => Set<CatalogTier>();
+    public DbSet<CatalogFamilyTier> CatalogFamilyTiers => Set<CatalogFamilyTier>();
+    public DbSet<CatalogColor> CatalogColors => Set<CatalogColor>();
+    public DbSet<CatalogProduct> CatalogProducts => Set<CatalogProduct>();
+    public DbSet<CatalogAlias> CatalogAliases => Set<CatalogAlias>();
+    public DbSet<CatalogPriceList> CatalogPriceLists => Set<CatalogPriceList>();
+    public DbSet<CatalogPriceListItem> CatalogPriceListItems => Set<CatalogPriceListItem>();
+    public DbSet<CatalogPackageLine> CatalogPackageLines => Set<CatalogPackageLine>();
+    public DbSet<CatalogDrawingRuleItem> CatalogDrawingRuleItems => Set<CatalogDrawingRuleItem>();
+    public DbSet<CatalogImportProfile> CatalogImportProfiles => Set<CatalogImportProfile>();
+    public DbSet<CatalogUnmatched> CatalogUnmatched => Set<CatalogUnmatched>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -362,6 +374,14 @@ public class AppDbContext : DbContext
             e.HasOne(q => q.PackageSize).WithMany().HasForeignKey(q => q.PackageSizeId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(q => new { q.PackageItemId, q.PackageSizeId }).IsUnique();
         });
+
+        // Product catalogue: keys only - the composite foreign keys, unique names and views are in Database/CatalogSchema.sql
+        modelBuilder.Entity<CatalogFamilyTier>(e => e.HasKey(x => new { x.TenantId, x.FamilyId, x.TierId }));
+        modelBuilder.Entity<CatalogImportProfile>(e => e.HasKey(x => new { x.TenantId, x.Kind }));
+        modelBuilder.Entity<CatalogUnmatched>(e => e.ToTable("CatalogUnmatched"));
+        modelBuilder.Entity<CatalogPriceListItem>(e => e.Property(x => x.Price).HasColumnType("decimal(18,2)"));
+        modelBuilder.Entity<CatalogPackageLine>(e => e.Property(x => x.Quantity).HasColumnType("decimal(12,3)"));
+        modelBuilder.Entity<CatalogProduct>(e => e.Property(x => x.FallbackPrice).HasColumnType("decimal(18,2)"));
 
         // Finance & Accounting
         modelBuilder.Entity<Expense>(e =>

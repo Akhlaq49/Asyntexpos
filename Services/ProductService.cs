@@ -10,9 +10,11 @@ public class ProductService : IProductService
 {
     private readonly AppDbContext _db;
     private readonly IFileService _fileService;
+    private readonly CatalogService _catalog;
 
-    public ProductService(AppDbContext db, IFileService fileService)
+    public ProductService(AppDbContext db, IFileService fileService, CatalogService catalog)
     {
+        _catalog = catalog;
         _db = db;
         _fileService = fileService;
     }
@@ -205,6 +207,9 @@ public class ProductService : IProductService
 
             await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
             await transaction.CommitAsync();
+            // the catalogue follows: the SKU joins its product, and its price goes into the active price list
+            await _catalog.SetSkuPriceAsync(entity.Id, entity.Price);
+            await _db.Entry(entity).ReloadAsync();
             return MapToDto(entity);
         }
         catch
@@ -271,6 +276,9 @@ public class ProductService : IProductService
             await _db.SaveChangesAsync();
             await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
             await transaction.CommitAsync();
+            // the catalogue follows: the SKU joins its product, and its price goes into the active price list
+            await _catalog.SetSkuPriceAsync(entity.Id, entity.Price);
+            await _db.Entry(entity).ReloadAsync();
             return MapToDto(entity);
         }
         catch
@@ -300,6 +308,8 @@ public class ProductService : IProductService
         Category = p.Category ?? "",
         Brand = p.Brand ?? "",
         Color = p.Color ?? "",
+        CatalogProductId = p.CatalogProductId,
+        IsDefaultSku = p.IsDefaultSku,
         Model = p.Model ?? "",
         Unit = p.Unit ?? "",
         BarcodeSymbology = p.BarcodeSymbology ?? "",

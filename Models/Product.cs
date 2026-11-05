@@ -34,6 +34,11 @@ public class Product : ITenantEntity
     [MaxLength(150)]
     public string? Model { get; set; }
 
+    // catalogue (Database/CatalogSchema.sql): this row is a SKU of a CatalogProduct, in a colour; one SKU per product is the default
+    public int? CatalogProductId { get; set; }
+    public int? ColorId { get; set; }
+    public bool IsDefaultSku { get; set; }
+
     [MaxLength(50)]
     public string? Unit { get; set; }
 

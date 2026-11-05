@@ -1,0 +1,137 @@
+{
+ "_about": "Test fixture: Smartinn packages-file name -> [price-list product (null = not on the price list: create it), family from the categorization file]. What a person chooses when mapping; used only by catalog_import_test.py.",
+ "packages": {
+  "Smaet Panel Hpad X pro": {
+   "product": null,
+   "family": "Hpad X Pro"
+  },
+  "Smart Panel Hpad X": {
+   "product": null,
+   "family": null
+  },
+  "Smart Panel Echo": {
+   "product": "Harmony HPAD Echo",
+   "family": "Hpad Echo"
+  },
+  "Smart Panel Q2": {
+   "product": "Harmony HPAD Q2",
+   "family": "Hpad Q2"
+  },
+  "Smart Panel Qbrid": {
+   "product": null,
+   "family": null
+  },
+  "Wireless Zigbee Gate Way": {
+   "product": "Zigbee Gate Way Controller",
+   "family": "Mini Gateway"
+  },
+  "Smart Lock i5": {
+   "product": "Innshield Smart Door Lock i5",
+   "family": "Door Lock i5"
+  },
+  "Smart Lock i7": {
+   "product": null,
+   "family": null
+  },
+  "Smart Lock i9Pro": {
+   "product": "Innshield Smart Door Lock i9 Pro",
+   "family": "Door Lock i9 pro"
+  },
+  "Luxury Smart Switch Marina": {
+   "product": null,
+   "family": null
+  },
+  "Piano Switch 1 Gang": {
+   "product": "Innswitch Piano 1 Gang",
+   "family": "Piano Series"
+  },
+  "Piano Switch 2 Gang": {
+   "product": "Innswitch Piano 2 Gang",
+   "family": "Piano Series"
+  },
+  "Piano Switch 3 Gang": {
+   "product": "Innswitch Piano 3 Gang",
+   "family": "Piano Series"
+  },
+  "Floating Switch 1 Gang": {
+   "product": null,
+   "family": null
+  },
+  "Floating Switch 2 Gang": {
+   "product": null,
+   "family": null
+  },
+  "Floating Switch 3 Gang": {
+   "product": null,
+   "family": null
+  },
+  "Floating Switch 4 Gang": {
+   "product": null,
+   "family": null
+  },
+  "Smart Curtain Motor 1.5NM": {
+   "product": "Motility Smart Curtain Motor 1.5Nm",
+   "family": "Curtain Motor 1.5N,6Nm"
+  },
+  "Smart Curtain Motor 6NM": {
+   "product": null,
+   "family": "Curtain Motor 1.5N,6Nm"
+  },
+  "Curtain Rail 1meter": {
+   "product": "Curtain Track/1m",
+   "family": "Curtain Track"
+  },
+  "Smart Roller Blind 1.8Nm": {
+   "product": "Motility Tubular Motor 1.8Nm",
+   "family": "Roller blind motor 1.2Nm,6Nm"
+  },
+  "Smart Roller Blind 6Nm": {
+   "product": "Motility Tubular Motor 6Nm",
+   "family": "Roller blind motor 1.2Nm,6Nm"
+  },
+  "Anti Glare Smart Light 7w": {
+   "product": "Zigbee Spot Light 7W",
+   "family": "Smart Lights 7w"
+  },
+  "Anti Glare Smart Light 10w": {
+   "product": "Zigbee Anti Glare Spot Light 10W",
+   "family": "Smart Lights 10w"
+  },
+  "Door Window Sensor": {
+   "product": "Door Window Sensor",
+   "family": "Door Sensor"
+  },
+  "Motion Sensor": {
+   "product": "Zigbee Motion PIR Sensor",
+   "family": "Motion Sensor"
+  },
+  "Water Leakge Sensor": {
+   "product": "water Leakge sensor",
+   "family": null
+  },
+  "Smoke sensor": {
+   "product": "Smoke Sensor",
+   "family": "Smart Smoke Sensor"
+  },
+  "Temp And humidity sensor": {
+   "product": "Temp and humidity sensor",
+   "family": "Temp. And Humidity Sensor"
+  },
+  "Gas Sensor": {
+   "product": "Combistable Gas sensor",
+   "family": "Smart Gas Sensor"
+  },
+  "Ir Remote Controll": {
+   "product": "IR Blaster",
+   "family": "Zigbee IR Blaster( for Ac and Tv Control)"
+  },
+  "Intercom Indoor Unit": {
+   "product": null,
+   "family": null
+  },
+  "Intercom out door unit Gate Keeper": {
+   "product": "Touchmate / Video Door Bell",
+   "family": "Outdoor Station"
+  }
+ }
+}
