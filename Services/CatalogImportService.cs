@@ -8,7 +8,9 @@ using ReactPosApi.Models;
 namespace ReactPosApi.Services;
 
 /// <summary>
-/// One importer for a company's three files (price list, categorization, packages). The browser reads the sheet
+/// One importer for a company's files: package items (the products to suggest and their quantity per building size -
+/// matched to the inventory products, whose price and description are used) and categorization. (The price-list
+/// import is kept for the API but is not offered in the app: prices come from the inventory.) The browser reads the sheet
 /// and sends its rows; where the columns are comes from the company's import profile (CatalogImportProfiles), never
 /// from code. Names are matched model code -> exact product name -> alias, in this company only; a name that
 /// matches nothing is never guessed - it waits in CatalogUnmatched for a person to map it (saved as an alias).
@@ -58,12 +60,12 @@ public class CatalogImportService
             ["headers"] = new JsonObject
             {
                 ["name"] = new JsonArray("product", "product name", "name"),
-                ["price"] = new JsonArray("unit price", "price per unit"),
             },
             // a size column's header starts with the package size name ("1 BHK Automation" -> 1 BHK); these words are
             // dropped when a company without package sizes gets them from the header; other columns are ignored
+            // (prices are never read from this file: they come from the inventory)
             ["sizeHeaderDropWords"] = new JsonArray("automation", "solution", "package"),
-            ["ignoreHeaders"] = new JsonArray("price", "total", "sn", "s no", "sr"),
+            ["ignoreHeaders"] = new JsonArray("price", "unit price", "price per unit", "total", "sn", "s no", "sr", "description"),
         },
     };
 
@@ -385,8 +387,13 @@ public class CatalogImportService
         int col(string f) => cols.TryGetValue(f, out var c) ? c : -1;
         var drop = Names(profile["sizeHeaderDropWords"]);
         var ignore = Names(profile["ignoreHeaders"]).ToHashSet();
+        foreach (var n in new[] { "price", "unit price", "price per unit" }) ignore.Add(n);
 
+        // every inventory product is a SKU of a catalogue product first: the file's names are matched to them
+        await _catalog.SyncSkusAsync(ct);
         using var tx = await _db.Database.BeginTransactionAsync(ct);
+        // the file is the whole list: names held from an earlier file are dropped
+        _db.CatalogUnmatched.RemoveRange(await _db.CatalogUnmatched.Where(u => u.Kind == Packages).ToListAsync(ct));
         // size columns: a header that starts with a package size's name; a company without sizes gets them from the headers
         var sizes = await _db.PackageSizes.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
         var header = rows[headerRow].Select(c => Key(c)).ToList();
@@ -415,22 +422,20 @@ public class CatalogImportService
         var familyTiers = (await _db.CatalogFamilyTiers.ToListAsync(ct)).ToLookup(x => x.FamilyId, x => x.TierId);
         var index = await ProductIndexAsync(ct);
         var skuProducts = (await _db.Products.Where(p => p.CatalogProductId != null).Select(p => p.CatalogProductId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
-        var activePrices = await ActivePricesByProductAsync(ct);
         int matched = 0, held = 0, lines = 0, removed = 0;
         var noFamily = new JsonArray();
-        var priceDiffs = new JsonArray();
-        var notOnPriceList = new JsonArray();
+        var notInInventory = new JsonArray();
+        var inFile = new HashSet<int>();
         var rowsRead = 0;
         for (var r = headerRow + 1; r < rows.Count; r++)
         {
             var name = Cell(rows[r], col("name"));
             if (name.Length == 0) continue;
             rowsRead++;
-            var price = Number(Cell(rows[r], col("price")));
             var qty = new JsonObject();
             foreach (var (c, sizeId) in sizeCols)
                 if (Number(Cell(rows[r], c)) is decimal q && q > 0) qty[sizeId.ToString()] = q;
-            var row = new JsonObject { ["price"] = price, ["quantities"] = qty, ["line"] = r + 1 };
+            var row = new JsonObject { ["quantities"] = qty, ["line"] = r + 1 };
             var product = index.Find(name);
             if (product == null)
             {
@@ -439,12 +444,26 @@ public class CatalogImportService
                 continue;
             }
             matched++;
-            var (added, gone, problem) = await ApplyPackageRowAsync(product, row, tiers, familyTiers, skuProducts, activePrices, ct);
+            inFile.Add(product.Id);
+            if (!skuProducts.Contains(product.Id)) notInInventory.Add(product.Name);
+            if (product.FamilyId == null)
+            {
+                // its family is chosen on the Import tab (the product is already picked); the row is applied then
+                held++;
+                noFamily.Add(product.Name);
+                row["productId"] = product.Id;
+                await HoldAsync(Packages, name, row, ct);
+                continue;
+            }
+            var (added, gone) = await ApplyPackageRowAsync(product, row, tiers, familyTiers, ct);
             lines += added; removed += gone;
-            if (problem == "no family") noFamily.Add($"{product.Name} ({name})");
-            else if (problem != null) priceDiffs.Add(problem);
-            if (!skuProducts.Contains(product.Id)) notOnPriceList.Add($"{product.Name}{(price != null ? $" - packages-file price {price:0.##}" : "")}");
         }
+        // products not in the file are no longer suggested: their package lines go
+        var dropped = await _db.CatalogPackageLines.Where(l => !inFile.Contains(l.CatalogProductId)).ToListAsync(ct);
+        var droppedIds = dropped.Select(l => l.CatalogProductId).Distinct().ToList();
+        var droppedNames = await _db.CatalogProducts.Where(p => droppedIds.Contains(p.Id)).Select(p => p.Name).ToListAsync(ct);
+        _db.CatalogPackageLines.RemoveRange(dropped);
+        removed += dropped.Count;
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         var conflicts = await _db.Database.SqlQueryRaw<string>(
@@ -456,36 +475,23 @@ public class CatalogImportService
             ["packageSizes"] = new JsonArray(sizeCols.Values.Select(id => (JsonNode)sizes.First(s => s.Id == id).Name).ToArray()),
             ["newPackageSizes"] = newSizes,
             ["linesWritten"] = lines, ["linesRemoved"] = removed,
-            ["noFamily"] = noFamily, ["priceDifferences"] = priceDiffs, ["productsNotOnPriceList"] = notOnPriceList,
+            ["noFamily"] = noFamily, ["notInInventory"] = notInInventory,
+            ["productsRemoved"] = new JsonArray(droppedNames.OrderBy(n => n).Select(n => (JsonNode)n).ToArray()),
             ["tierConflicts"] = new JsonArray(conflicts.Select(c => (JsonNode)c).ToArray()),
         };
     }
 
-    private async Task<Dictionary<int, decimal>> ActivePricesByProductAsync(CancellationToken ct)
+    /// <summary>Writes one package-items row for a product: quantities to every tier its family allows (an empty
+    /// size removes the line; lines of tiers the family left are removed). Returns lines written / removed.</summary>
+    private async Task<(int Added, int Removed)> ApplyPackageRowAsync(CatalogProduct product, JsonObject row, List<CatalogTier> tiers,
+        ILookup<int, int> familyTiers, CancellationToken ct)
     {
-        var active = await _db.CatalogPriceLists.AsNoTracking().FirstOrDefaultAsync(l => l.IsActive, ct);
-        if (active == null) return new();
-        var prices = await _db.CatalogPriceListItems.AsNoTracking().Where(i => i.PriceListId == active.Id).ToDictionaryAsync(i => i.SkuId, i => i.Price, ct);
-        return (await _db.Products.AsNoTracking().Where(p => p.IsDefaultSku && p.CatalogProductId != null).Select(p => new { p.Id, p.CatalogProductId }).ToListAsync(ct))
-            .Where(p => prices.ContainsKey(p.Id)).ToDictionary(p => p.CatalogProductId!.Value, p => prices[p.Id]);
-    }
-
-    /// <summary>Writes one packages row for a product: quantities to every tier its family allows (an empty size
-    /// removes the line); a product not on the price list takes the row's price. Returns lines written / removed, and a problem.</summary>
-    private async Task<(int Added, int Removed, string? Problem)> ApplyPackageRowAsync(CatalogProduct product, JsonObject row, List<CatalogTier> tiers,
-        ILookup<int, int> familyTiers, HashSet<int> skuProducts, Dictionary<int, decimal> activePrices, CancellationToken ct)
-    {
-        var price = Dec(row["price"]);
-        string? problem = null;
-        if (!skuProducts.Contains(product.Id)) { if (price != null) product.FallbackPrice = price; }
-        else if (price != null && activePrices.TryGetValue(product.Id, out var listPrice) && listPrice != price)
-            problem = $"{product.Name}: packages file {price:0.##}, price list {listPrice:0.##}";
-        if (product.FamilyId == null) return (0, 0, "no family");
+        if (product.FamilyId == null) return (0, 0);
         var tierIds = familyTiers[product.FamilyId.Value].ToList();
         var qty = row["quantities"]!.AsObject().Where(x => Dec(x.Value) > 0).ToDictionary(x => int.Parse(x.Key), x => Dec(x.Value)!.Value);
-        var existing = await _db.CatalogPackageLines.Where(l => l.CatalogProductId == product.Id && tierIds.Contains(l.TierId)).ToListAsync(ct);
+        var existing = await _db.CatalogPackageLines.Where(l => l.CatalogProductId == product.Id).ToListAsync(ct);
         int added = 0, removed = 0;
-        foreach (var l in existing.Where(l => !qty.ContainsKey(l.PackageSizeId))) { _db.CatalogPackageLines.Remove(l); removed++; }
+        foreach (var l in existing.Where(l => !qty.ContainsKey(l.PackageSizeId) || !tierIds.Contains(l.TierId))) { _db.CatalogPackageLines.Remove(l); removed++; }
         foreach (var tierId in tierIds)
             foreach (var (sizeId, q) in qty)
             {
@@ -495,7 +501,7 @@ public class CatalogImportService
                 added++;
             }
         await _db.SaveChangesAsync(ct);
-        return (added, removed, problem);
+        return (added, removed);
     }
 
     // ── names waiting to be mapped ───────────────────────────────────────────────────────────────────────
@@ -526,7 +532,7 @@ public class CatalogImportService
             else
             {
                 product = await _db.CatalogProducts.FirstOrDefaultAsync(p => p.Id == dto.CatalogProductId, ct) ?? throw new KeyNotFoundException("Choose a product.");
-                await AddAliasAsync(held.Name, "package", product.Id, null, ct);
+                if (Key(held.Name) != Key(product.Name)) await AddAliasAsync(held.Name, "package", product.Id, null, ct);
                 if (dto.NewFamilyId != null)      // its family, chosen at the same time (its quantities go to that family's tiers)
                 {
                     if (!await _db.SolutionProductLines.AnyAsync(f => f.Id == dto.NewFamilyId, ct)) throw new KeyNotFoundException("Family not found.");
@@ -534,9 +540,9 @@ public class CatalogImportService
                 }
                 await _db.SaveChangesAsync(ct);
             }
+            // (no family: the product is kept but not suggested - its quantities have no plan to go to)
             var familyTiers = (await _db.CatalogFamilyTiers.ToListAsync(ct)).ToLookup(x => x.FamilyId, x => x.TierId);
-            var skuProducts = (await _db.Products.Where(p => p.CatalogProductId != null).Select(p => p.CatalogProductId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
-            await ApplyPackageRowAsync(product, row, tiers, familyTiers, skuProducts, await ActivePricesByProductAsync(ct), ct);
+            await ApplyPackageRowAsync(product, row, tiers, familyTiers, ct);
         }
         else if (held.Kind == Categorization)
         {

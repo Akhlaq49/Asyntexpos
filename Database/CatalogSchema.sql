@@ -17,7 +17,7 @@
 --
 -- Every reference between company tables is a composite foreign key (TenantId, x) -> parent (TenantId, Id),
 -- so a row can never point at another company's data. Names are unique per company.
--- Prices are never stored per package line: v_package_quote computes them from the active price list.
+-- Prices are never stored per package line: v_package_quote computes them from the inventory price (Products.Price).
 -- ============================================================================================================
 
 DROP PROCEDURE IF EXISTS _cat_exec_if;
@@ -269,29 +269,27 @@ SELECT p.`TenantId`, t.`Id` AS `TierId`, t.`Code` AS `TierCode`, t.`Name` AS `Ti
        ((SELECT COUNT(*) FROM `CatalogFamilyTiers` x WHERE x.`TenantId` = p.`TenantId` AND x.`FamilyId` = f.`Id`)
         = (SELECT COUNT(*) FROM `CatalogTiers` y WHERE y.`TenantId` = p.`TenantId`)) AS `NeedsConfirmation`,
        s.`Id` AS `DefaultSkuId`, s.`ProductName` AS `SkuName`, s.`Model` AS `ModelCode`,
-       COALESCE(ap.`Price`, IF(s.`Id` IS NULL, p.`FallbackPrice`, NULL)) AS `UnitPrice`
+       IF(s.`Id` IS NULL, p.`FallbackPrice`, s.`Price`) AS `UnitPrice`
 FROM `CatalogProducts` p
 JOIN `SolutionProductLines` f ON f.`TenantId` = p.`TenantId` AND f.`Id` = p.`FamilyId` AND f.`IsDeleted` = 0
 JOIN `SolutionGroups` g ON g.`TenantId` = f.`TenantId` AND g.`Id` = f.`GroupId` AND g.`IsDeleted` = 0
 JOIN `CatalogFamilyTiers` ft ON ft.`TenantId` = p.`TenantId` AND ft.`FamilyId` = f.`Id`
 JOIN `CatalogTiers` t ON t.`TenantId` = ft.`TenantId` AND t.`Id` = ft.`TierId`
-LEFT JOIN `Products` s ON s.`TenantId` = p.`TenantId` AND s.`CatalogProductId` = p.`Id` AND s.`IsDefaultSku` = 1 AND s.`IsDeleted` = 0
-LEFT JOIN `v_active_sku_price` ap ON ap.`TenantId` = s.`TenantId` AND ap.`SkuId` = s.`Id`;
+LEFT JOIN `Products` s ON s.`TenantId` = p.`TenantId` AND s.`CatalogProductId` = p.`Id` AND s.`IsDefaultSku` = 1 AND s.`IsDeleted` = 0;
 
--- package quote lines: quantity x the default SKU's price in the active price list (never stored);
--- a product not on the price list uses its packages-file price; UnitPrice NULL = no price at all
+-- package quote lines: quantity x the default SKU's inventory price (never stored);
+-- a product not in the inventory uses its fallback price, if one was entered; UnitPrice NULL = no price at all
 CREATE OR REPLACE VIEW `v_package_quote` AS
 SELECT l.`TenantId`, l.`PackageSizeId`, ps.`Name` AS `PackageName`, l.`TierId`, t.`Name` AS `TierName`,
        p.`Id` AS `CatalogProductId`, p.`Name` AS `ProductName`, s.`Id` AS `SkuId`, s.`ProductName` AS `SkuName`, s.`Model` AS `ModelCode`,
        l.`Quantity`,
-       COALESCE(ap.`Price`, IF(s.`Id` IS NULL, p.`FallbackPrice`, NULL)) AS `UnitPrice`,
-       ROUND(l.`Quantity` * COALESCE(ap.`Price`, IF(s.`Id` IS NULL, p.`FallbackPrice`, NULL)), 2) AS `LineTotal`
+       IF(s.`Id` IS NULL, p.`FallbackPrice`, s.`Price`) AS `UnitPrice`,
+       ROUND(l.`Quantity` * IF(s.`Id` IS NULL, p.`FallbackPrice`, s.`Price`), 2) AS `LineTotal`
 FROM `CatalogPackageLines` l
 JOIN `PackageSizes` ps ON ps.`TenantId` = l.`TenantId` AND ps.`Id` = l.`PackageSizeId` AND ps.`IsDeleted` = 0
 JOIN `CatalogTiers` t ON t.`TenantId` = l.`TenantId` AND t.`Id` = l.`TierId`
 JOIN `CatalogProducts` p ON p.`TenantId` = l.`TenantId` AND p.`Id` = l.`CatalogProductId`
-LEFT JOIN `Products` s ON s.`TenantId` = p.`TenantId` AND s.`CatalogProductId` = p.`Id` AND s.`IsDefaultSku` = 1 AND s.`IsDeleted` = 0
-LEFT JOIN `v_active_sku_price` ap ON ap.`TenantId` = s.`TenantId` AND ap.`SkuId` = s.`Id`;
+LEFT JOIN `Products` s ON s.`TenantId` = p.`TenantId` AND s.`CatalogProductId` = p.`Id` AND s.`IsDefaultSku` = 1 AND s.`IsDeleted` = 0;
 
 -- package lines whose product's family is not allowed in that tier (or that have no family)
 CREATE OR REPLACE VIEW `v_package_tier_conflict` AS

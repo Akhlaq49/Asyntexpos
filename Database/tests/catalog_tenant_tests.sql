@@ -112,7 +112,7 @@ CALL _t_expect(1, 'a negative price is refused', CONCAT('UPDATE CatalogPriceList
 CALL _t_expect(1, 'an alias pointing at nothing is refused', CONCAT('INSERT INTO CatalogAliases (TenantId, Alias, AliasKey, Source, TargetKind) VALUES (', @a, ', ''y'', ''y'', ''package'', ''product'')'));
 
 -- ── the views: own data only, prices from the active list, never stored ──────────────────────────────────
-CALL _t_check('v_package_quote: A 10 Marla Standard = 4 x 17311 + 12.5 m x 1000 (packages-file price, no SKU)',
+CALL _t_check('v_package_quote: A 10 Marla Standard = 4 x 17311 + 12.5 m x 1000 (entered price, not in the inventory)',
   (SELECT SUM(LineTotal) FROM v_package_quote WHERE TenantId = @a AND PackageSizeId = @a_size AND TierId = @a_std) = 4 * 17311 + 12.5 * 1000);
 CALL _t_check('v_package_quote: B uses its own price and quantity (9 x 20000)',
   (SELECT SUM(LineTotal) FROM v_package_quote WHERE TenantId = @b) = 9 * 20000);
@@ -123,10 +123,10 @@ CALL _t_check('v_suggestable_product: family in both tiers needs confirmation (A
   (SELECT MIN(NeedsConfirmation) FROM v_suggestable_product WHERE TenantId = @a AND CatalogProductId = @a_prod) = 1);
 CALL _t_check('v_suggestable_product: Standard-only family is not offered for Premium (B)',
   (SELECT COUNT(*) FROM v_suggestable_product WHERE TenantId = @b AND TierCode = 'premium') = 0);
-UPDATE CatalogPriceLists SET IsActive = 0 WHERE Id = @a_list;
-CALL _t_check('price comes from the active price list only (none active: no price)',
-  (SELECT UnitPrice FROM v_package_quote WHERE TenantId = @a AND CatalogProductId = @a_prod AND TierId = @a_std) IS NULL);
-UPDATE CatalogPriceLists SET IsActive = 1 WHERE Id = @a_list;
+UPDATE Products SET Price = 18000 WHERE Id = @a_white;
+CALL _t_check('price comes from the inventory (the default SKU''s Products.Price)',
+  (SELECT UnitPrice FROM v_package_quote WHERE TenantId = @a AND CatalogProductId = @a_prod AND TierId = @a_std) = 18000);
+UPDATE Products SET Price = 17311 WHERE Id = @a_white;
 DELETE FROM CatalogFamilyTiers WHERE TenantId = @a AND TierId = @a_prem;
 CALL _t_check('v_package_tier_conflict lists a Premium line whose family is no longer Premium',
   (SELECT COUNT(*) FROM v_package_tier_conflict WHERE TenantId = @a AND CatalogProductId = @a_prod) = 1);

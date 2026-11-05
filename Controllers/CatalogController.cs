@@ -37,11 +37,8 @@ public class CatalogController : ControllerBase
     private async Task<object> LoadAsync(CancellationToken ct)
     {
         var tiers = await _catalog.TiersAsync(ct);
-        var active = await _db.CatalogPriceLists.AsNoTracking().FirstOrDefaultAsync(l => l.IsActive, ct);
-        var prices = active == null ? new Dictionary<int, decimal>()
-            : await _db.CatalogPriceListItems.AsNoTracking().Where(i => i.PriceListId == active.Id).ToDictionaryAsync(i => i.SkuId, i => i.Price, ct);
         var skus = (await _db.Products.AsNoTracking().Where(p => p.CatalogProductId != null).OrderBy(p => p.Id)
-            .Select(p => new { p.Id, p.ProductName, p.Model, p.Color, p.IsDefaultSku, p.CatalogProductId }).ToListAsync(ct)).ToLookup(p => p.CatalogProductId!.Value);
+            .Select(p => new { p.Id, p.ProductName, p.Model, p.Color, p.IsDefaultSku, p.CatalogProductId, p.Price }).ToListAsync(ct)).ToLookup(p => p.CatalogProductId!.Value);
         var aliases = (await _db.CatalogAliases.AsNoTracking().ToListAsync(ct));
         var familyTiers = (await _db.CatalogFamilyTiers.AsNoTracking().ToListAsync(ct)).ToLookup(x => x.FamilyId, x => x.TierId);
         var groups = await _db.SolutionGroups.AsNoTracking().OrderBy(g => g.SortOrder).ThenBy(g => g.Id).ToListAsync(ct);
@@ -64,7 +61,7 @@ public class CatalogController : ControllerBase
             products = (await _db.CatalogProducts.AsNoTracking().OrderBy(p => p.Name).ToListAsync(ct)).Select(p => new
             {
                 p.Id, p.Name, p.FamilyId, p.Unit, p.FallbackPrice, p.Description,
-                skus = skus[p.Id].Select(s => new { s.Id, name = s.ProductName, s.Model, s.Color, isDefault = s.IsDefaultSku, price = prices.TryGetValue(s.Id, out var pr) ? pr : (decimal?)null }),
+                skus = skus[p.Id].Select(s => new { s.Id, name = s.ProductName, s.Model, s.Color, isDefault = s.IsDefaultSku, price = (decimal?)s.Price }),
                 aliases = aliases.Where(a => a.CatalogProductId == p.Id).Select(a => new { a.Id, a.Alias, a.Source }),
             }),
             packageLines = await _db.CatalogPackageLines.AsNoTracking().Select(l => new { sizeId = l.PackageSizeId, l.TierId, productId = l.CatalogProductId, l.Quantity }).ToListAsync(ct),

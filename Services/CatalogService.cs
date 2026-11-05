@@ -221,24 +221,20 @@ public class CatalogService
         };
     }
 
-    /// <summary>Price of each product for a quotation: its default SKU's price in the active price list; a product
-    /// with no SKU (not on the price list) uses its packages-file price. Null = no price.</summary>
+    /// <summary>Price of each product for a quotation: its default SKU's inventory price (Products.Price); a product
+    /// with no SKU (not in the inventory) has its fallback price, if one was entered. Null = no price.</summary>
     public async Task<Dictionary<int, (decimal? Price, int? SkuId)>> PricesAsync(IEnumerable<int> catalogProductIds, CancellationToken ct = default)
     {
         var ids = catalogProductIds.Distinct().ToList();
         var products = await _db.CatalogProducts.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
         var skus = await _db.Products.AsNoTracking().Where(p => p.IsDefaultSku && p.CatalogProductId != null && ids.Contains(p.CatalogProductId!.Value))
-            .Select(p => new { p.Id, p.CatalogProductId }).ToListAsync(ct);
-        var active = await _db.CatalogPriceLists.AsNoTracking().FirstOrDefaultAsync(l => l.IsActive, ct);
-        var skuIds = skus.Select(s => s.Id).ToList();
-        var prices = active == null ? new Dictionary<int, decimal>()
-            : await _db.CatalogPriceListItems.AsNoTracking().Where(i => i.PriceListId == active.Id && skuIds.Contains(i.SkuId)).ToDictionaryAsync(i => i.SkuId, i => i.Price, ct);
+            .Select(p => new { p.Id, p.CatalogProductId, p.Price }).ToListAsync(ct);
         var result = new Dictionary<int, (decimal?, int?)>();
         foreach (var id in ids)
         {
             if (!products.TryGetValue(id, out var p)) continue;
             var sku = skus.FirstOrDefault(s => s.CatalogProductId == id);
-            result[id] = sku != null ? (prices.TryGetValue(sku.Id, out var price) ? price : null, sku.Id) : (p.FallbackPrice, null);
+            result[id] = sku != null ? (sku.Price, sku.Id) : (p.FallbackPrice, null);
         }
         return result;
     }

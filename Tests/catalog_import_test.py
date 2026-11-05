@@ -90,7 +90,18 @@ def load_company(api: Api, files: Path, mapping: dict, price_change=None, qty_ch
     products = {key(p["name"]): p for p in cat["products"]}
     families = {key(f["name"]): f for g in cat["groups"] for f in g["families"]}
     wanted = {key(k): v for k, v in mapping["packages"].items()}
+    by_product = {key(v["product"]): v for v in wanted.values() if v["product"]}
     for u in [u for u in cat["unmatched"] if u["kind"] == "packages"]:
+        held = json.loads(u["rowJson"])
+        if held.get("productId"):
+            # found in the inventory, family not set yet: the person picks the family (the product is already chosen)
+            p = next(p for p in cat["products"] if p["id"] == held["productId"])
+            m = wanted.get(key(u["name"])) or by_product.get(key(p["name"]))
+            if not (m and m["family"]):     # in no family (not in the categorization): the person dismisses it
+                api.call("DELETE", f"/catalog/unmatched/{u['id']}")
+                continue
+            api.call("POST", f"/catalog/unmatched/{u['id']}/map", {"catalogProductId": p["id"], "newFamilyId": families[key(m["family"])]["id"], "create": False})
+            continue
         m = wanted[key(u["name"])]
         family = families[key(m["family"])]["id"] if m["family"] else None
         if m["product"]:
@@ -107,7 +118,8 @@ def load_company(api: Api, files: Path, mapping: dict, price_change=None, qty_ch
             if p["familyId"] is None:
                 api.call("PUT", f"/catalog/products/{p['id']}", {"name": p["name"], "familyId": families[key(m["family"])]["id"], "unit": p["unit"], "fallbackPrice": p["fallbackPrice"]})
     r = import_file(api, "packages", files, qty_change)
-    ok(r["unmatched"] == 0, f"packages again: {r['matched']} matched, {r['linesWritten']} lines, no family: {len(r['noFamily'])}")
+    # only the items with no family (dismissed above: not in the categorization) are asked about again
+    ok(r["unmatched"] == len(r["noFamily"]), f"packages again: {r['matched']} matched, {r['linesWritten']} lines, no family: {len(r['noFamily'])}")
 
 
 def snapshot(api: Api) -> dict:
@@ -125,7 +137,7 @@ def snapshot(api: Api) -> dict:
 
 
 def hand_total(cat: dict, size_name: str, tier_code: str) -> Decimal:
-    """quantity x the default SKU's price (active price list); a product with no SKU uses its packages-file price"""
+    """quantity x the default SKU's inventory price; a product with no SKU uses its entered price (none: 0)"""
     size = next(s for s in cat["sizes"] if key(s["name"]) == key(size_name))
     tier = next(t for t in cat["tiers"] if t["code"] == tier_code)
     products = {p["id"]: p for p in cat["products"]}
