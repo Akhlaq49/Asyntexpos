@@ -33,7 +33,9 @@ public class QuotationPurchasePlanController : ControllerBase
         var ordered = orders.SelectMany(o => o.Items.Select(i => new { i.ProductId, Qty = o.Status == PurchaseOrderStatus.Cancelled ? i.ReceivedQuantity : i.Quantity }))
             .GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => g.Sum(x => x.Qty));
 
-        var productIds = q.Items.Select(i => i.ProductId).Distinct().ToList();
+        // lines with no inventory product (ProductId 0, entered by hand) are bought outside the purchase orders
+        var stocked = q.Items.Where(i => i.ProductId > 0).ToList();
+        var productIds = stocked.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         // last cost: the latest purchase order line, else the latest received purchase line
         var poCosts = (await _db.PurchaseOrderItems.Where(i => productIds.Contains(i.ProductId)).OrderByDescending(i => i.Id)
@@ -44,7 +46,7 @@ public class QuotationPurchasePlanController : ControllerBase
                                     select new { ProductId = i.ProductId!.Value, Cost = i.TotalCost / i.Quantity }).ToListAsync())
             .GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => Math.Round(g.First().Cost, 2));
 
-        var lines = q.Items.GroupBy(i => i.ProductId).Select(g =>
+        var lines = stocked.GroupBy(i => i.ProductId).Select(g =>
         {
             products.TryGetValue(g.Key, out var p);
             var quoted = g.Sum(i => i.Quantity);

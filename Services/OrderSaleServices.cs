@@ -261,10 +261,11 @@ public class SaleService : ISaleService
 
         // every product must still exist; stock is NOT needed - the order waits in the sale queue
         // until the goods arrive and it is marked as sold
-        var productIds = quotation.Items.Select(i => i.ProductId).Distinct().ToList();
+        // lines with no inventory product (ProductId 0 - entered by hand, e.g. suggested from a drawing but not in the price list) are sold as they are
+        var productIds = quotation.Items.Where(i => i.ProductId > 0).Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         var problems = new List<string>();
-        foreach (var g in quotation.Items.GroupBy(i => i.ProductId))
+        foreach (var g in quotation.Items.Where(i => i.ProductId > 0).GroupBy(i => i.ProductId))
         {
             var needed = g.Sum(i => i.Quantity);
             if (!products.ContainsKey(g.Key)) problems.Add($"{g.First().ProductName}: product no longer exists");
@@ -342,10 +343,12 @@ public class SaleService : ISaleService
             throw new InvalidOperationException($"{sale.Reference} is already sold.");
         if (payment != null && payment.PaidAmount < 0)
             throw new InvalidOperationException("The amount received can't be negative.");
-        var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
+        // lines with no inventory product (ProductId 0, entered by hand) have no stock to check or take out
+        var stocked = sale.Items.Where(i => i.ProductId > 0).ToList();
+        var productIds = stocked.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         var problems = new List<string>();
-        foreach (var g in sale.Items.GroupBy(i => i.ProductId))
+        foreach (var g in stocked.GroupBy(i => i.ProductId))
         {
             var needed = g.Sum(i => i.Quantity);
             if (!products.TryGetValue(g.Key, out var p)) problems.Add($"{g.First().ProductName}: product no longer exists");
@@ -357,7 +360,7 @@ public class SaleService : ISaleService
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
-            foreach (var item in sale.Items)              // stock out
+            foreach (var item in stocked)                 // stock out
                 products[item.ProductId].Quantity -= item.Quantity;
             // the balance received now (capped at what is still due)
             var due = Math.Max(0, sale.GrandTotal - sale.Paid);

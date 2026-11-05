@@ -35,14 +35,15 @@ public class SaleQueueController : ControllerBase
         var quotationBySale = quotations.GroupBy(q => q.SaleId).ToDictionary(g => g.Key, g => g.First());
         var quotationIds = queued.Where(s => quotationBySale.ContainsKey(s.Id)).Select(s => quotationBySale[s.Id].Id).ToList();
         var orders = await _db.PurchaseOrders.Include(o => o.Items).Where(o => o.QuotationId != null && quotationIds.Contains(o.QuotationId.Value)).ToListAsync();
-        var productIds = queued.SelectMany(s => s.Items.Select(i => i.ProductId)).Distinct().ToList();
+        var productIds = queued.SelectMany(s => s.Items.Where(i => i.ProductId > 0).Select(i => i.ProductId)).Distinct().ToList();
         var stock = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Quantity);
 
         var result = queued.Select(s =>
         {
             quotationBySale.TryGetValue(s.Id, out var q);
             var pos = q == null ? new List<PurchaseOrder>() : orders.Where(o => o.QuotationId == q.Id).OrderBy(o => o.Id).ToList();
-            var lines = s.Items.GroupBy(i => i.ProductId).Select(g =>
+            // lines with no inventory product (ProductId 0, entered by hand) have no goods to wait for
+            var lines = s.Items.Where(i => i.ProductId > 0).GroupBy(i => i.ProductId).Select(g =>
             {
                 var needed = g.Sum(i => i.Quantity);
                 // a cancelled purchase order only counts what it delivered
