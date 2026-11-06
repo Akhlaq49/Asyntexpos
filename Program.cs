@@ -129,6 +129,16 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowReactApp");
+// the books are locked up to a date: a change to an entry on or before it is refused with its reason (Services/LedgerPoster.cs)
+app.Use(async (context, next) =>
+{
+    try { await next(); }
+    catch (ReactPosApi.Models.LedgerLockedException e) when (!context.Response.HasStarted)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new { message = e.Message });
+    }
+});
 app.UseStaticFiles(); // serve wwwroot/uploads
 app.UseAuthentication();
 app.UseMiddleware<FrozenAccountMiddleware>(); // a frozen user is signed out on their next request

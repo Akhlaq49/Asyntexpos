@@ -108,6 +108,12 @@ public class AppDbContext : DbContext
     public DbSet<CatalogImportProfile> CatalogImportProfiles => Set<CatalogImportProfile>();
     public DbSet<CatalogUnmatched> CatalogUnmatched => Set<CatalogUnmatched>();
 
+    // Double-entry ledger (Database/LedgerSchema.sql, Services/LedgerPoster.cs)
+    public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalLine> JournalLines => Set<JournalLine>();
+    public DbSet<AccountingSettings> AccountingSettings => Set<AccountingSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -383,6 +389,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<CatalogPackageLine>(e => e.Property(x => x.Quantity).HasColumnType("decimal(12,3)"));
         modelBuilder.Entity<CatalogProduct>(e => e.Property(x => x.FallbackPrice).HasColumnType("decimal(18,2)"));
 
+        // Ledger: keys only - the composite foreign keys and unique keys are in Database/LedgerSchema.sql
+        modelBuilder.Entity<AccountingSettings>(e => e.HasKey(x => x.TenantId));
+        modelBuilder.Entity<JournalEntry>(e => e.HasMany(x => x.Lines).WithOne(l => l.JournalEntry).HasForeignKey(l => l.JournalEntryId).OnDelete(DeleteBehavior.Cascade));
+
         // Finance & Accounting
         modelBuilder.Entity<Expense>(e =>
         {
@@ -431,12 +441,8 @@ public class AppDbContext : DbContext
     // ═══════════════════════════════════════════════════════════
     // MULTI-TENANCY: Auto-set TenantId on new entities
     // ═══════════════════════════════════════════════════════════
-    public override int SaveChanges(bool acceptAllChangesOnSuccess)
-    {
-        SetTenantIdOnNewEntities();
-        ApplySoftDeletes();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
-    }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) =>
+        SaveChangesAsync(acceptAllChangesOnSuccess).GetAwaiter().GetResult();
 
     public override async Task<int> SaveChangesAsync(
         bool acceptAllChangesOnSuccess,
@@ -444,7 +450,30 @@ public class AppDbContext : DbContext
     {
         SetTenantIdOnNewEntities();
         ApplySoftDeletes();
-        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        // the ledger: documents that move money or stock post their journal entry in the same transaction
+        var touched = _posting || _tenantId <= 0 ? null : LedgerPoster.Collect(this);
+        if (touched == null || touched.IsEmpty) return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var ownTransaction = Database.CurrentTransaction == null ? await Database.BeginTransactionAsync(cancellationToken) : null;
+        try
+        {
+            var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            await new LedgerPoster(this).SyncAsync(touched, cancellationToken);
+            if (ownTransaction != null) await ownTransaction.CommitAsync(cancellationToken);
+            return saved;
+        }
+        finally
+        {
+            if (ownTransaction != null) await ownTransaction.DisposeAsync();
+        }
+    }
+
+    /// <summary>True while the ledger itself is being saved (its own saves don't post again)</summary>
+    private bool _posting;
+    internal async Task SaveLedgerAsync(CancellationToken ct)
+    {
+        _posting = true;
+        try { await base.SaveChangesAsync(true, ct); }
+        finally { _posting = false; }
     }
 
     // ═══════════════════════════════════════════════════════════

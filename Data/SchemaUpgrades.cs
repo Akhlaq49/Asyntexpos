@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS `FinanceEntries` (
         var connection = db.Database.GetConnectionString()!;
         SqlScript.RunResource(connection, "CatalogSchema.sql");
         SqlScript.RunResource(connection, "CatalogMigrate.sql");
+        // double-entry ledger (accounts, journal entries); each company's ledger is built from its documents on first use
+        SqlScript.RunResource(connection, "LedgerSchema.sql");
     }
 
     /// <summary>
