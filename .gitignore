@@ -1,34 +1,36 @@
-# .NET build folders
-bin/
-obj/
+# Visual Studio cache / settings (whole folder: .suo, Copilot indices, DesignTimeBuild, etc.)
+.vs/
 
-# publish output
-publish/
-
-# VS Code
+# VS Code / Rider
 .vscode/
-
-# environment files
-.env
-/.vs/ReactPosApi/CopilotIndices/17.14.1661.41761
-/.vs/ReactPosApi/FileContentIndex
-/wwwroot/uploads/products
-
-# Rider project files
 .idea/
 *.sln.iml
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Tt]est[Rr]esult*/
+
+# Publish output
+publish/
+*.pubxml.user
 
 # User-specific files
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
+*.DotSettings.user
 
-# Build results
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Tt]est[Rr]esult*/
+# Environment files
+.env
+
+# User-uploaded / generated content (saved by the running app)
+/wwwroot/uploads/
+/wwwroot/shares/
+
+# Build artifacts
 *.log
 *.tlog
 *.vspscc
@@ -46,15 +48,13 @@ publish/
 
 # NuGet
 *.nupkg
-# The packages folder can be ignored because of Package Restore
 **/packages/*
 !**/packages/build/
 !**/packages/repositories.config
 
-# Others
+# ReSharper
 _ReSharper*/
 *.[Rr]e[Ss]harper
-*.DotSettings.user
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -62,26 +62,12 @@ ScaffoldingReadMe.txt
 # Azure
 .scm/
 
-# Windows image file caches
+# Windows
 Thumbs.db
 Desktop.ini
-
-# Folder config file
 $RECYCLE.BIN/
-
-# Windows Installer files
 *.cab
 *.msi
 *.msm
 *.msp
-
-# Windows shortcuts
 *.lnk
-/.vs/CopilotSnapshots/EC60A13A11A31C49A3C9697C8F42AF17
-/.vs/ReactPosApi/copilot-chat
-/.vs/ReactPosApi/CopilotIndices/18.4.111.64248/CodeChunks.db
-/.vs/ReactPosApi/CopilotIndices/18.4.111.64248/CodeChunks.db-shm
-/.vs/ReactPosApi/CopilotIndices/18.4.111.64248/CodeChunks.db-wal
-/.vs/ReactPosApi/CopilotIndices/18.4.111.64248/SemanticSymbols.db
-/.vs/ReactPosApi/CopilotIndices/18.4.111.64248/SemanticSymbols.db-shm
-/.vs/ReactPosApi/CopilotIndices/18.4.111.64248/SemanticSymbols.db-wal
