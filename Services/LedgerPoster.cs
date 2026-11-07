@@ -42,7 +42,7 @@ public class LedgerTouches
 public class LedgerPoster
 {
     /// <summary>Change this when the rules change: every company's ledger is then rebuilt on its next report</summary>
-    public const int RulesVersion = 1;
+    public const int RulesVersion = 2;     // 2: the company's own account codes (LedgerChart)
 
     private readonly AppDbContext _db;
     private readonly int _tenant;
@@ -173,6 +173,7 @@ public class LedgerPoster
         var settings = await SettingsAsync(ct);
         await _db.SaveLedgerAsync(ct);
         await _db.JournalEntries.Where(j => j.TenantId == _tenant).ExecuteDeleteAsync(ct);      // lines go with them (cascade)
+        if (settings.RulesVersion < RulesVersion) await new LedgerChart(_db, _tenant).ApplyDefaultsAsync(ct);   // the chart as defined now
         await _chart_LoadAsync(ct);
         _cost = await StockCost.LoadAsync(_db, _tenant, null, ct);
         var all = new List<(string, int)>();

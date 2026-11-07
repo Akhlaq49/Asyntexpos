@@ -59,7 +59,8 @@ public class AccountingController : ControllerBase
         if (error != null) return BadRequest(new { message = error });
         account.Code = dto.Code.Trim();
         account.Name = dto.Name.Trim();
-        if (dto.IsActive != null && account.SystemKey == null) account.IsActive = dto.IsActive.Value;   // the posting rules' accounts stay active
+        if (dto.IsActive != null && (account.SystemKey == null || account.SystemKey.StartsWith(LedgerChart.Optional)))
+            account.IsActive = dto.IsActive.Value;   // the posting rules' accounts stay active
         await _db.SaveChangesAsync(ct);
         return await Accounts(ct);
     }
@@ -69,7 +70,8 @@ public class AccountingController : ControllerBase
     {
         var account = await _db.LedgerAccounts.FirstOrDefaultAsync(a => a.Id == id, ct);
         if (account == null) return NotFound(new { message = "Account not found." });
-        if (account.SystemKey != null) return BadRequest(new { message = "This account is used by the posting rules and can't be deleted (rename it instead)." });
+        if (account.SystemKey != null && !account.SystemKey.StartsWith(LedgerChart.Optional))
+            return BadRequest(new { message = "This account is used by the posting rules and can't be deleted (rename it instead)." });
         if (await _db.JournalLines.AnyAsync(l => l.AccountId == id, ct) || await _db.LedgerAccounts.AnyAsync(a => a.ParentId == id, ct))
             return BadRequest(new { message = "This account has entries or accounts under it." });
         _db.LedgerAccounts.Remove(account);

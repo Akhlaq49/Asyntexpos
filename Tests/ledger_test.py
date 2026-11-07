@@ -80,7 +80,9 @@ def main():
         ok(bal("receivable") == 570, f"customer owes 1070 - 500 (got {bal('receivable')})")
         ok(bal("payable") == 1000 - 600 + 1300, f"owed to supplier 1000 - 600 + 1300 (got {bal('payable')})")
         ok(bal("tax-payable") == 50 and bal("shipping-income") == 20 and bal("sales") == 1000, "sale split into sales 1000, tax 50, shipping 20")
-        ok(acct("Bank Transfer") is not None and round(acct("Bank Transfer")["balance"], 2) == -600, "bank transfer account made for the method: -600")
+        ok(bal("bank") == -600 and acct("bank")["code"] == "151002", f"bank transfer goes to 151002 Cash at Bank: -600 (got {bal('bank')})")
+        ok(acct("cash")["code"] == "151001" and acct("receivable")["code"] == "153001" and acct("sales")["code"] == "511001" and acct("cogs")["code"] == "611001", "the company's account codes")
+        ok(acct("Electricity")["code"].startswith("6610"), f"expense category account under 661000 General Administration: {acct('Electricity')['code']}")
         ok(bal("cash") == 500 - 75 + 5000, f"cash = 500 in - 75 expense + 5000 capital (got {bal('cash')})")
         ok(acct("Electricity") is not None and round(acct("Electricity")["balance"], 2) == 75, "expense category has its own account")
         pl = api.call("GET", f"/accounting/profit-and-loss?from={d(30)}&to={d(0)}")[1]
