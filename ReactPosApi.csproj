@@ -22,11 +22,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- run on start by Data/SchemaUpgrades.cs (also run by hand on a live database) -->
-    <EmbeddedResource Include="Database\CatalogSchema.sql" LogicalName="CatalogSchema.sql" />
-    <EmbeddedResource Include="Database\CatalogMigrate.sql" LogicalName="CatalogMigrate.sql" />
-    <EmbeddedResource Include="Database\LedgerSchema.sql" LogicalName="LedgerSchema.sql" />
-    <!-- acceptance tests (Python) and their fixtures: not part of the app -->
+    <InternalsVisibleTo Include="ReactPosApi.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- run on start by Data/DatabaseSetup.cs, in this order -->
+    <EmbeddedResource Include="Database\SYST\Procedures.sql" LogicalName="SYST/Procedures.sql" />
+    <EmbeddedResource Include="Database\CATL\Schema.sql" LogicalName="CATL/Schema.sql" />
+    <EmbeddedResource Include="Database\ACCT\Schema.sql" LogicalName="ACCT/Schema.sql" />
+    <!-- tests (unit tests project, Python acceptance tests, fixtures): not part of the app -->
+    <Compile Remove="Tests\**" />
     <Content Remove="Tests\**" />
     <None Remove="Tests\**" />
   </ItemGroup>

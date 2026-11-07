@@ -22,7 +22,7 @@ public static class SoftDelete
         typeof(Tenant), typeof(RolePermission), typeof(FormFieldConfig), typeof(TenantMenuConfig), typeof(TermsConditions),
         // product catalogue: unique names per company and composite foreign keys (Database/CatalogSchema.sql)
         typeof(CatalogTier), typeof(CatalogFamilyTier), typeof(CatalogColor), typeof(CatalogProduct), typeof(CatalogAlias),
-        typeof(CatalogPriceList), typeof(CatalogPriceListItem), typeof(CatalogPackageLine), typeof(CatalogDrawingRuleItem),
+        typeof(CatalogPackageLine), typeof(CatalogDrawingRuleItem),
         typeof(CatalogImportProfile), typeof(CatalogUnmatched),
         // ledger: derived from the documents and rewritten when they change (Services/LedgerPoster.cs)
         typeof(LedgerAccount), typeof(JournalEntry), typeof(JournalLine), typeof(AccountingSettings),

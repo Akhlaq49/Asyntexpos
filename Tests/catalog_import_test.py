@@ -1,243 +1,166 @@
 """
-Catalogue acceptance test, against a running backend and its database:
-  - loads a company's three files (price list, categorization, packages) through the API, maps the names a person
-    would map (fixtures/smartinn_mapping.json), re-imports everything and proves nothing is duplicated
-  - loads a second company side by side with the same product names but other prices and quantities, and proves each
-    company sees only its own data (and can't write the other's)
-  - package totals = quantity x active price, worked out by hand, for two package sizes
-  - removes both companies with sp_delete_company and checks nothing of theirs is left
+Catalogue acceptance test (constitution V), against a running backend and its MySQL database. Self-contained (no
+files needed): two test companies are loaded side by side with the same product names but other prices and
+quantities, through the API a person uses:
+  - inventory products (Products API) -> categorization file -> package-items file -> names mapped
+  - re-importing duplicates nothing
+  - each company sees and writes only its own data; the database refuses a cross-company reference
+  - package totals = quantity x inventory price, by hand = CATL_VIEW_PKQT
+  - SYST_PROC_DLCO removes both companies and nothing of theirs is left
+The import rules case by case are unit tests (Tests/UnitTests/CATL).
 
-Run (backend on API, database reachable with DB):
-  python -I Tests/catalog_import_test.py --api http://localhost:5195/api --files D:/Work/Asyntex \
-      --db "Server=localhost;Port=3306;Database=SmartinnPosDb;User=...;Password=..."
-Needs: openpyxl, pymysql.
+  python -I Tests/catalog_import_test.py --api http://localhost:5195/api --db "Server=localhost;Port=3306;Database=...;User=...;Password=..."
+Needs: pymysql.
 """
 from __future__ import annotations
 
-import argparse
-import json
-import sys
-import time
-import urllib.error
-import urllib.request
+import argparse, json, sys, time, uuid, urllib.error, urllib.request
 from decimal import Decimal
-from pathlib import Path
-
-import openpyxl
 import pymysql
 
-HERE = Path(__file__).resolve().parent
-FILES = {"pricelist": "Pak Price List.xlsx", "categorization": "Smartinn Product categorization.xlsx", "packages": "packages.xlsx"}
 failures: list[str] = []
-
-
 def ok(cond: bool, message: str) -> None:
     print(("PASS  " if cond else "FAIL  ") + message)
-    if not cond:
-        failures.append(message)
+    if not cond: failures.append(message)
 
-
-def key(s: str | None) -> str:
-    return " ".join((s or "").lower().split())
+# product name, colour, price, family
+INVENTORY = [("Piano Switch 2 Gang", "White", 17311), ("Piano Switch 2 Gang", "Black", 17500), ("Gas Sensor", None, 18684),
+             ("Smart Panel Q2", None, 78300), ("Curtain Motor", None, 33495)]
+CATEGORIZATION = [["Product Name", "Standard Solution", "Premium Solution"],
+                  ["Lighting Control", None, None], ["Piano Series", "✓", "✓"], ["Touch Panels", None, "✓"],
+                  ["Safety", None, None], ["Gas Sensors", "✓", None], ["Curtains", "✓", "✓"]]
+FAMILY = {"Piano Switch 2 Gang": "Piano Series", "Gas Sensor": "Gas Sensors", "Smart Panel Q2": "Touch Panels", "Curtain Motor": "Curtains"}
+PACKAGES = [["Product", "Unit Price", "5 Marla\nAutomation", "Price", "10 Marla", "1 Kanal"],
+            ["Piano Switch 2 Gang", "1", "6", "0", "12", "20"], ["Gas Sensor ", "1", "1", "0", "1", "2"],
+            ["Smart Panel Q2", "1", "1", "0", "2", "2"], ["Curtian Motor", "1", "", "0", "2", "4"]]   # a typo: mapped by a person
 
 
 class Api:
-    def __init__(self, base: str):
-        self.base, self.token = base.rstrip("/"), None
-
-    def call(self, method: str, path: str, body=None, expect_error: bool = False):
-        req = urllib.request.Request(self.base + path, method=method, data=None if body is None else json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + self.token} if self.token else {})})
+    def __init__(self, base: str): self.base, self.token = base, None
+    def call(self, method: str, path: str, body=None, form=None, expect_error: bool = False):
+        headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        data = None
+        if form is not None:
+            boundary = uuid.uuid4().hex
+            data = ("".join(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n' for k, v in form.items()) + f"--{boundary}--\r\n").encode()
+            headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+        elif body is not None:
+            data = json.dumps(body).encode(); headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=300) as res:
-                raw = res.read()
-                return res.status, (json.loads(raw) if raw else None)
+            with urllib.request.urlopen(req, timeout=300) as r:
+                text, status = r.read().decode(), r.status
         except urllib.error.HTTPError as e:
-            text = e.read().decode(errors="replace")
-            if not expect_error:
-                raise AssertionError(f"{method} {path} -> {e.code}: {text[:400]}")
-            return e.code, text
-
+            text, status = e.read().decode(), e.code
+            if not expect_error: raise AssertionError(f"{method} {path} -> {status}: {text[:300]}")
+        return status, (json.loads(text) if text and text[0] in "[{" else text)
     def company(self, name: str, email: str) -> "Api":
         self.call("POST", "/auth/register", {"fullName": name, "email": email, "password": "Test-12345"})
         self.token = self.call("POST", "/auth/login", {"email": email, "password": "Test-12345"})[1]["token"]
         return self
 
 
-def rows_of(path: Path, change=None) -> list[list[str | None]]:
-    """The sheet as the browser sends it: text cells; change(row) may alter a row (other company's prices / quantities)"""
-    ws = openpyxl.load_workbook(path, data_only=True).active
-    rows = [[None if c is None else str(c) for c in r] for r in ws.iter_rows(values_only=True)]
-    return [change(r) if change else r for r in rows]
-
-
-def import_file(api: Api, kind: str, files: Path, change=None) -> dict:
-    return api.call("POST", f"/catalog/import/{kind}", {"fileName": FILES[kind], "rows": rows_of(files / FILES[kind], change)})[1]
-
-
-def load_company(api: Api, files: Path, mapping: dict, price_change=None, qty_change=None) -> None:
-    """A company's first load: the three files, then the names a person maps, then families for products that matched by name"""
-    r = import_file(api, "pricelist", files, price_change)
-    ok(r["rows"] == r["newSkus"] + r["updatedSkus"] and r["newSkus"] >= r["rows"] - 2,
-       f"price list: {r['rows']} rows -> {r['newSkus']} SKUs ({r['updatedSkus']} repeated rows), {r['newProducts']} products")
-    ok({d["model"] for d in r["duplicateModelCodes"]} >= {"T1L3G", "STGW"}, "duplicate model codes flagged, not fixed: " + ", ".join(d["model"] for d in r["duplicateModelCodes"]))
-    r = import_file(api, "categorization", files)
-    ok(r["families"] == 24 and r["familiesCreated"] == 24, f"categorization: {r['categories']} categories, {r['families']} families")
-    r = import_file(api, "packages", files, qty_change)
-    ok(len(r["newPackageSizes"]) == 8 and r["unmatched"] > 0, f"packages: sizes {r['newPackageSizes']}, {r['matched']} matched, {r['unmatched']} waiting to be mapped")
-
+def load(api: Api, price_factor: Decimal, qty_factor: int) -> dict:
+    for name, color, price in INVENTORY:
+        full = f"{name} {color}" if color else name
+        api.call("POST", "/products", form={"productName": full, "sku": f"T-{uuid.uuid4().hex[:8]}", "price": str(Decimal(price) * price_factor),
+                                            "quantity": 0, "sellingType": "pos", "productType": "single", "taxesJson": "[]", "color": color or ""})
+    r = api.call("POST", "/catalog/import/categorization", {"fileName": "cat.xlsx", "rows": CATEGORIZATION})[1]
+    ok(r["familiesCreated"] == 4, f"categorization: {r['categories']} categories, {r['familiesCreated']} families created")
     cat = api.call("GET", "/catalog")[1]
-    products = {key(p["name"]): p for p in cat["products"]}
-    families = {key(f["name"]): f for g in cat["groups"] for f in g["families"]}
-    wanted = {key(k): v for k, v in mapping["packages"].items()}
-    by_product = {key(v["product"]): v for v in wanted.values() if v["product"]}
-    for u in [u for u in cat["unmatched"] if u["kind"] == "packages"]:
+    ok(len(cat["products"]) == 4 and sum(len(p["skus"]) for p in cat["products"]) == 5, "inventory: 5 products -> 4 catalogue products (one in two colours)")
+    families = {f["name"]: f["id"] for g in cat["groups"] for f in g["families"]}
+    rows = [PACKAGES[0]] + [[r[0], r[1]] + [str(int(c) * qty_factor) if c else c for c in r[2:]] for r in PACKAGES[1:]]
+    r = api.call("POST", "/catalog/import/packages", {"fileName": "items.xlsx", "rows": rows})[1]
+    ok(r["newPackageSizes"] == ["5 Marla", "10 Marla", "1 Kanal"], f"package items: sizes {r['newPackageSizes']} (price columns skipped)")
+    # what a person does on the Import tab: a family for each product found, the typo mapped to its product
+    cat = api.call("GET", "/catalog")[1]
+    by_name = {p["name"]: p["id"] for p in cat["products"]}
+    for u in cat["unmatched"]:
         held = json.loads(u["rowJson"])
-        if held.get("productId"):
-            # found in the inventory, family not set yet: the person picks the family (the product is already chosen)
-            p = next(p for p in cat["products"] if p["id"] == held["productId"])
-            m = wanted.get(key(u["name"])) or by_product.get(key(p["name"]))
-            if not (m and m["family"]):     # in no family (not in the categorization): the person dismisses it
-                api.call("DELETE", f"/catalog/unmatched/{u['id']}")
-                continue
-            api.call("POST", f"/catalog/unmatched/{u['id']}/map", {"catalogProductId": p["id"], "newFamilyId": families[key(m["family"])]["id"], "create": False})
-            continue
-        m = wanted[key(u["name"])]
-        family = families[key(m["family"])]["id"] if m["family"] else None
-        if m["product"]:
-            api.call("POST", f"/catalog/unmatched/{u['id']}/map", {"catalogProductId": products[key(m["product"])]["id"], "newFamilyId": family, "create": False})
-        else:
-            api.call("POST", f"/catalog/unmatched/{u['id']}/map", {"create": True, "newFamilyId": family})
+        product = held.get("productId") or by_name["Curtain Motor"]
+        name = next(n for n, i in by_name.items() if i == product)
+        api.call("POST", f"/catalog/unmatched/{u['id']}/map", {"catalogProductId": product, "newFamilyId": families[FAMILY[name]], "create": False})
     cat = api.call("GET", "/catalog")[1]
-    ok(not [u for u in cat["unmatched"] if u["kind"] == "packages"], "every packages name mapped (saved as aliases)")
-    # products that matched by their own name: their family is chosen on the Package Quantities tab
-    products = {key(p["name"]): p for p in cat["products"]}
-    for m in wanted.values():
-        if m["product"] and m["family"]:
-            p = products[key(m["product"])]
-            if p["familyId"] is None:
-                api.call("PUT", f"/catalog/products/{p['id']}", {"name": p["name"], "familyId": families[key(m["family"])]["id"], "unit": p["unit"], "fallbackPrice": p["fallbackPrice"]})
-    r = import_file(api, "packages", files, qty_change)
-    # only the items with no family (dismissed above: not in the categorization) are asked about again
-    ok(r["unmatched"] == len(r["noFamily"]), f"packages again: {r['matched']} matched, {r['linesWritten']} lines, no family: {len(r['noFamily'])}")
+    ok(not cat["unmatched"], "every package item mapped")
+    return cat
 
 
-def snapshot(api: Api) -> dict:
-    cat = api.call("GET", "/catalog")[1]
-    return {
-        "products": len(cat["products"]),
-        "skus": sum(len(p["skus"]) for p in cat["products"]),
-        "aliases": sum(len(p["aliases"]) for p in cat["products"]),
-        "families": sum(len(g["families"]) for g in cat["groups"]),
-        "sizes": len(cat["sizes"]),
-        "packageLines": len(cat["packageLines"]),
-        "priceLists": len(cat["priceLists"]),
-        "activePriceLists": sum(1 for l in cat["priceLists"] if l["isActive"]),
-    }
-
-
-def hand_total(cat: dict, size_name: str, tier_code: str) -> Decimal:
-    """quantity x the default SKU's inventory price; a product with no SKU uses its entered price (none: 0)"""
-    size = next(s for s in cat["sizes"] if key(s["name"]) == key(size_name))
-    tier = next(t for t in cat["tiers"] if t["code"] == tier_code)
+def hand_total(cat: dict, size: str, tier_code: str) -> Decimal:
+    size_id = next(s["id"] for s in cat["sizes"] if s["name"] == size)
+    tier_id = next(t["id"] for t in cat["tiers"] if t["code"] == tier_code)
     products = {p["id"]: p for p in cat["products"]}
     total = Decimal(0)
     for l in cat["packageLines"]:
-        if l["sizeId"] != size["id"] or l["tierId"] != tier["id"]:
-            continue
-        p = products[l["productId"]]
-        sku = next((s for s in p["skus"] if s["isDefault"]), None)
-        price = Decimal(str(sku["price"])) if sku else Decimal(str(p["fallbackPrice"] or 0))
-        total += (Decimal(str(l["quantity"])) * price).quantize(Decimal("0.01"))
+        if l["sizeId"] == size_id and l["tierId"] == tier_id:
+            p = products[l["productId"]]
+            sku = next((s for s in p["skus"] if s["isDefault"]), None)
+            total += (Decimal(str(l["quantity"])) * Decimal(str(sku["price"] if sku else p["fallbackPrice"] or 0))).quantize(Decimal("0.01"))
     return total
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="http://localhost:5195/api")
-    ap.add_argument("--files", default="D:/Work/Asyntex")
     ap.add_argument("--db", required=True, help=".NET style connection string of the backend's database")
     args = ap.parse_args()
-    files = Path(args.files)
-    mapping = json.loads((HERE / "fixtures" / "smartinn_mapping.json").read_text(encoding="utf8"))
     parts = {k.strip().lower(): v.strip() for k, _, v in (p.partition("=") for p in args.db.split(";") if "=" in p)}
-    db = pymysql.connect(host=parts.get("server", "localhost"), port=int(parts.get("port", 3306)), user=parts.get("user"),
-                         password=parts.get("password"), database=parts.get("database"), autocommit=True)
+    db = pymysql.connect(host=parts.get("server", "localhost"), port=int(parts.get("port", 3306)), user=parts["user"], password=parts["password"],
+                         database=parts["database"], autocommit=True)
     stamp = int(time.time())
     a = Api(args.api).company("Catalog Test A", f"catalog-a-{stamp}@test.local")
     b = Api(args.api).company("Catalog Test B", f"catalog-b-{stamp}@test.local")
-    tenants = []
+    with db.cursor() as cur:
+        cur.execute("SELECT TenantId FROM PRTY_MAST WHERE Email IN (%s, %s) ORDER BY Email", (f"catalog-a-{stamp}@test.local", f"catalog-b-{stamp}@test.local"))
+        tenants = [r[0] for r in cur.fetchall()]
     try:
-        with db.cursor() as cur:
-            cur.execute("SELECT TenantId FROM Parties WHERE Email IN (%s, %s) ORDER BY Email", (f"catalog-a-{stamp}@test.local", f"catalog-b-{stamp}@test.local"))
-            tenants = [r[0] for r in cur.fetchall()]
+        print("-- company A --")
+        ca = load(a, Decimal(1), 1)
+        snapshot = lambda c: (len(c["products"]), sum(len(p["skus"]) for p in c["products"]), len(c["sizes"]), len(c["packageLines"]), sum(len(g["families"]) for g in c["groups"]))
+        first = snapshot(ca)
+        a.call("POST", "/catalog/import/categorization", {"fileName": "cat.xlsx", "rows": CATEGORIZATION})
+        a.call("POST", "/catalog/import/packages", {"fileName": "items.xlsx", "rows": PACKAGES})
+        ok(snapshot(a.call("GET", "/catalog")[1]) == first, f"re-importing duplicates nothing {first}")
 
-        print("-- company A: first load --")
-        load_company(a, files, mapping)
-        first = snapshot(a)
-        print("   ", first)
-        print("-- company A: the three files again --")
-        for kind in ("pricelist", "categorization", "packages"):
-            import_file(a, kind, files)
-        again = snapshot(a)
-        ok(again == first, f"re-import duplicates nothing: {again}")
-        ok(again["activePriceLists"] == 1, "exactly one active price list")
-
-        print("-- company B: same names, other prices and quantities --")
-        def dearer(row):      # price list: End User Price + 10 %
-            if row and len(row) > 6 and row[6] not in (None, "") and row[0] not in (None, "SN"):
-                try: row[6] = str(round(float(row[6]) * 1.1, 2))
-                except ValueError: pass
-            return row
-        def double(row):      # packages: every quantity x 2
-            if row and row[0] and row[0].strip() != "Product":
-                for i in range(2, len(row), 2):
-                    try: row[i] = None if row[i] in (None, "") else str(float(row[i]) * 2)
-                    except ValueError: pass
-            return row
-        load_company(b, files, mapping, dearer, double)
-
-        ca, cb = a.call("GET", "/catalog")[1], b.call("GET", "/catalog")[1]
-        echo_a = next(p for p in ca["products"] if p["name"] == "Harmony HPAD Echo")
-        echo_b = next(p for p in cb["products"] if p["name"] == "Harmony HPAD Echo")
-        ok(echo_a["id"] != echo_b["id"] and abs(echo_b["skus"][0]["price"] - echo_a["skus"][0]["price"] * 1.1) < 0.02,
-           f"same product name, own row and price per company: A {echo_a['skus'][0]['price']}, B {echo_b['skus'][0]['price']}")
-        ids_a, ids_b = {p["id"] for p in ca["products"]}, {p["id"] for p in cb["products"]}
-        ok(not ids_a & ids_b, "no product of one company is listed for the other")
-        status, _ = a.call("PUT", "/catalog/package-lines", [{"sizeId": cb["sizes"][0]["id"], "tierId": cb["tiers"][0]["id"], "productId": echo_b["id"], "quantity": 5}], expect_error=True)
+        print("-- company B: same names, prices + 10 %, quantities x 2 --")
+        cb = load(b, Decimal("1.1"), 2)
+        ga = next(p for p in ca["products"] if p["name"] == "Gas Sensor")
+        gb = next(p for p in cb["products"] if p["name"] == "Gas Sensor")
+        ok(ga["id"] != gb["id"] and abs(gb["skus"][0]["price"] - ga["skus"][0]["price"] * 1.1) < 0.02, "same product name, own row and price per company")
+        ok(not {p["id"] for p in ca["products"]} & {p["id"] for p in cb["products"]}, "no product of one company is listed for the other")
+        status, _ = a.call("PUT", "/catalog/package-lines", [{"sizeId": cb["sizes"][0]["id"], "tierId": cb["tiers"][0]["id"], "productId": gb["id"], "quantity": 5}], expect_error=True)
         ok(status == 400, f"A can't write B's package lines ({status})")
-        status, _ = a.call("PUT", f"/catalog/products/{echo_b['id']}", {"name": "hijack"}, expect_error=True)
+        status, _ = a.call("PUT", f"/catalog/products/{gb['id']}", {"name": "hijack"}, expect_error=True)
         ok(status == 404, f"A can't edit B's product ({status})")
         with db.cursor() as cur:
             try:
-                cur.execute("INSERT INTO CatalogPackageLines (TenantId, PackageSizeId, TierId, CatalogProductId, Quantity) VALUES (%s, %s, %s, %s, 1)",
-                            (tenants[0], ca["sizes"][0]["id"], ca["tiers"][0]["id"], echo_b["id"]))
-                ok(False, "database refuses a line pointing at another company's product")
+                cur.execute("INSERT INTO CATL_PKLN (TenantId, PackageSizeId, TierId, CatalogProductId, Quantity) VALUES (%s, %s, %s, %s, 1)",
+                            (tenants[0], ca["sizes"][0]["id"], ca["tiers"][0]["id"], gb["id"]))
+                ok(False, "the database refuses a line pointing at another company's product")
             except pymysql.err.IntegrityError:
-                ok(True, "database refuses a line pointing at another company's product (composite foreign key)")
+                ok(True, "the database refuses a line pointing at another company's product (composite foreign key)")
 
-        print("-- package totals: quantity x active price --")
-        for size in ("10 Marla", "1 kanal"):
+        print("-- package totals: quantity x inventory price --")
+        ca = a.call("GET", "/catalog")[1]
+        for size in ("10 Marla", "1 Kanal"):
             for tier in ("standard", "premium"):
                 hand = hand_total(ca, size, tier)
                 with db.cursor() as cur:
-                    cur.execute("SELECT COALESCE(SUM(LineTotal), 0) FROM v_package_quote q JOIN CatalogTiers t ON t.Id = q.TierId "
+                    cur.execute("SELECT COALESCE(SUM(LineTotal), 0) FROM CATL_VIEW_PKQT q JOIN CATL_TIER t ON t.Id = q.TierId "
                                 "WHERE q.TenantId = %s AND q.PackageName = %s AND t.Code = %s", (tenants[0], size, tier))
                     view = Decimal(str(cur.fetchone()[0]))
-                ok(hand == view and hand > 0, f"A {size} {tier}: by hand {hand} = v_package_quote {view}")
-            hb = hand_total(cb, size, "standard")
-            ok(hb > hand_total(ca, size, "standard"), f"B {size} standard {hb} (dearer, double quantities) - its own figures")
+                ok(hand == view and hand > 0, f"A {size} {tier}: by hand {hand} = CATL_VIEW_PKQT {view}")
+            ok(hand_total(cb, size, "standard") > hand_total(ca, size, "standard"), f"B {size} standard is its own (dearer, double)")
     finally:
         with db.cursor() as cur:
             for t in tenants:
-                cur.execute("CALL sp_delete_company(%s)", (t,))
+                cur.execute("CALL SYST_PROC_DLCO(%s)", (t,))
             left = 0
-            for table in ("Tenants", "Parties", "CatalogProducts", "Products", "CatalogPackageLines", "SolutionProductLines", "PackageSizes", "CatalogPriceLists"):
-                col = "Id" if table == "Tenants" else "TenantId"
-                if tenants:
-                    cur.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} IN ({','.join(['%s'] * len(tenants))})", tenants)
-                    left += cur.fetchone()[0]
-            ok(left == 0, f"sp_delete_company removed both test companies ({left} rows left)")
+            for table in ("SYST_TNNT", "PRTY_MAST", "CATL_PROD", "INVT_PROD", "CATL_PKLN", "CATL_FMLY", "CATL_SIZE", "ACCT_JRNL"):
+                col = "Id" if table == "SYST_TNNT" else "TenantId"
+                cur.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} IN ({','.join(['%s'] * len(tenants))})", tenants)
+                left += cur.fetchone()[0]
+            ok(left == 0, f"SYST_PROC_DLCO removed both test companies ({left} rows left)")
     print(f"\n{'ALL PASSED' if not failures else f'{len(failures)} FAILED'}")
     return 1 if failures else 0
 

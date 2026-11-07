@@ -3,7 +3,7 @@ Ledger acceptance test (double-entry posting through the normal API), in a fresh
 purchases, a sale with tax / shipping, payments both ways, an expense, a capital entry -> every entry balances,
 the balance sheet balances, cost of goods sold is the moving average; a backdated purchase re-costs the sale;
 deleting a document removes its entry; the lock date refuses changes; a rebuild gives the same ledger.
-The company is deleted at the end (sp_delete_company).
+The company is deleted at the end (SYST_PROC_DLCO).
 
     python -I Tests/ledger_test.py --api http://localhost:5195/api --db "Server=localhost;Port=3306;Database=...;User=...;Password=..."
 """
@@ -48,7 +48,7 @@ def main():
     api.call("POST", "/auth/register", {"fullName": "Ledger Test", "email": email, "password": "Test-12345"})
     api.token = api.call("POST", "/auth/login", {"email": email, "password": "Test-12345"})[1]["token"]
     with db.cursor() as c:
-        c.execute("SELECT TenantId FROM Parties WHERE Email=%s", (email,)); tenant = c.fetchone()[0]
+        c.execute("SELECT TenantId FROM PRTY_MAST WHERE Email=%s", (email,)); tenant = c.fetchone()[0]
     today = date.today(); d = lambda n: (today - timedelta(days=n)).isoformat()
     try:
         prod = api.call("POST", "/products", form={"productName": "Ledger Switch", "sku": f"LT-{tenant}", "price": 250, "quantity": 0, "sellingType": "pos", "productType": "single", "taxesJson": "[]"})[1]
@@ -100,7 +100,7 @@ def main():
         # delete the expense: its entry goes
         api.call("DELETE", f"/expenses/{exp['id']}")
         with db.cursor() as c:
-            c.execute("SELECT COUNT(*) FROM JournalEntries WHERE TenantId=%s AND VoucherType='Expense'", (tenant,)); n = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM ACCT_JRNL WHERE TenantId=%s AND VoucherType='Expense'", (tenant,)); n = c.fetchone()[0]
         ok(n == 0 and bal("cash") == 5500, "deleted expense: its entry is gone, cash back to 5500")
 
         # lock date: nothing on or before it can change
@@ -108,7 +108,7 @@ def main():
         code, res = api.call("POST", "/expenses", {"expenseName": "Late", "expenseCategoryId": cat["id"], "description": "", "date": d(2), "amount": 10, "status": "active"}, expect=True)
         ok(code == 400 and "locked" in json.dumps(res).lower(), f"expense dated in a locked period refused: {code} {str(res)[:120]}")
         with db.cursor() as c:
-            c.execute("SELECT COUNT(*) FROM Expenses WHERE TenantId=%s AND ExpenseName='Late'", (tenant,)); n = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM FINC_EXPN WHERE TenantId=%s AND ExpenseName='Late'", (tenant,)); n = c.fetchone()[0]
         ok(n == 0, "the refused expense was not saved either")
         code, res = api.call("DELETE", f"/sales/{sale['id']}", expect=True)
         ok(code >= 400, f"deleting a sale in a locked period refused: {code}")
@@ -121,7 +121,7 @@ def main():
         key = lambda rows: sorted((r["code"], round(r["closing"], 2)) for r in rows)
         ok(key(before) == key(after), "rebuild from the documents gives the same balances")
     finally:
-        with db.cursor() as c: c.execute("CALL sp_delete_company(%s)", (tenant,))
+        with db.cursor() as c: c.execute("CALL SYST_PROC_DLCO(%s)", (tenant,))
         print("   cleanup: company", tenant, "deleted")
     print("\nALL PASSED" if not FAILED else f"\n{len(FAILED)} FAILED")
     return 1 if FAILED else 0

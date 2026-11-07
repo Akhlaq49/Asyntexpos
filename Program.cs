@@ -28,12 +28,9 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
 builder.Services.AddScoped<IBrandService, BrandService>();
 builder.Services.AddScoped<IUnitService, UnitService>();
-builder.Services.AddScoped<IVariantAttributeService, VariantAttributeService>();
 builder.Services.AddScoped<IWarrantyService, WarrantyService>();
-builder.Services.AddScoped<IStockEntryService, StockEntryService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<ISaleService, SaleService>();
-builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
 builder.Services.AddScoped<IReportService, ReportService>();
@@ -145,96 +142,32 @@ app.UseMiddleware<FrozenAccountMiddleware>(); // a frozen user is signed out on 
 app.UseAuthorization();
 app.MapControllers();
 
-// Auto-create the database on first start (Code First - no migrations)
+// Database: created from the model when new, then the module scripts (Data/DatabaseSetup.cs); the default company
+// and its SuperAdmin are created once
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
-    SchemaUpgrades.Apply(db); // tables added after the database was first created
+    DatabaseSetup.Apply(db);
 
-    // Menu section "Finance & Accounts" was renamed to "Finance" in the frontend.
-    // Menu keys are "<Section>/<Item>", so carry saved permissions/hidden menus over (idempotent).
-    db.Database.ExecuteSqlRaw(
-        "UPDATE RolePermissions SET MenuKey = CONCAT('Finance/', SUBSTRING(MenuKey, 20)) WHERE MenuKey LIKE 'Finance & Accounts/%'");
-    db.Database.ExecuteSqlRaw(
-        "UPDATE TenantMenuConfigs SET MenuKey = CONCAT('Finance/', SUBSTRING(MenuKey, 20)) WHERE MenuKey LIKE 'Finance & Accounts/%'");
-
-    // Fields removed from the product form; drop their field-visibility settings (idempotent).
-    db.Database.ExecuteSqlRaw(
-        "DELETE FROM FormFieldConfigs WHERE FormName = 'AddProduct' AND FieldName IN " +
-        "('store', 'warehouse', 'subCategory', 'manufacturer', 'manufacturedDate', 'expiryDate', 'barcodeSymbology', 'itemBarcode')");
-    // Installments were removed from this backend; drop their form settings too
-    db.Database.ExecuteSqlRaw("DELETE FROM FormFieldConfigs WHERE FormName = 'CreateInstallment'");
-
-    // ── MULTI-TENANCY: Seed default tenant + SuperAdmin ──
     // Use IgnoreQueryFilters() because there's no authenticated user at startup
-    var existingAdmin = db.Parties
-        .IgnoreQueryFilters().NotDeleted()
-        .FirstOrDefault(p => p.Email == "admin@reactpos.com" && (p.Role == "SuperAdmin" || p.Role == "Admin"));
-
-    if (existingAdmin == null)
+    var adminExists = db.Parties.IgnoreQueryFilters().NotDeleted().Any(p => p.Email == "admin@reactpos.com" && p.Role == "SuperAdmin");
+    if (!adminExists)
     {
-        // Create default tenant
-        var defaultTenant = new Tenant
-        {
-            Name = "System Admin",
-            Email = "admin@reactpos.com",
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
+        var defaultTenant = new Tenant { Name = "System Admin", Email = "admin@reactpos.com", IsActive = true, CreatedAt = DateTime.UtcNow };
         db.Tenants.Add(defaultTenant);
         db.SaveChanges();
-
-        // Create SuperAdmin party under the default tenant
         db.Parties.Add(new Party
         {
-            FullName = "Admin",
-            Email = "admin@reactpos.com",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
-            Role = "SuperAdmin",
-            IsActive = true,
-            TenantId = defaultTenant.Id,
-            CreatedAt = DateTime.UtcNow
+            FullName = "Admin", Email = "admin@reactpos.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
+            Role = "SuperAdmin", IsActive = true, TenantId = defaultTenant.Id, CreatedAt = DateTime.UtcNow,
         });
         db.SaveChanges();
     }
-    else
-    {
-        // Upgrade existing "Admin" seed user to SuperAdmin if needed
-        if (existingAdmin.Role == "Admin")
-        {
-            existingAdmin.Role = "SuperAdmin";
-        }
 
-        if (existingAdmin.TenantId == 0)
-        {
-            // Migration path: existing admin has no tenant — create one
-            var tenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
-            if (tenant == null)
-            {
-                tenant = new Tenant
-                {
-                    Name = "System Admin",
-                    Email = "admin@reactpos.com",
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow
-                };
-                db.Tenants.Add(tenant);
-                db.SaveChanges();
-            }
-            existingAdmin.TenantId = tenant.Id;
-        }
-
-        db.SaveChanges();
-    }
-
-    // Seed default form field configurations for the default tenant
+    // default form field configurations of the default company
     var seedTenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
     if (seedTenant != null)
-    {
-        var formFieldConfigService = scope.ServiceProvider.GetRequiredService<IFormFieldConfigService>();
-        formFieldConfigService.SeedDefaultsAsync(seedTenant.Id).GetAwaiter().GetResult();
-    }
+        scope.ServiceProvider.GetRequiredService<IFormFieldConfigService>().SeedDefaultsAsync(seedTenant.Id).GetAwaiter().GetResult();
 }
 
 app.Run();

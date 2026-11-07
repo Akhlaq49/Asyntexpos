@@ -34,15 +34,11 @@ public class AppDbContext : DbContext
     // Lookup tables
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Unit> Units => Set<Unit>();
-
-    public DbSet<VariantAttribute> VariantAttributes => Set<VariantAttribute>();
     public DbSet<Warranty> Warranties => Set<Warranty>();
     public DbSet<StockEntry> StockEntries => Set<StockEntry>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
     public DbSet<SalePayment> SalePayments => Set<SalePayment>();
-    public DbSet<Invoice> Invoices => Set<Invoice>();
-    public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
     public DbSet<SalesReturn> SalesReturns => Set<SalesReturn>();
     public DbSet<SalesReturnItem> SalesReturnItems => Set<SalesReturnItem>();
     public DbSet<Quotation> Quotations => Set<Quotation>();
@@ -70,7 +66,6 @@ public class AppDbContext : DbContext
     public DbSet<Party> Parties => Set<Party>();
 
     // Customer addresses
-    public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
 
     // Role Permissions
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -86,23 +81,17 @@ public class AppDbContext : DbContext
     public DbSet<Expense> Expenses => Set<Expense>();
 
     // SMS / Notifications
-    public DbSet<SmsMessage> SmsMessages => Set<SmsMessage>();
-    public DbSet<SmsWhitelistedNumber> SmsWhitelistedNumbers => Set<SmsWhitelistedNumber>();
 
     // Solution packages (calculation engine data)
     public DbSet<SolutionGroup> SolutionGroups => Set<SolutionGroup>();
     public DbSet<SolutionProductLine> SolutionProductLines => Set<SolutionProductLine>();
     public DbSet<PackageSize> PackageSizes => Set<PackageSize>();
-    public DbSet<PackageItem> PackageItems => Set<PackageItem>();
-    public DbSet<PackageQuantity> PackageQuantities => Set<PackageQuantity>();
     // product catalogue (Database/CatalogSchema.sql)
     public DbSet<CatalogTier> CatalogTiers => Set<CatalogTier>();
     public DbSet<CatalogFamilyTier> CatalogFamilyTiers => Set<CatalogFamilyTier>();
     public DbSet<CatalogColor> CatalogColors => Set<CatalogColor>();
     public DbSet<CatalogProduct> CatalogProducts => Set<CatalogProduct>();
     public DbSet<CatalogAlias> CatalogAliases => Set<CatalogAlias>();
-    public DbSet<CatalogPriceList> CatalogPriceLists => Set<CatalogPriceList>();
-    public DbSet<CatalogPriceListItem> CatalogPriceListItems => Set<CatalogPriceListItem>();
     public DbSet<CatalogPackageLine> CatalogPackageLines => Set<CatalogPackageLine>();
     public DbSet<CatalogDrawingRuleItem> CatalogDrawingRuleItems => Set<CatalogDrawingRuleItem>();
     public DbSet<CatalogImportProfile> CatalogImportProfiles => Set<CatalogImportProfile>();
@@ -117,6 +106,14 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // table names: MODULE_ENTITY, 4 letters each (Data/DbNames.cs); an entity without a name is a mistake
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes().Where(t => !t.IsOwned()).ToList())
+        {
+            if (!DbNames.Tables.TryGetValue(entityType.ClrType, out var table))
+                throw new InvalidOperationException($"{entityType.ClrType.Name} has no table name in Data/DbNames.cs.");
+            modelBuilder.Entity(entityType.ClrType).ToTable(table);
+        }
 
         // ═══════════════════════════════════════════════════════════
         // SOFT DELETE: IsDeleted / DeletedAt / DeletedBy on every table except settings (shadow properties).
@@ -167,15 +164,6 @@ public class AppDbContext : DbContext
             e.Property(p => p.IsActive).HasDefaultValue(true);
         });
 
-        // PartyAddress -> Party
-        modelBuilder.Entity<PartyAddress>(e =>
-        {
-            e.HasOne(a => a.Party)
-             .WithMany(p => p.Addresses)
-             .HasForeignKey(a => a.PartyId)
-             .OnDelete(DeleteBehavior.Cascade);
-        });
-
         // Sale
         modelBuilder.Entity<Sale>(e =>
         {
@@ -183,14 +171,6 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(s => s.CustomerId)
              .OnDelete(DeleteBehavior.SetNull);
-            e.HasOne(s => s.BillingAddress)
-             .WithMany()
-             .HasForeignKey(s => s.BillingAddressId)
-             .OnDelete(DeleteBehavior.NoAction);
-            e.HasOne(s => s.ShippingAddress)
-             .WithMany()
-             .HasForeignKey(s => s.ShippingAddressId)
-             .OnDelete(DeleteBehavior.NoAction);
             e.Property(s => s.GrandTotal).HasColumnType("decimal(18,2)");
             e.Property(s => s.Paid).HasColumnType("decimal(18,2)");
             e.Property(s => s.Due).HasColumnType("decimal(18,2)");
@@ -223,35 +203,6 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Cascade);
             e.Property(p => p.ReceivedAmount).HasColumnType("decimal(18,2)");
             e.Property(p => p.PayingAmount).HasColumnType("decimal(18,2)");
-        });
-
-        // Invoice
-        modelBuilder.Entity<Invoice>(e =>
-        {
-            e.HasOne(i => i.Customer)
-             .WithMany()
-             .HasForeignKey(i => i.CustomerId)
-             .OnDelete(DeleteBehavior.SetNull);
-            e.Property(i => i.SubTotal).HasColumnType("decimal(18,2)");
-            e.Property(i => i.Discount).HasColumnType("decimal(18,2)");
-            e.Property(i => i.DiscountPercent).HasColumnType("decimal(8,4)");
-            e.Property(i => i.Tax).HasColumnType("decimal(18,2)");
-            e.Property(i => i.TaxPercent).HasColumnType("decimal(8,4)");
-            e.Property(i => i.TotalAmount).HasColumnType("decimal(18,2)");
-            e.Property(i => i.Paid).HasColumnType("decimal(18,2)");
-            e.Property(i => i.AmountDue).HasColumnType("decimal(18,2)");
-        });
-
-        // InvoiceItem -> Invoice
-        modelBuilder.Entity<InvoiceItem>(e =>
-        {
-            e.HasOne(i => i.Invoice)
-             .WithMany(inv => inv.Items)
-             .HasForeignKey(i => i.InvoiceId)
-             .OnDelete(DeleteBehavior.Cascade);
-            e.Property(i => i.Cost).HasColumnType("decimal(18,2)");
-            e.Property(i => i.Discount).HasColumnType("decimal(18,2)");
-            e.Property(i => i.Total).HasColumnType("decimal(18,2)");
         });
 
         // SalesReturn
@@ -373,19 +324,9 @@ public class AppDbContext : DbContext
 
         // Solution packages: categorization lines under groups; package quantities per item and building size
         modelBuilder.Entity<SolutionProductLine>(e => e.HasOne(l => l.Group).WithMany(g => g.ProductLines).HasForeignKey(l => l.GroupId).OnDelete(DeleteBehavior.Cascade));
-        modelBuilder.Entity<PackageItem>(e => e.HasOne(i => i.ProductLine).WithMany().HasForeignKey(i => i.ProductLineId).OnDelete(DeleteBehavior.SetNull));
-        modelBuilder.Entity<PackageQuantity>(e =>
-        {
-            e.HasOne(q => q.PackageItem).WithMany(i => i.Quantities).HasForeignKey(q => q.PackageItemId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(q => q.PackageSize).WithMany().HasForeignKey(q => q.PackageSizeId).OnDelete(DeleteBehavior.Cascade);
-            e.HasIndex(q => new { q.PackageItemId, q.PackageSizeId }).IsUnique();
-        });
-
         // Product catalogue: keys only - the composite foreign keys, unique names and views are in Database/CatalogSchema.sql
         modelBuilder.Entity<CatalogFamilyTier>(e => e.HasKey(x => new { x.TenantId, x.FamilyId, x.TierId }));
         modelBuilder.Entity<CatalogImportProfile>(e => e.HasKey(x => new { x.TenantId, x.Kind }));
-        modelBuilder.Entity<CatalogUnmatched>(e => e.ToTable("CatalogUnmatched"));
-        modelBuilder.Entity<CatalogPriceListItem>(e => e.Property(x => x.Price).HasColumnType("decimal(18,2)"));
         modelBuilder.Entity<CatalogPackageLine>(e => e.Property(x => x.Quantity).HasColumnType("decimal(12,3)"));
         modelBuilder.Entity<CatalogProduct>(e => e.Property(x => x.FallbackPrice).HasColumnType("decimal(18,2)"));
 
