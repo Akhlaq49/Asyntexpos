@@ -61,6 +61,7 @@ public class AppDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+    public DbSet<ProductPurchasePrice> ProductPurchasePrices => Set<ProductPurchasePrice>();
 
     // Parties (unified: Admin, Manager, User, Customer, Supplier)
     public DbSet<Party> Parties => Set<Party>();
@@ -137,6 +138,13 @@ public class AppDbContext : DbContext
         });
 
         // Product
+        // one purchase price per product (INVT_PPRC; composite key to the product: Database/INVT/Schema.sql)
+        modelBuilder.Entity<ProductPurchasePrice>(e =>
+        {
+            e.HasOne(x => x.Product).WithOne(p => p.PurchasePriceInfo).HasForeignKey<ProductPurchasePrice>(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TenantId, x.ProductId }).IsUnique().HasDatabaseName("UX_INVT_PPRC_Product");
+        });
+
         modelBuilder.Entity<Product>(e =>
         {
             e.Property(p => p.Price).HasColumnType("decimal(18,2)");

@@ -26,6 +26,8 @@ public static class SoftDelete
         typeof(CatalogImportProfile), typeof(CatalogUnmatched),
         // ledger: derived from the documents and rewritten when they change (Services/LedgerPoster.cs)
         typeof(LedgerAccount), typeof(JournalEntry), typeof(JournalLine), typeof(AccountingSettings),
+        // a product's purchase price: one row, rewritten in place
+        typeof(ProductPurchasePrice),
     };
 
     /// <summary>Soft-deleted types that have a unique index (it gets DeletedKey added)</summary>

@@ -28,6 +28,7 @@
   <ItemGroup>
     <!-- run on start by Data/DatabaseSetup.cs, in this order -->
     <EmbeddedResource Include="Database\SYST\Procedures.sql" LogicalName="SYST/Procedures.sql" />
+    <EmbeddedResource Include="Database\INVT\Schema.sql" LogicalName="INVT/Schema.sql" />
     <EmbeddedResource Include="Database\CATL\Schema.sql" LogicalName="CATL/Schema.sql" />
     <EmbeddedResource Include="Database\ACCT\Schema.sql" LogicalName="ACCT/Schema.sql" />
     <!-- tests (unit tests project, Python acceptance tests, fixtures): not part of the app -->

@@ -11,7 +11,7 @@ namespace ReactPosApi.Data;
 public static class DatabaseSetup
 {
     /// <summary>Embedded scripts, in the order they run</summary>
-    public static readonly string[] Scripts = { "SYST/Procedures.sql", "CATL/Schema.sql", "ACCT/Schema.sql" };
+    public static readonly string[] Scripts = { "SYST/Procedures.sql", "INVT/Schema.sql", "CATL/Schema.sql", "ACCT/Schema.sql" };
 
     public static void Apply(AppDbContext db)
     {

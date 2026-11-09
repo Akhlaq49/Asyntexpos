@@ -91,4 +91,7 @@ public class Product : ITenantEntity
 
     // Navigation
     public ICollection<ProductImage> Images { get; set; } = new List<ProductImage>();
+
+    /// <summary>What the company pays for it (INVT_PPRC)</summary>
+    public ProductPurchasePrice? PurchasePriceInfo { get; set; }
 }

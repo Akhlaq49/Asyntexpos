@@ -21,7 +21,7 @@ public static class DbNames
     public const string PrtyMast = "PRTY_MAST";
     // ── INVT inventory ──
     public const string InvtProd = "INVT_PROD", InvtPimg = "INVT_PIMG", InvtCatg = "INVT_CATG", InvtBrnd = "INVT_BRND",
-        InvtUnit = "INVT_UNIT", InvtWrnt = "INVT_WRNT", InvtStck = "INVT_STCK";
+        InvtUnit = "INVT_UNIT", InvtWrnt = "INVT_WRNT", InvtStck = "INVT_STCK", InvtPprc = "INVT_PPRC";
     // ── SALE sales ──
     public const string SaleHead = "SALE_HEAD", SaleItem = "SALE_ITEM", SalePymt = "SALE_PYMT", SaleRtrn = "SALE_RTRN",
         SaleRtit = "SALE_RTIT", SaleQuot = "SALE_QUOT", SaleQtit = "SALE_QTIT", SaleQapr = "SALE_QAPR";
@@ -48,7 +48,7 @@ public static class DbNames
         [typeof(Role)] = SecuRole, [typeof(RolePermission)] = SecuPerm,
         [typeof(Party)] = PrtyMast,
         [typeof(Product)] = InvtProd, [typeof(ProductImage)] = InvtPimg, [typeof(Category)] = InvtCatg, [typeof(Brand)] = InvtBrnd,
-        [typeof(Unit)] = InvtUnit, [typeof(Warranty)] = InvtWrnt, [typeof(StockEntry)] = InvtStck,
+        [typeof(Unit)] = InvtUnit, [typeof(Warranty)] = InvtWrnt, [typeof(StockEntry)] = InvtStck, [typeof(ProductPurchasePrice)] = InvtPprc,
         [typeof(Sale)] = SaleHead, [typeof(SaleItem)] = SaleItem, [typeof(SalePayment)] = SalePymt, [typeof(SalesReturn)] = SaleRtrn,
         [typeof(SalesReturnItem)] = SaleRtit, [typeof(Quotation)] = SaleQuot, [typeof(QuotationItem)] = SaleQtit, [typeof(QuotationApproval)] = SaleQapr,
         [typeof(Purchase)] = PrchHead, [typeof(PurchaseItem)] = PrchItem, [typeof(PurchasePayment)] = PrchPymt, [typeof(PurchaseOrder)] = PrchOrdr,
@@ -61,7 +61,8 @@ public static class DbNames
         [typeof(CatalogUnmatched)] = CatlUnmt,
     };
 
-    /// <summary>Table names before the naming convention (used only to stop the app on a database not yet migrated)</summary>
+    /// <summary>Table names before the naming convention (used only to stop the app on a database not yet migrated);
+    /// tables made after it (INVT_PPRC) have none</summary>
     public static readonly IReadOnlyDictionary<string, string> Legacy = new Dictionary<string, string>
     {
         ["Tenants"] = SystTnnt, ["TenantMenuConfigs"] = SystMenu, ["FormFieldConfigs"] = SystForm, ["TermsConditions"] = SystTerm,

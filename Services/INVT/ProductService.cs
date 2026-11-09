@@ -38,7 +38,7 @@ public class ProductService : IProductService
         var entities = await q
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
-            .Include(p => p.Images)
+            .Include(p => p.Images).Include(p => p.PurchasePriceInfo)
             .ToListAsync();
 
         return new PagedResult<ProductDto>
@@ -53,7 +53,7 @@ public class ProductService : IProductService
     public async Task<List<ProductDto>> GetAllAsync()
     {
         var products = await _db.Products
-            .Include(p => p.Images)
+            .Include(p => p.Images).Include(p => p.PurchasePriceInfo)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
         return products.Select(MapToDto).ToList();
@@ -62,7 +62,7 @@ public class ProductService : IProductService
     public async Task<ProductDto?> GetByIdAsync(int id)
     {
         var product = await _db.Products
-            .Include(p => p.Images)
+            .Include(p => p.Images).Include(p => p.PurchasePriceInfo)
             .FirstOrDefaultAsync(p => p.Id == id);
         return product == null ? null : MapToDto(product);
     }
@@ -169,11 +169,13 @@ public class ProductService : IProductService
                 await _db.SaveChangesAsync();
             }
 
+            await PurchasePriceService.EnsureAllAsync(_db);     // its starting purchase price
             await _db.Entry(entity).Collection(e => e.Images).LoadAsync();
             await transaction.CommitAsync();
             // the catalogue follows: the SKU joins its product, and its price goes into the active price list
             await _catalog.SyncSkusAsync();     // a new / renamed product is linked to its catalogue product
             await _db.Entry(entity).ReloadAsync();
+            await _db.Entry(entity).Reference(e => e.PurchasePriceInfo).LoadAsync();
             return MapToDto(entity);
         }
         catch
@@ -185,7 +187,7 @@ public class ProductService : IProductService
 
     public async Task<ProductDto?> UpdateAsync(int id, ProductFormModel form)
     {
-        var entity = await _db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
+        var entity = await _db.Products.Include(p => p.Images).Include(p => p.PurchasePriceInfo).FirstOrDefaultAsync(p => p.Id == id);
         if (entity == null) return null;
 
         using var transaction = await _db.Database.BeginTransactionAsync();
@@ -243,6 +245,7 @@ public class ProductService : IProductService
             // the catalogue follows: the SKU joins its product, and its price goes into the active price list
             await _catalog.SyncSkusAsync();     // a new / renamed product is linked to its catalogue product
             await _db.Entry(entity).ReloadAsync();
+            await _db.Entry(entity).Reference(e => e.PurchasePriceInfo).LoadAsync();
             return MapToDto(entity);
         }
         catch
@@ -282,6 +285,7 @@ public class ProductService : IProductService
         ProductType = p.ProductType,
         Quantity = p.Quantity,
         Price = p.Price,
+        PurchasePrice = p.PurchasePriceInfo?.PurchasePrice ?? PurchasePriceService.StartingPrice(p.Price),
         TaxType = p.TaxType ?? "",
         Tax = p.Tax ?? "",
         Taxes = AppliedTaxes.Parse(p.TaxesJson),

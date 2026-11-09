@@ -62,10 +62,12 @@ public class NamingConventionTests
     }
 
     [Fact]
-    public void Every_legacy_name_maps_to_a_registered_table_and_every_table_has_one()
+    public void Every_legacy_name_maps_to_a_registered_table_and_only_newer_tables_have_none()
     {
         Assert.All(DbNames.Legacy.Values, v => Assert.Contains(v, DbNames.Tables.Values));
-        Assert.Equal(DbNames.Tables.Values.OrderBy(x => x), DbNames.Legacy.Values.OrderBy(x => x));
+        Assert.Equal(DbNames.Legacy.Count, DbNames.Legacy.Values.Distinct().Count());
+        // tables made after the naming convention never had an old name
+        Assert.Equal(new[] { DbNames.InvtPprc }, DbNames.Tables.Values.Except(DbNames.Legacy.Values).OrderBy(x => x));
     }
 
     [Fact]
@@ -102,7 +104,7 @@ public class NamingConventionTests
     [Fact]
     public void Embedded_scripts_run_in_dependency_order()
     {
-        Assert.Equal(new[] { "SYST/Procedures.sql", "CATL/Schema.sql", "ACCT/Schema.sql" }, DatabaseSetup.Scripts);
+        Assert.Equal(new[] { "SYST/Procedures.sql", "INVT/Schema.sql", "CATL/Schema.sql", "ACCT/Schema.sql" }, DatabaseSetup.Scripts);
         var names = typeof(DatabaseSetup).Assembly.GetManifestResourceNames();
         Assert.All(DatabaseSetup.Scripts, s => Assert.Contains(s, names));
     }

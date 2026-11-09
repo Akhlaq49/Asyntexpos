@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReactPosApi.Data;
 using ReactPosApi.Models;
+using ReactPosApi.Services;
 
 namespace ReactPosApi.Controllers;
 
@@ -18,7 +19,8 @@ public class QuotationPurchasePlanController : ControllerBase
     private readonly AppDbContext _db;
     public QuotationPurchasePlanController(AppDbContext db) => _db = db;
 
-    public record PlanLine(int ProductId, string ProductName, string? Sku, int Quoted, int InStock, int AlreadyOrdered, int Suggested, decimal LastCost, decimal Price);
+    /// <summary>PurchasePrice = what the company pays (INVT_PPRC): the purchase order's unit cost; Price = the end user price</summary>
+    public record PlanLine(int ProductId, string ProductName, string? Sku, int Quoted, int InStock, int AlreadyOrdered, int Suggested, decimal LastCost, decimal Price, decimal PurchasePrice);
     public record LinkedOrder(int Id, string PoNumber, string Status, string SupplierName, decimal Total);
 
     [HttpGet("{id:int}/purchase-plan")]
@@ -36,7 +38,8 @@ public class QuotationPurchasePlanController : ControllerBase
         // lines with no inventory product (ProductId 0, entered by hand) are bought outside the purchase orders
         var stocked = q.Items.Where(i => i.ProductId > 0).ToList();
         var productIds = stocked.Select(i => i.ProductId).Distinct().ToList();
-        var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        await PurchasePriceService.EnsureAllAsync(_db);
+        var products = await _db.Products.Include(p => p.PurchasePriceInfo).Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         // last cost: the latest purchase order line, else the latest received purchase line
         var poCosts = (await _db.PurchaseOrderItems.Where(i => productIds.Contains(i.ProductId)).OrderByDescending(i => i.Id)
             .Select(i => new { i.ProductId, i.UnitCost }).ToListAsync()).GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => g.First().UnitCost);
@@ -52,8 +55,8 @@ public class QuotationPurchasePlanController : ControllerBase
             var quoted = g.Sum(i => i.Quantity);
             var already = ordered.TryGetValue(g.Key, out var o) ? o : 0;
             var cost = poCosts.TryGetValue(g.Key, out var c1) ? c1 : purchaseCosts.TryGetValue(g.Key, out var c2) ? c2 : 0;
-            // Price = the price set on the product in inventory (used as the purchase order cost)
-            return new PlanLine(g.Key, p?.ProductName ?? g.First().ProductName, p?.SKU, quoted, p?.Quantity ?? 0, already, Math.Max(0, quoted - already), cost, p?.Price ?? 0);
+            return new PlanLine(g.Key, p?.ProductName ?? g.First().ProductName, p?.SKU, quoted, p?.Quantity ?? 0, already, Math.Max(0, quoted - already), cost,
+                p?.Price ?? 0, p?.PurchasePriceInfo?.PurchasePrice ?? PurchasePriceService.StartingPrice(p?.Price ?? 0));
         }).ToList();
 
         return Ok(new

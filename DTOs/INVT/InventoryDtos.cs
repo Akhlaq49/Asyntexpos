@@ -37,6 +37,8 @@ public class ProductDto
     public string ProductType { get; set; } = "single";
     public int Quantity { get; set; }
     public decimal Price { get; set; }
+    /// <summary>What the company pays for it (INVT_PPRC): purchase orders start from it</summary>
+    public decimal PurchasePrice { get; set; }
     public string TaxType { get; set; } = string.Empty;
     public string Tax { get; set; } = string.Empty;
     public List<AppliedTaxDto> Taxes { get; set; } = new();
