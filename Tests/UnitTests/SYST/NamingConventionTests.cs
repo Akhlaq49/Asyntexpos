@@ -67,7 +67,7 @@ public class NamingConventionTests
         Assert.All(DbNames.Legacy.Values, v => Assert.Contains(v, DbNames.Tables.Values));
         Assert.Equal(DbNames.Legacy.Count, DbNames.Legacy.Values.Distinct().Count());
         // tables made after the naming convention never had an old name
-        Assert.Equal(new[] { DbNames.InvtPprc }, DbNames.Tables.Values.Except(DbNames.Legacy.Values).OrderBy(x => x));
+        Assert.Equal(new[] { DbNames.AcctJvhd, DbNames.AcctJvln, DbNames.InvtPprc },DbNames.Tables.Values.Except(DbNames.Legacy.Values).OrderBy(x => x));
     }
 
     [Fact]

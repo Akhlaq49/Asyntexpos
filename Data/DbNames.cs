@@ -31,7 +31,8 @@ public static class DbNames
     // ── FINC finance ──
     public const string FincExpn = "FINC_EXPN", FincExct = "FINC_EXCT", FincEntr = "FINC_ENTR", FincTaxt = "FINC_TAXT";
     // ── ACCT accounting ──
-    public const string AcctChrt = "ACCT_CHRT", AcctJrnl = "ACCT_JRNL", AcctDetl = "ACCT_DETL", AcctStng = "ACCT_STNG";
+    public const string AcctChrt = "ACCT_CHRT", AcctJrnl = "ACCT_JRNL", AcctDetl = "ACCT_DETL", AcctStng = "ACCT_STNG",
+        AcctJvhd = "ACCT_JVHD", AcctJvln = "ACCT_JVLN";
     public const string AcctViewUnbl = "ACCT_VIEW_UNBL", AcctViewBaln = "ACCT_VIEW_BALN";
     // ── CATL product catalogue ──
     public const string CatlCatg = "CATL_CATG", CatlFmly = "CATL_FMLY", CatlSize = "CATL_SIZE", CatlProd = "CATL_PROD",
@@ -55,6 +56,7 @@ public static class DbNames
         [typeof(PurchaseOrderItem)] = PrchOrit, [typeof(PurchaseReturn)] = PrchRtrn, [typeof(PurchaseReturnItem)] = PrchRtit, [typeof(PurchaseReturnRefund)] = PrchRfnd,
         [typeof(Expense)] = FincExpn, [typeof(ExpenseCategory)] = FincExct, [typeof(FinanceEntry)] = FincEntr, [typeof(TaxType)] = FincTaxt,
         [typeof(LedgerAccount)] = AcctChrt, [typeof(JournalEntry)] = AcctJrnl, [typeof(JournalLine)] = AcctDetl, [typeof(AccountingSettings)] = AcctStng,
+        [typeof(JournalVoucher)] = AcctJvhd, [typeof(JournalVoucherLine)] = AcctJvln,
         [typeof(SolutionGroup)] = CatlCatg, [typeof(SolutionProductLine)] = CatlFmly, [typeof(PackageSize)] = CatlSize, [typeof(CatalogProduct)] = CatlProd,
         [typeof(CatalogTier)] = CatlTier, [typeof(CatalogFamilyTier)] = CatlFmtr, [typeof(CatalogColor)] = CatlColr, [typeof(CatalogAlias)] = CatlAlis,
         [typeof(CatalogPackageLine)] = CatlPkln, [typeof(CatalogDrawingRuleItem)] = CatlRule, [typeof(CatalogImportProfile)] = CatlImpf,
@@ -62,7 +64,7 @@ public static class DbNames
     };
 
     /// <summary>Table names before the naming convention (used only to stop the app on a database not yet migrated);
-    /// tables made after it (INVT_PPRC) have none</summary>
+    /// tables made after it (INVT_PPRC, ACCT_JVHD, ACCT_JVLN) have none</summary>
     public static readonly IReadOnlyDictionary<string, string> Legacy = new Dictionary<string, string>
     {
         ["Tenants"] = SystTnnt, ["TenantMenuConfigs"] = SystMenu, ["FormFieldConfigs"] = SystForm, ["TermsConditions"] = SystTerm,

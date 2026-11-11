@@ -38,6 +38,7 @@ public class LedgerTouches
 ///   PurchaseReturnRefund      Cash / bank                            Supplier returns to be refunded
 ///   Expense                   its category's expense account         Cash
 ///   Capital &amp; loans         owner's capital, drawings, loans, equipment, depreciation (see FinanceEntry)
+///   Journal voucher           the accounts and amounts typed in on it, line by line (reclass, correction, accrual)
 /// </summary>
 public class LedgerPoster
 {
@@ -72,6 +73,8 @@ public class LedgerPoster
                 case PurchaseReturnRefund: Touch(t, e, VoucherType.PurchaseReturnRefund, "Id", false); break;
                 case Expense: Touch(t, e, VoucherType.Expense, "Id", false); break;
                 case FinanceEntry: Touch(t, e, VoucherType.FinanceEntry, "Id", false); break;
+                case JournalVoucher: Touch(t, e, VoucherType.JournalVoucher, "Id", false); break;
+                case JournalVoucherLine: Touch(t, e, VoucherType.JournalVoucher, "JournalVoucherId", false); break;
                 case StockEntry x:
                     t.Stock = true; Product(t, e, "ProductId"); t.Dates.Add(x.Date);
                     if (e.State == EntityState.Modified && e.Property("Date").OriginalValue is DateTime d) t.Dates.Add(d);
@@ -186,6 +189,7 @@ public class LedgerPoster
         all.AddRange((await _db.PurchaseReturnRefunds.Select(x => x.Id).ToListAsync(ct)).Select(id => (VoucherType.PurchaseReturnRefund, id)));
         all.AddRange((await _db.Expenses.Select(x => x.Id).ToListAsync(ct)).Select(id => (VoucherType.Expense, id)));
         all.AddRange((await _db.FinanceEntries.Select(x => x.Id).ToListAsync(ct)).Select(id => (VoucherType.FinanceEntry, id)));
+        all.AddRange((await _db.JournalVouchers.Select(x => x.Id).ToListAsync(ct)).Select(id => (VoucherType.JournalVoucher, id)));
         var n = 0;
         foreach (var (type, id) in all)
         {
@@ -226,7 +230,7 @@ public class LedgerPoster
     {
         VoucherType.SalePayment => "a sale payment", VoucherType.SalesReturn => "a sales return", VoucherType.PurchasePayment => "a supplier payment",
         VoucherType.PurchaseReturn => "a purchase return", VoucherType.PurchaseReturnRefund => "a supplier refund", VoucherType.FinanceEntry => "a capital / loan entry",
-        VoucherType.Expense => "an expense", VoucherType.Sale => "a sale", VoucherType.Purchase => "a purchase", _ => "a document",
+        VoucherType.Expense => "an expense", VoucherType.JournalVoucher => "a journal voucher", VoucherType.Sale => "a sale", VoucherType.Purchase => "a purchase", _ => "a document",
     };
 
     private static bool Same(JournalEntry? a, JournalEntry? b)
@@ -248,6 +252,7 @@ public class LedgerPoster
         VoucherType.PurchaseReturnRefund => await PurchaseReturnRefundAsync(id, ct),
         VoucherType.Expense => await ExpenseAsync(id, ct),
         VoucherType.FinanceEntry => await FinanceAsync(id, ct),
+        VoucherType.JournalVoucher => await JournalVoucherAsync(id, ct),
         _ => null,
     };
 
@@ -432,6 +437,17 @@ public class LedgerPoster
             default: return null;
         }
         return Done(l, f.Date, VoucherType.FinanceEntry, f.Id, f.Reference, $"{f.Type}: {name}");
+    }
+
+    /// <summary>Posted line by line as typed in (the API makes sure debits = credits)</summary>
+    private async Task<JournalEntry?> JournalVoucherAsync(int id, CancellationToken ct)
+    {
+        var v = await _db.JournalVouchers.Include(x => x.Lines).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (v == null) return null;
+        var l = L();
+        foreach (var line in v.Lines.OrderBy(x => x.LineNo).ThenBy(x => x.Id))
+            l.Add(line.AccountId, line.Debit - line.Credit, line.PartyType, line.PartyId, line.PartyName, line.Note);
+        return Done(l, v.Date, VoucherType.JournalVoucher, v.Id, v.Reference, v.Description);
     }
 }
 

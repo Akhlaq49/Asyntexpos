@@ -81,8 +81,8 @@ public static class VoucherType
 {
     public const string Sale = "Sale", SalePayment = "SalePayment", SalesReturn = "SalesReturn",
         Purchase = "Purchase", PurchasePayment = "PurchasePayment", PurchaseReturn = "PurchaseReturn",
-        PurchaseReturnRefund = "PurchaseReturnRefund", Expense = "Expense", FinanceEntry = "FinanceEntry";
-    public static readonly string[] All = { Sale, SalePayment, SalesReturn, Purchase, PurchasePayment, PurchaseReturn, PurchaseReturnRefund, Expense, FinanceEntry };
+        PurchaseReturnRefund = "PurchaseReturnRefund", Expense = "Expense", FinanceEntry = "FinanceEntry", JournalVoucher = "JournalVoucher";
+    public static readonly string[] All = { Sale, SalePayment, SalesReturn, Purchase, PurchasePayment, PurchaseReturn, PurchaseReturnRefund, Expense, FinanceEntry, JournalVoucher };
 }
 
 public static class LedgerPartyType

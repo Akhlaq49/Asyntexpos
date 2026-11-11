@@ -103,6 +103,8 @@ public class AppDbContext : DbContext
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
     public DbSet<AccountingSettings> AccountingSettings => Set<AccountingSettings>();
+    public DbSet<JournalVoucher> JournalVouchers => Set<JournalVoucher>();
+    public DbSet<JournalVoucherLine> JournalVoucherLines => Set<JournalVoucherLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -341,6 +343,7 @@ public class AppDbContext : DbContext
         // Ledger: keys only - the composite foreign keys and unique keys are in Database/LedgerSchema.sql
         modelBuilder.Entity<AccountingSettings>(e => e.HasKey(x => x.TenantId));
         modelBuilder.Entity<JournalEntry>(e => e.HasMany(x => x.Lines).WithOne(l => l.JournalEntry).HasForeignKey(l => l.JournalEntryId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<JournalVoucher>(e => e.HasMany(x => x.Lines).WithOne(l => l.JournalVoucher).HasForeignKey(l => l.JournalVoucherId).OnDelete(DeleteBehavior.Cascade));
 
         // Finance & Accounting
         modelBuilder.Entity<Expense>(e =>
