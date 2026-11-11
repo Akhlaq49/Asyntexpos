@@ -92,6 +92,30 @@ public class Party : ITenantEntity
     [Required, MaxLength(20)]
     public string Status { get; set; } = "active";   // active / inactive
 
+    // Branch the user works at
+    public int? LocationId { get; set; }
+    public bool RestrictToLocation { get; set; }
+    /// <summary>en | ur | ar</summary>
+    [MaxLength(2)]
+    public string Language { get; set; } = "en";
+
+    // Customer account
+    /// <summary>Retail | Wholesale | Distributor | Institution</summary>
+    [MaxLength(20)]
+    public string? CustomerType { get; set; }
+    public int? PriceLevelId { get; set; }
+    /// <summary>NULL = no limit.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CreditLimit { get; set; }
+    public int? CreditDays { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal OpeningBalance { get; set; }
+    [MaxLength(50)]
+    public string? Ntn { get; set; }
+    [MaxLength(50)]
+    public string? Strn { get; set; }
+    public bool CreditBlocked { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 
 namespace ReactPosApi.Models;
@@ -78,6 +79,52 @@ public class Product : ITenantEntity
 
     [MaxLength(50)]
     public string? ExpiryDate { get; set; }
+
+    // ── Pharmacy fields ──
+    [MaxLength(200)]
+    public string? GenericName { get; set; }
+
+    [MaxLength(100)]
+    public string? Strength { get; set; }
+
+    /// <summary>Tablet, Capsule, Syrup, Injection, Cream, Drops, ...</summary>
+    [MaxLength(50)]
+    public string? DosageForm { get; set; }
+
+    [MaxLength(100)]
+    public string? RackLocation { get; set; }
+
+    public bool IsPrescriptionOnly { get; set; }
+
+    public bool IsControlled { get; set; }
+
+    /// <summary>Latest purchase (trade) cost per base unit. Price is the retail price per base unit.</summary>
+    public decimal PurchasePrice { get; set; }
+
+    /// <summary>Base units (e.g. tablets) in one strip. 1 = item is not sold loose.</summary>
+    public int UnitsPerStrip { get; set; } = 1;
+
+    /// <summary>Strips in one box.</summary>
+    public int StripsPerBox { get; set; } = 1;
+
+    /// <summary>Days one purchase normally lasts; 0 = no refill reminder.</summary>
+    public int RefillDays { get; set; }
+
+    public int? MedicineMasterId { get; set; }
+
+    // Variants
+    [MaxLength(100)]
+    public string? ArticleNo { get; set; }
+    [MaxLength(50)]
+    public string? Season { get; set; }
+    public bool HasVariants { get; set; }
+
+    /// <summary>Listed on the web store and Shopify.</summary>
+    public bool SellOnline { get; set; } = true;
+
+    // Restaurant
+    public bool IsMenuItem { get; set; }
+    public int? KitchenStationId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

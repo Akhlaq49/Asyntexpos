@@ -103,6 +103,57 @@ public class AppDbContext : DbContext
     // Web Content (dynamic storefront sections)
     public DbSet<WebContent> WebContents => Set<WebContent>();
 
+    // Pharmacy
+    public DbSet<ProductBatch> ProductBatches => Set<ProductBatch>();
+    public DbSet<SaleItemBatch> SaleItemBatches => Set<SaleItemBatch>();
+    public DbSet<HeldBill> HeldBills => Set<HeldBill>();
+    public DbSet<PurchaseReturn> PurchaseReturns => Set<PurchaseReturn>();
+    public DbSet<PurchaseReturnItem> PurchaseReturnItems => Set<PurchaseReturnItem>();
+    public DbSet<SupplierPayment> SupplierPayments => Set<SupplierPayment>();
+    public DbSet<TillSession> TillSessions => Set<TillSession>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<RefillReminder> RefillReminders => Set<RefillReminder>();
+    public DbSet<PharmacySettings> PharmacySettings => Set<PharmacySettings>();
+
+    // ── Locations, ledger, credit, catalogue, channels, variants, manufacturing, restaurant ──
+    public DbSet<Location> Locations => Set<Location>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<LocationStockLevel> LocationStockLevels => Set<LocationStockLevel>();
+    public DbSet<StockRequest> StockRequests => Set<StockRequest>();
+    public DbSet<StockRequestItem> StockRequestItems => Set<StockRequestItem>();
+    public DbSet<PriceLevel> PriceLevels => Set<PriceLevel>();
+    public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();
+    public DbSet<CustomerReceipt> CustomerReceipts => Set<CustomerReceipt>();
+    public DbSet<CustomerLedgerEntry> CustomerLedgerEntries => Set<CustomerLedgerEntry>();
+    public DbSet<MedicineMaster> MedicineMasters => Set<MedicineMaster>();
+    public DbSet<DrugInteraction> DrugInteractions => Set<DrugInteraction>();
+    public DbSet<ProductTranslation> ProductTranslations => Set<ProductTranslation>();
+    public DbSet<ChannelConnection> ChannelConnections => Set<ChannelConnection>();
+    public DbSet<ChannelProductLink> ChannelProductLinks => Set<ChannelProductLink>();
+    public DbSet<ChannelOrder> ChannelOrders => Set<ChannelOrder>();
+    public DbSet<SyncOutbox> SyncOutbox => Set<SyncOutbox>();
+    public DbSet<VariantAttributeValue> VariantAttributeValues => Set<VariantAttributeValue>();
+    public DbSet<ProductOption> ProductOptions => Set<ProductOption>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<ProductVariantValue> ProductVariantValues => Set<ProductVariantValue>();
+    public DbSet<BillOfMaterials> BillsOfMaterials => Set<BillOfMaterials>();
+    public DbSet<BomItem> BomItems => Set<BomItem>();
+    public DbSet<ManufacturingOrder> ManufacturingOrders => Set<ManufacturingOrder>();
+    public DbSet<ManufacturingOrderItem> ManufacturingOrderItems => Set<ManufacturingOrderItem>();
+    public DbSet<MoItemBatch> MoItemBatches => Set<MoItemBatch>();
+    public DbSet<WorkCentre> WorkCentres => Set<WorkCentre>();
+    public DbSet<BomOperation> BomOperations => Set<BomOperation>();
+    public DbSet<MoOperation> MoOperations => Set<MoOperation>();
+    public DbSet<Recipe> Recipes => Set<Recipe>();
+    public DbSet<RecipeItem> RecipeItems => Set<RecipeItem>();
+    public DbSet<ModifierGroup> ModifierGroups => Set<ModifierGroup>();
+    public DbSet<Modifier> Modifiers => Set<Modifier>();
+    public DbSet<ProductModifierGroup> ProductModifierGroups => Set<ProductModifierGroup>();
+    public DbSet<DiningTable> DiningTables => Set<DiningTable>();
+    public DbSet<KitchenStation> KitchenStations => Set<KitchenStation>();
+    public DbSet<KitchenTicket> KitchenTickets => Set<KitchenTicket>();
+    public DbSet<KitchenTicketItem> KitchenTicketItems => Set<KitchenTicketItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -494,6 +545,117 @@ public class AppDbContext : DbContext
             e.HasIndex(w => new { w.TenantId, w.Section, w.SortOrder });
             e.Property(w => w.Status).HasDefaultValue("active");
         });
+
+        // ── Pharmacy ──
+        modelBuilder.Entity<Product>(e =>
+        {
+            e.Property(p => p.PurchasePrice).HasColumnType("decimal(18,4)");
+            e.Property(p => p.UnitsPerStrip).HasDefaultValue(1);
+            e.Property(p => p.StripsPerBox).HasDefaultValue(1);
+            e.HasIndex(p => new { p.TenantId, p.GenericName });
+        });
+        modelBuilder.Entity<SaleItem>(e =>
+        {
+            e.Property(i => i.CostPrice).HasColumnType("decimal(18,4)");
+            e.Property(i => i.SaleUnit).HasDefaultValue("Unit");
+        });
+        modelBuilder.Entity<SalesReturnItem>(e => e.Property(i => i.Condition).HasDefaultValue("Saleable"));
+        modelBuilder.Entity<ProductBatch>(e =>
+        {
+            e.HasOne(b => b.Product).WithMany().HasForeignKey(b => b.ProductId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(b => new { b.TenantId, b.ProductId, b.ExpiryDate });
+            e.HasIndex(b => new { b.TenantId, b.ExpiryDate });
+        });
+        modelBuilder.Entity<SaleItemBatch>(e => e.HasIndex(x => new { x.TenantId, x.SaleItemId }));
+        modelBuilder.Entity<PurchaseReturnItem>(e =>
+            e.HasOne(i => i.PurchaseReturn).WithMany(r => r.Items).HasForeignKey(i => i.PurchaseReturnId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<AuditLog>(e => e.HasIndex(a => new { a.TenantId, a.CreatedAt }));
+        modelBuilder.Entity<RefillReminder>(e => e.HasIndex(r => new { r.TenantId, r.SaleId, r.ProductId }).IsUnique());
+        modelBuilder.Entity<PharmacySettings>(e => e.HasIndex(x => x.TenantId).IsUnique());
+
+        // ── Locations and stock ledger ──
+        modelBuilder.Entity<Location>(e => e.HasIndex(x => new { x.TenantId, x.Code }).IsUnique());
+        modelBuilder.Entity<ProductBatch>(e => e.HasIndex(b => new { b.TenantId, b.LocationId, b.ProductId }));
+        modelBuilder.Entity<StockMovement>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.ProductId, x.CreatedAt });
+            e.HasIndex(x => new { x.TenantId, x.SourceType, x.SourceId });
+            e.HasIndex(x => new { x.TenantId, x.LocationId, x.CreatedAt });
+            e.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.SetNull);
+        });
+        modelBuilder.Entity<LocationStockLevel>(e => e.HasIndex(x => new { x.TenantId, x.ProductId, x.LocationId }).IsUnique());
+        modelBuilder.Entity<StockRequestItem>(e =>
+            e.HasOne(i => i.StockRequest).WithMany(r => r.Items).HasForeignKey(i => i.StockRequestId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<StockTransfer>(e => e.Property(t => t.Status).HasDefaultValue("Received"));
+        modelBuilder.Entity<StockTransferItem>(e =>
+            e.HasOne(i => i.ReceivedBatch).WithMany().HasForeignKey(i => i.ReceivedBatchId).OnDelete(DeleteBehavior.SetNull));
+
+        // ── Wholesale and credit ──
+        modelBuilder.Entity<ProductPrice>(e => e.HasIndex(x => new { x.TenantId, x.ProductId, x.VariantId, x.PriceLevelId, x.SaleUnit, x.MinQty }).IsUnique());
+        modelBuilder.Entity<CustomerReceipt>(e => e.HasIndex(x => new { x.TenantId, x.CustomerId }));
+        modelBuilder.Entity<CustomerLedgerEntry>(e => e.HasIndex(x => new { x.TenantId, x.CustomerId, x.EntryDate }));
+        modelBuilder.Entity<SalePayment>(e => e.HasIndex(x => x.CustomerReceiptId));
+        modelBuilder.Entity<Sale>(e =>
+        {
+            e.Property(x => x.Channel).HasDefaultValue("POS");
+            e.HasIndex(x => new { x.TenantId, x.CustomerId });
+            e.HasIndex(x => new { x.TenantId, x.LocationId, x.SaleDate });
+        });
+        modelBuilder.Entity<Party>(e => e.Property(x => x.Language).HasDefaultValue("en"));
+
+        // ── Catalogue and translations ──
+        modelBuilder.Entity<MedicineMaster>(e =>
+        {
+            e.HasIndex(x => x.BrandName);
+            e.HasIndex(x => x.GenericName);
+            e.HasIndex(x => x.Barcode);
+        });
+        modelBuilder.Entity<DrugInteraction>(e => e.HasIndex(x => new { x.GenericA, x.GenericB }));
+        modelBuilder.Entity<ProductTranslation>(e => e.HasIndex(x => new { x.TenantId, x.ProductId, x.Lang }).IsUnique());
+        modelBuilder.Entity<Product>(e =>
+        {
+            e.Property(p => p.SellOnline).HasDefaultValue(true);
+            e.HasIndex(p => new { p.TenantId, p.ArticleNo });
+        });
+
+        // ── Channels ──
+        modelBuilder.Entity<ChannelProductLink>(e => e.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId, x.VariantId }).IsUnique());
+        modelBuilder.Entity<ChannelOrder>(e => e.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalOrderId }).IsUnique());
+        modelBuilder.Entity<SyncOutbox>(e => e.HasIndex(x => new { x.Status, x.CreatedAt }));
+
+        // ── Variants ──
+        modelBuilder.Entity<VariantAttributeValue>(e => e.HasIndex(x => new { x.TenantId, x.VariantAttributeId, x.Value }).IsUnique());
+        modelBuilder.Entity<ProductVariant>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Sku }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Barcode });
+            e.HasIndex(x => new { x.TenantId, x.ProductId });
+        });
+        modelBuilder.Entity<ProductVariantValue>(e => e.HasIndex(x => new { x.VariantId, x.AttributeValueId }).IsUnique());
+
+        // ── Manufacturing (tables created by the manufacturing branch) ──
+        modelBuilder.Entity<BomItem>(e =>
+            e.HasOne(i => i.Bom).WithMany(b => b.Items).HasForeignKey(i => i.BomId).HasConstraintName("FK_BomItem_Bom").OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<ManufacturingOrder>(e =>
+            e.HasOne(o => o.Bom).WithMany().HasForeignKey(o => o.BomId).HasConstraintName("FK_MO_BOM").OnDelete(DeleteBehavior.Restrict));
+        modelBuilder.Entity<ManufacturingOrderItem>(e =>
+            e.HasOne(i => i.ManufacturingOrder).WithMany(o => o.Items).HasForeignKey(i => i.ManufacturingOrderId).HasConstraintName("FK_MOItem_MO").OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<BomOperation>(e =>
+            e.HasOne(o => o.Bom).WithMany(b => b.Operations).HasForeignKey(o => o.BomId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<MoOperation>(e =>
+            e.HasOne(o => o.Order).WithMany(m => m.Operations).HasForeignKey(o => o.OrderId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<MoItemBatch>(e => e.HasIndex(x => x.MoItemId));
+
+        // ── Restaurant ──
+        modelBuilder.Entity<RecipeItem>(e =>
+            e.HasOne(i => i.Recipe).WithMany(r => r.Items).HasForeignKey(i => i.RecipeId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<Recipe>(e => e.HasIndex(x => new { x.TenantId, x.ProductId }).IsUnique());
+        modelBuilder.Entity<Modifier>(e =>
+            e.HasOne(m => m.ModifierGroup).WithMany(g => g.Modifiers).HasForeignKey(m => m.ModifierGroupId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<ProductModifierGroup>(e => e.HasIndex(x => new { x.TenantId, x.ProductId, x.ModifierGroupId }).IsUnique());
+        modelBuilder.Entity<KitchenTicketItem>(e =>
+            e.HasOne(i => i.Ticket).WithMany(t => t.Items).HasForeignKey(i => i.TicketId).OnDelete(DeleteBehavior.Cascade));
+        modelBuilder.Entity<KitchenTicket>(e => e.HasIndex(x => new { x.TenantId, x.StationId, x.Status }));
 
         // ═══════════════════════════════════════════════════════════
         // MULTI-TENANCY: Apply global query filters dynamically

@@ -1180,12 +1180,31 @@ public class ReportService : IReportService
 
     public async Task<List<ProductExpiryReportItemDto>> GetProductExpiryReportAsync()
     {
-        var products = await _db.Products.Where(p => !string.IsNullOrEmpty(p.ExpiryDate)).ToListAsync();
-        return products.Select(p => new ProductExpiryReportItemDto
+        // Batch level: one row per batch in stock that has an expiry date.
+        var today = DateTime.UtcNow.Date;
+        var batches = await _db.ProductBatches.Include(b => b.Product)
+            .Where(b => b.Quantity > 0 && b.ExpiryDate != null).ToListAsync();
+        var rows = batches.Select(b => new ProductExpiryReportItemDto
         {
-            Sku = p.SKU, SerialNo = p.ItemBarcode ?? "", ProductName = p.ProductName,
-            ManufacturedDate = p.ManufacturedDate ?? "", ExpiredDate = p.ExpiryDate ?? ""
-        }).OrderBy(p => p.ExpiredDate).ToList();
+            Sku = b.Product?.SKU ?? "", SerialNo = b.Product?.ItemBarcode ?? "", ProductName = b.Product?.ProductName ?? "",
+            ManufacturedDate = b.ManufacturedDate?.ToString("yyyy-MM-dd") ?? b.Product?.ManufacturedDate ?? "",
+            ExpiredDate = b.ExpiryDate!.Value.ToString("yyyy-MM-dd"),
+            BatchNo = b.BatchNo, Quantity = b.Quantity, Manufacturer = b.Product?.Manufacturer ?? "",
+            Supplier = b.Supplier ?? "", DaysToExpiry = (int)(b.ExpiryDate.Value.Date - today).TotalDays
+        }).ToList();
+
+        // Products that have no batches yet still show their single expiry date.
+        var withBatches = batches.Select(b => b.ProductId).ToHashSet();
+        var allBatchProducts = (await _db.ProductBatches.Select(b => b.ProductId).Distinct().ToListAsync()).ToHashSet();
+        var legacy = await _db.Products.Where(p => !string.IsNullOrEmpty(p.ExpiryDate)).ToListAsync();
+        rows.AddRange(legacy.Where(p => !allBatchProducts.Contains(p.Id)).Select(p => new ProductExpiryReportItemDto
+        {
+            Sku = p.SKU ?? "", SerialNo = p.ItemBarcode ?? "", ProductName = p.ProductName,
+            ManufacturedDate = p.ManufacturedDate ?? "", ExpiredDate = p.ExpiryDate ?? "", Quantity = p.Quantity,
+            Manufacturer = p.Manufacturer ?? "",
+            DaysToExpiry = DateTime.TryParse(p.ExpiryDate, out var d) ? (int)(d.Date - today).TotalDays : null
+        }));
+        return rows.OrderBy(p => p.ExpiredDate).ToList();
     }
 
     public async Task<List<ProductQtyAlertItemDto>> GetProductQtyAlertReportAsync()

@@ -29,5 +29,12 @@ public class StockAdjustment : ITenantEntity
 
     public DateTime Date { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Damage, Breakage, Theft, Count correction, Expired write-off, Other</summary>
+    [MaxLength(50)]
+    public string? Reason { get; set; }
+    public int? BatchId { get; set; }
+    public int? LocationId { get; set; }
+    public int? VariantId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

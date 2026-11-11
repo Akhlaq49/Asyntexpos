@@ -43,6 +43,14 @@ public class SalesReturn : ITenantEntity
     public string PaymentStatus { get; set; } = "Unpaid"; // Paid, Unpaid, Overdue
 
     public DateTime ReturnDate { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Original bill this return is against (optional for older returns).</summary>
+    public int? SaleId { get; set; }
+    /// <summary>Cash, Card, Credit note</summary>
+    [MaxLength(30)]
+    public string? RefundMethod { get; set; }
+    /// <summary>True once the returned stock has been put back / written off.</summary>
+    public bool StockApplied { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public List<SalesReturnItem> Items { get; set; } = new();
@@ -66,4 +74,11 @@ public class SalesReturnItem : ITenantEntity
     public decimal Discount { get; set; }
     public decimal TaxPercent { get; set; }
     public decimal Subtotal { get; set; }
+
+    public int? ProductId { get; set; }
+    public int? SaleItemId { get; set; }
+    /// <summary>Saleable (back to stock), Damaged, Expired (recorded, not restocked)</summary>
+    [MaxLength(20)]
+    public string Condition { get; set; } = "Saleable";
+    public int? VariantId { get; set; }
 }

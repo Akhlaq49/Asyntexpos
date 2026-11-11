@@ -14,10 +14,33 @@ public class TenantProvider : ITenantProvider
     public TenantProvider(IHttpContextAccessor httpContextAccessor)
         => _httpContextAccessor = httpContextAccessor;
 
+    /// <summary>
+    /// Set by background work (channel sync, webhooks) before creating a scope, so the
+    /// DbContext created in that scope is bound to one tenant.
+    /// </summary>
+    public static readonly AsyncLocal<int?> Override = new();
+
+    /// <summary>Runs work with a DbContext bound to the given tenant.</summary>
+    public static async Task<T> RunAsTenantAsync<T>(IServiceProvider root, int tenantId, Func<IServiceProvider, Task<T>> work)
+    {
+        var previous = Override.Value;
+        Override.Value = tenantId;
+        try
+        {
+            using var scope = root.CreateScope();
+            return await work(scope.ServiceProvider);
+        }
+        finally
+        {
+            Override.Value = previous;
+        }
+    }
+
     public int TenantId
     {
         get
         {
+            if (Override.Value is int forced) return forced;
             var httpContext = _httpContextAccessor.HttpContext;
             if (httpContext == null) return 0;
 

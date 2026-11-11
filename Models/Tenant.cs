@@ -32,5 +32,8 @@ public class Tenant
     [MaxLength(200)]
     public string DefaultDashboard { get; set; } = "/admin-dashboard-2";
 
+    [MaxLength(2)]
+    public string DefaultLanguage { get; set; } = "en";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

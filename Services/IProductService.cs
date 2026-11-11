@@ -18,4 +18,11 @@ public interface IProductService
     Task<ProductDto> CreateAsync(ProductFormModel form);
     Task<ProductDto?> UpdateAsync(int id, ProductFormModel form);
     Task<(bool success, string? error)> DeleteAsync(int id);
+
+    // Pharmacy
+    Task<List<ProductBatchDto>> GetBatchesAsync(int productId);
+    Task<List<ProductBatchDto>> GetExpiringBatchesAsync(int days, bool includeExpired, string? manufacturer, string? supplier);
+    Task<ProductBatchDto?> UpdateBatchAsync(int batchId, UpdateBatchDto dto);
+    Task<(bool success, string? error)> WriteOffBatchAsync(int batchId, WriteOffBatchDto dto, string user);
+    Task<List<ProductDto>> GetSubstitutesAsync(int productId);
 }

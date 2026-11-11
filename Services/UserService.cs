@@ -15,7 +15,7 @@ public class UserService : IUserService
     /// </summary>
     private static readonly string[] UserRoles =
     {
-        "SuperAdmin", "Admin", "Manager", "Salesman", "Supervisor",
+        "SuperAdmin", "Admin", "Manager", "Pharmacist", "Cashier", "Salesman", "Supervisor",
         "Store Keeper", "Delivery Biker", "Maintenance", "Quality Analyst",
         "Accountant", "Purchase", "User"
     };
@@ -57,7 +57,7 @@ public class UserService : IUserService
                 FullName = p.FullName,
                 Email = p.Email ?? "",
                 Phone = p.Phone ?? "",
-                Role = p.Role,
+                Role = p.Role, LocationId = p.LocationId, RestrictToLocation = p.RestrictToLocation, Language = p.Language,
                 IsActive = p.IsActive,
                 CreatedAt = p.CreatedAt
             })
@@ -85,7 +85,7 @@ public class UserService : IUserService
                 FullName = p.FullName,
                 Email = p.Email ?? "",
                 Phone = p.Phone ?? "",
-                Role = p.Role,
+                Role = p.Role, LocationId = p.LocationId, RestrictToLocation = p.RestrictToLocation, Language = p.Language,
                 IsActive = p.IsActive,
                 CreatedAt = p.CreatedAt
             })
@@ -132,6 +132,8 @@ public class UserService : IUserService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             Role = role,
             IsActive = dto.IsActive,
+            LocationId = dto.LocationId,
+            RestrictToLocation = dto.RestrictToLocation && dto.LocationId != null,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -210,6 +212,8 @@ public class UserService : IUserService
         newRole = UserRoles.First(r => r.Equals(newRole, StringComparison.OrdinalIgnoreCase));
 
         party.IsActive = dto.IsActive;
+        party.LocationId = dto.LocationId;
+        party.RestrictToLocation = dto.RestrictToLocation && dto.LocationId != null;
 
         // If promoting to SuperAdmin and user doesn't already own a tenant, create one
         if (newRole == "SuperAdmin" && party.Role != "SuperAdmin")
@@ -278,7 +282,7 @@ public class UserService : IUserService
         FullName = p.FullName,
         Email = p.Email ?? "",
         Phone = p.Phone ?? "",
-        Role = p.Role,
+        Role = p.Role, LocationId = p.LocationId, RestrictToLocation = p.RestrictToLocation, Language = p.Language,
         IsActive = p.IsActive,
         CreatedAt = p.CreatedAt
     };

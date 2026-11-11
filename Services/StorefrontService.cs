@@ -8,8 +8,18 @@ namespace ReactPosApi.Services;
 public class StorefrontService : IStorefrontService
 {
     private readonly AppDbContext _db;
+    private readonly IInventoryService _inventory;
 
-    public StorefrontService(AppDbContext db) => _db = db;
+    public StorefrontService(AppDbContext db, IInventoryService inventory)
+    {
+        _db = db;
+        _inventory = inventory;
+    }
+
+    /// <summary>Location whose stock the web store sells from.</summary>
+    private async Task<int> OnlineLocationIdAsync()
+        => await _db.Locations.Where(l => l.IsActive && l.SellsOnline).OrderByDescending(l => l.IsDefault).Select(l => (int?)l.Id).FirstOrDefaultAsync()
+           ?? await _inventory.DefaultLocationIdAsync();
 
     // ──────────────────────────────────────────
     // CATEGORIES
@@ -43,7 +53,7 @@ public class StorefrontService : IStorefrontService
     {
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.Quantity > 0)
+            .Where(p => p.Quantity > 0 && p.SellOnline && !p.IsPrescriptionOnly && !p.IsControlled /* OnlineVisible */)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -66,7 +76,7 @@ public class StorefrontService : IStorefrontService
 
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.Category == category.Name && p.Quantity > 0)
+            .Where(p => p.Category == category.Name && p.Quantity > 0 && p.SellOnline && !p.IsPrescriptionOnly && !p.IsControlled /* OnlineVisible */)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -80,7 +90,7 @@ public class StorefrontService : IStorefrontService
 
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.SubCategory == subCategory.SubCategoryName && p.Quantity > 0)
+            .Where(p => p.SubCategory == subCategory.SubCategoryName && p.Quantity > 0 && p.SellOnline && !p.IsPrescriptionOnly && !p.IsControlled /* OnlineVisible */)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -93,7 +103,7 @@ public class StorefrontService : IStorefrontService
 
         var products = await _db.Products
             .Include(p => p.Images)
-            .Where(p => p.Quantity > 0 && (
+            .Where(p => p.Quantity > 0 && p.SellOnline && !p.IsPrescriptionOnly && !p.IsControlled /* OnlineVisible */ && (
                 p.ProductName.ToLower().Contains(lowerQuery) ||
                 (p.Description != null && p.Description.ToLower().Contains(lowerQuery)) ||
                 (p.Brand != null && p.Brand.ToLower().Contains(lowerQuery)) ||
@@ -215,16 +225,22 @@ public class StorefrontService : IStorefrontService
 
             var orderNumber = $"ONL-{Guid.NewGuid().ToString("N")[..7].ToUpper()}";
 
-            // 4. Build SaleItems
+            // 4. Build SaleItems, taking stock from the online location (earliest expiry first)
+            var locationId = await OnlineLocationIdAsync();
             var saleItems = new List<SaleItem>();
+            var allocations = new List<(SaleItem item, List<BatchAllocation> alloc)>();
             foreach (var i in dto.Items)
             {
-                var productName = i.ProductName ?? "";
-                if (string.IsNullOrEmpty(productName))
-                {
-                    var product = await _db.Products.FindAsync(i.ProductId);
-                    if (product != null) productName = product.ProductName;
-                }
+                if (i.Quantity <= 0) throw new BusinessRuleException("Each item needs a quantity above zero.");
+                var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == i.ProductId)
+                              ?? throw new BusinessRuleException("A product in the cart is no longer available.");
+                if (!product.SellOnline || product.IsPrescriptionOnly || product.IsControlled)
+                    throw new BusinessRuleException($"{product.ProductName} can only be bought at the pharmacy counter.");
+                var available = await _inventory.AvailableAsync(product, locationId);
+                if (available < i.Quantity)
+                    throw new BusinessRuleException(available <= 0 ? $"{product.ProductName} is out of stock." : $"Only {available} of {product.ProductName} left.");
+                var productName = string.IsNullOrEmpty(i.ProductName) ? product.ProductName : i.ProductName;
+                var alloc = await _inventory.DeductFefoAsync(product, i.Quantity, new StockRef("OnlineOrder", reference, null, locationId, null, "Sale"));
                 saleItems.Add(new SaleItem
                 {
                     ProductId = i.ProductId,
@@ -237,8 +253,12 @@ public class StorefrontService : IStorefrontService
                     TaxAmount = dto.Items.Count > 0
                         ? Math.Round(dto.Tax / dto.Items.Count, 2) : 0,
                     UnitCost = i.Price,
-                    TotalCost = i.Price * i.Quantity
+                    TotalCost = i.Price * i.Quantity,
+                    CostPrice = _inventory.AverageCost(alloc, product.PurchasePrice),
+                    UnitQuantity = i.Quantity,
+                    BatchInfo = string.Join(", ", alloc.Select(a => a.BatchNo).Distinct())
                 });
+                allocations.Add((saleItems[^1], alloc));
             }
 
             // 5. Create Sale (Source = "online")
@@ -263,18 +283,16 @@ public class StorefrontService : IStorefrontService
                 ShippingAddressId = shippingAddr?.Id,
                 SaleDate = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
-                Items = saleItems
+                Items = saleItems,
+                LocationId = locationId,
+                Channel = "Web"
             };
 
             _db.Sales.Add(sale);
-
-            // Deduct product quantities
-            foreach (var item in saleItems)
-            {
-                var prod = await _db.Products.FindAsync(item.ProductId);
-                if (prod != null)
-                    prod.Quantity -= item.Quantity;
-            }
+            await _db.SaveChangesAsync();
+            foreach (var (item, alloc) in allocations)
+                foreach (var a in alloc)
+                    _db.SaleItemBatches.Add(new SaleItemBatch { SaleItemId = item.Id, BatchId = a.BatchId, Quantity = a.Quantity, UnitCost = a.UnitCost });
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();

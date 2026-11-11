@@ -9,7 +9,26 @@ namespace ReactPosApi.Services;
 public class SaleService : ISaleService
 {
     private readonly AppDbContext _db;
-    public SaleService(AppDbContext db) => _db = db;
+    private readonly IInventoryService _inventory;
+    private readonly IPharmacySettingsService _settings;
+    private readonly IAuditService _audit;
+    private readonly IFbrService _fbr;
+    private readonly ILocationService _locations;
+    private readonly ICustomerAccountService _accounts;
+    private readonly IServiceProvider _services;
+
+    public SaleService(AppDbContext db, IInventoryService inventory, IPharmacySettingsService settings,
+        IAuditService audit, IFbrService fbr, ILocationService locations, ICustomerAccountService accounts, IServiceProvider services)
+    {
+        _db = db;
+        _inventory = inventory;
+        _settings = settings;
+        _audit = audit;
+        _fbr = fbr;
+        _locations = locations;
+        _accounts = accounts;
+        _services = services;
+    }
 
     public async Task<List<SaleDto>> GetAllAsync(string? source)
     {
@@ -66,92 +85,132 @@ public class SaleService : ISaleService
 
     public async Task<object> CreateAsync(CreateSaleDto dto)
     {
-        using var transaction = await _db.Database.BeginTransactionAsync();
-        try
-        {
-            var lastRef = await _db.Sales.OrderByDescending(s => s.Id).Select(s => s.Reference).FirstOrDefaultAsync();
-            int nextNum = 1;
-            if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
-            { int.TryParse(lastRef.Substring(2), out nextNum); nextNum++; }
-            var reference = $"SL{nextNum:D3}";
+        var isCounter = string.Equals(dto.Source, "pos", StringComparison.OrdinalIgnoreCase);
+        if (dto.Items.Count == 0) throw new BusinessRuleException("The bill has no items.");
 
-            var sale = new Sale
+        var settings = await _settings.GetAsync();
+        if (isCounter) await ValidateCounterRulesAsync(dto, settings);
+
+        var locationId = await _locations.PickAsync(dto.LocationId, dto.Store);
+        var location = await _db.Locations.FirstAsync(l => l.Id == locationId);
+        decimal? previousBalance = null;
+        string? creditOverrideBy = null;
+        int? priceLevelId = dto.PriceLevelId;
+        if (dto.CustomerId.HasValue)
+        {
+            previousBalance = await _accounts.BalanceAsync(dto.CustomerId.Value);
+            priceLevelId ??= await _db.Parties.Where(p => p.Id == dto.CustomerId).Select(p => p.PriceLevelId).FirstOrDefaultAsync();
+            if (string.Equals(dto.PaymentMethod, "Credit", StringComparison.OrdinalIgnoreCase))
+                creditOverrideBy = await _accounts.EnsureCreditAsync(dto.CustomerId.Value, dto.GrandTotal, dto.CreditOverride);
+        }
+
+        Sale sale;
+        using (var transaction = await _db.Database.BeginTransactionAsync())
+        {
+            try
             {
-                Reference = reference, OrderNumber = dto.OrderNumber,
-                CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
-                CustomerImage = dto.CustomerImage, Biller = dto.Biller, Source = dto.Source,
-                GrandTotal = dto.GrandTotal, Paid = 0, Due = dto.GrandTotal,
-                OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
-                Status = dto.Status, PaymentStatus = !string.IsNullOrEmpty(dto.ExpectedDate) ? "Pending" : "Unpaid", Notes = dto.Notes,
-                ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null,
-                SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
-                Items = dto.Items.Select(i => new SaleItem
+                var lastRef = await _db.Sales.OrderByDescending(s => s.Id).Select(s => s.Reference).FirstOrDefaultAsync();
+                int nextNum = 1;
+                if (!string.IsNullOrEmpty(lastRef) && lastRef.StartsWith("SL"))
+                { int.TryParse(lastRef.Substring(2), out nextNum); nextNum++; }
+                var reference = $"SL{nextNum:D3}";
+
+                int? tillId = null;
+                if (isCounter)
                 {
-                    ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
-                    PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
-                    TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
-                }).ToList()
-            };
-            _db.Sales.Add(sale);
+                    var user = _audit.CurrentUser;
+                    tillId = await _db.TillSessions.Where(t => t.Status == "Open" && t.UserName == user)
+                        .OrderByDescending(t => t.OpenedAt).Select(t => (int?)t.Id).FirstOrDefaultAsync();
+                }
 
-            // ── Deduct product quantities from inventory ──
-            foreach (var item in sale.Items)
-            {
-                var product = await _db.Products.FindAsync(item.ProductId);
-                if (product != null)
-                    product.Quantity -= item.Quantity;
+                sale = new Sale
+                {
+                    Reference = reference, OrderNumber = dto.OrderNumber,
+                    CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
+                    CustomerImage = dto.CustomerImage, Biller = dto.Biller, Source = dto.Source,
+                    GrandTotal = dto.GrandTotal, Paid = 0, Due = dto.GrandTotal,
+                    OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
+                    Status = dto.Status, PaymentStatus = !string.IsNullOrEmpty(dto.ExpectedDate) ? "Pending" : "Unpaid", Notes = dto.Notes,
+                    ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null,
+                    SaleDate = DateTime.UtcNow, CreatedAt = DateTime.UtcNow,
+                    Store = dto.Store, TillSessionId = tillId, CouponCode = string.IsNullOrWhiteSpace(dto.CouponCode) ? null : dto.CouponCode.Trim().ToUpperInvariant(),
+                    PaymentMethod = dto.PaymentMethod, PatientName = dto.PatientName, DoctorName = dto.DoctorName,
+                    PrescriptionImage = dto.PrescriptionImage,
+                    FbrStatus = isCounter && settings.FbrEnabled ? "NotSent" : null,
+                    LocationId = locationId, PriceLevelId = priceLevelId, PreviousBalance = previousBalance,
+                    CreditOverrideBy = creditOverrideBy,
+                    Channel = !string.IsNullOrWhiteSpace(dto.Channel) ? dto.Channel! : isCounter ? "POS" : "Web",
+                    OrderType = dto.OrderType, DiningTableId = dto.DiningTableId, Covers = dto.Covers
+                };
+                if (string.IsNullOrWhiteSpace(sale.Store)) sale.Store = location.Name;
+
+                var built = await BuildItemsAsync(dto.Items, strictStock: isCounter || sale.Channel != "POS",
+                    new StockRef(sale.Channel == "POS" ? "Sale" : "OnlineOrder", reference, null, locationId, null, "Sale"));
+                sale.Items = built.Select(b => b.item).ToList();
+                _db.Sales.Add(sale);
+                await _db.SaveChangesAsync();
+                await SaveAllocationsAsync(built);
+
+                if (dto.QuotationId.HasValue)
+                {
+                    var quotation = await _db.Quotations.FirstOrDefaultAsync(q => q.Id == dto.QuotationId);
+                    if (quotation != null) quotation.Status = "Ordered";
+                }
+
+                await _db.SaveChangesAsync();
+                var restaurant = _services.GetService<IRestaurantService>();
+                if (restaurant != null) await restaurant.OnSaleCreatedAsync(sale);
+                await transaction.CommitAsync();
             }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
 
-            await _db.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return new { sale.Id, sale.Reference };
-        }
-        catch
+        if (sale.CustomerId.HasValue && string.Equals(dto.PaymentMethod, "Credit", StringComparison.OrdinalIgnoreCase))
+            await _accounts.ApplyAdvancesAsync(sale.CustomerId.Value);
+
+        string? fbrInvoice = null, fbrError = null;
+        if (isCounter && settings.FbrEnabled)
         {
-            await transaction.RollbackAsync();
-            throw;
+            var (_, inv, err) = await _fbr.SubmitAsync(sale.Id);
+            fbrInvoice = inv;
+            fbrError = err;
         }
+        return new { sale.Id, sale.Reference, fbrInvoiceNumber = fbrInvoice, fbrError };
     }
 
     public async Task<object?> UpdateAsync(int id, CreateSaleDto dto)
     {
         var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == id);
         if (sale == null) return null;
+        await EnsureNoReturnsAsync(id);
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
+            _audit.Log("Updated", "Sale", sale.Reference, new { from = sale.GrandTotal, to = dto.GrandTotal, items = dto.Items.Count });
             sale.CustomerId = dto.CustomerId; sale.CustomerName = dto.CustomerName;
             sale.CustomerImage = dto.CustomerImage; sale.Biller = dto.Biller;
             sale.GrandTotal = dto.GrandTotal; sale.OrderTax = dto.OrderTax;
             sale.Discount = dto.Discount; sale.Shipping = dto.Shipping;
             sale.Status = dto.Status; sale.Notes = dto.Notes;
             sale.ExpectedDate = !string.IsNullOrEmpty(dto.ExpectedDate) ? DateTime.Parse(dto.ExpectedDate) : null;
+            if (dto.DoctorName != null) sale.DoctorName = dto.DoctorName;
+            if (dto.PatientName != null) sale.PatientName = dto.PatientName;
             RecalculateSalePaymentState(sale);
 
-            // ── Restore old item quantities to inventory ──
-            foreach (var oldItem in sale.Items)
-            {
-                var product = await _db.Products.FindAsync(oldItem.ProductId);
-                if (product != null)
-                    product.Quantity += oldItem.Quantity;
-            }
-
+            await RestoreItemsAsync(sale.Items, new StockRef("Sale", sale.Reference + " edit", sale.Id, sale.LocationId, null, "Sale"));
             _db.SaleItems.RemoveRange(sale.Items);
-            sale.Items = dto.Items.Select(i => new SaleItem
-            {
-                SaleId = id, ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
-                PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
-                TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
-            }).ToList();
 
-            // ── Deduct new item quantities from inventory ──
-            foreach (var newItem in sale.Items)
-            {
-                var product = await _db.Products.FindAsync(newItem.ProductId);
-                if (product != null)
-                    product.Quantity -= newItem.Quantity;
-            }
+            var built = await BuildItemsAsync(dto.Items, strictStock: false,
+                new StockRef("Sale", sale.Reference + " edit", sale.Id, sale.LocationId, null, "Sale"));
+            foreach (var b in built) b.item.SaleId = id;
+            sale.Items = built.Select(b => b.item).ToList();
+            await _db.SaveChangesAsync();
+            await SaveAllocationsAsync(built);
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -168,18 +227,15 @@ public class SaleService : ISaleService
     {
         var sale = await _db.Sales.Include(s => s.Items).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == id);
         if (sale == null) return false;
+        await EnsureNoReturnsAsync(id);
 
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
-            // ── Restore product quantities to inventory ──
-            foreach (var item in sale.Items)
-            {
-                var product = await _db.Products.FindAsync(item.ProductId);
-                if (product != null)
-                    product.Quantity += item.Quantity;
-            }
-
+            await RestoreItemsAsync(sale.Items, new StockRef("Sale", sale.Reference + " deleted", sale.Id, sale.LocationId, null, "Sale"));
+            var restaurant = _services.GetService<IRestaurantService>();
+            if (restaurant != null) await restaurant.OnSaleDeletedAsync(sale.Id);
+            _audit.Log("Deleted", "Sale", sale.Reference, new { sale.CustomerName, sale.GrandTotal, sale.Paid, items = sale.Items.Select(i => new { i.ProductName, i.Quantity }) });
             _db.Sales.Remove(sale);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -191,6 +247,136 @@ public class SaleService : ISaleService
             throw;
         }
     }
+
+    // ── stock & counter helpers ──
+
+    private async Task EnsureNoReturnsAsync(int saleId)
+    {
+        if (await _db.SalesReturns.AnyAsync(r => r.SaleId == saleId))
+            throw new BusinessRuleException("This bill has returns recorded against it. Delete those returns before changing or deleting the bill.");
+    }
+
+    /// <summary>Stock that can be sold now: unexpired batches plus stock that has no batch record.</summary>
+    private async Task<int> SellableStockAsync(Product product)
+    {
+        var today = DateTime.UtcNow.Date;
+        var batches = await _db.ProductBatches.Where(b => b.ProductId == product.Id).ToListAsync();
+        var inBatches = batches.Sum(b => b.Quantity);
+        var unexpired = batches.Where(b => b.Quantity > 0 && (b.ExpiryDate == null || b.ExpiryDate.Value.Date >= today)).Sum(b => b.Quantity);
+        var noBatch = Math.Max(0, product.Quantity - inBatches);
+        return unexpired + noBatch;
+    }
+
+    private async Task<List<(SaleItem item, List<BatchAllocation> alloc)>> BuildItemsAsync(List<CreateSaleItemDto> items, bool strictStock, StockRef at)
+    {
+        var result = new List<(SaleItem, List<BatchAllocation>)>();
+        foreach (var i in items)
+        {
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == i.ProductId);
+            var unit = string.IsNullOrWhiteSpace(i.SaleUnit) ? "Unit" : i.SaleUnit;
+            var unitQty = i.UnitQuantity > 0 ? i.UnitQuantity : i.Quantity;
+            var baseQty = product != null && i.UnitQuantity > 0
+                ? i.UnitQuantity * ReactPosApi.Controllers.PurchasesController.UnitMultiplier(product, unit)
+                : i.Quantity;
+            if (baseQty <= 0) throw new BusinessRuleException($"Quantity for {i.ProductName} must be above zero.");
+
+            var item = new SaleItem
+            {
+                ProductId = i.ProductId, ProductName = string.IsNullOrWhiteSpace(i.ProductName) ? product?.ProductName ?? "" : i.ProductName,
+                Quantity = baseQty, PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
+                TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost,
+                SaleUnit = unit, UnitQuantity = unitQty, VariantId = i.VariantId, ModifiersJson = i.ModifiersJson
+            };
+
+            var alloc = new List<BatchAllocation>();
+            if (product != null)
+            {
+                var lineAt = at with { VariantId = i.VariantId };
+                if (product.IsMenuItem)
+                {
+                    // Dishes hold no stock; the restaurant module deducts their ingredients.
+                    result.Add((item, alloc));
+                    continue;
+                }
+                if (strictStock)
+                {
+                    var sellable = await _inventory.AvailableAsync(product, at.LocationId, i.VariantId);
+                    if (sellable < baseQty)
+                        throw new BusinessRuleException(sellable <= 0
+                            ? $"{product.ProductName} is out of stock (expired stock cannot be sold)."
+                            : $"{product.ProductName}: only {sellable} unexpired in stock, {baseQty} needed.");
+                }
+                alloc = await _inventory.DeductFefoAsync(product, baseQty, lineAt, spillToOtherLocations: !strictStock);
+                item.CostPrice = _inventory.AverageCost(alloc, product.PurchasePrice);
+                item.BatchInfo = string.Join(", ", alloc
+                    .Select(a => a.ExpiryDate.HasValue ? $"{a.BatchNo} ({a.ExpiryDate:MM/yyyy})" : a.BatchNo)
+                    .Distinct());
+                if (item.BatchInfo.Length > 500) item.BatchInfo = item.BatchInfo[..500];
+            }
+            result.Add((item, alloc));
+        }
+        return result;
+    }
+
+    private async Task SaveAllocationsAsync(List<(SaleItem item, List<BatchAllocation> alloc)> built)
+    {
+        foreach (var (item, alloc) in built)
+            foreach (var a in alloc)
+                _db.SaleItemBatches.Add(new SaleItemBatch { SaleItemId = item.Id, BatchId = a.BatchId, Quantity = a.Quantity, UnitCost = a.UnitCost });
+        await Task.CompletedTask;
+    }
+
+    private async Task RestoreItemsAsync(IEnumerable<SaleItem> items, StockRef at)
+    {
+        var list = items.ToList();
+        var ids = list.Select(i => i.Id).ToList();
+        var rows = await _db.SaleItemBatches.Where(b => ids.Contains(b.SaleItemId)).ToListAsync();
+        foreach (var item in list)
+        {
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
+            if (product == null) continue;
+            var mine = rows.Where(r => r.SaleItemId == item.Id).ToList();
+            var allocs = mine.Select(r => new BatchAllocation(r.BatchId, r.Quantity, r.UnitCost, "", null)).ToList();
+            var noBatch = Math.Max(0, item.Quantity - mine.Sum(r => r.Quantity));
+            if (product.IsMenuItem) continue;
+            await _inventory.RestoreAsync(product, allocs, noBatch, at with { VariantId = item.VariantId });
+        }
+        _db.SaleItemBatches.RemoveRange(rows);
+    }
+
+    private async Task ValidateCounterRulesAsync(CreateSaleDto dto, PharmacySettings settings)
+    {
+        // Discount limit for staff who are not admins.
+        var gross = dto.Items.Sum(i => i.PurchasePrice * (i.UnitQuantity > 0 ? i.UnitQuantity : i.Quantity));
+        var discount = dto.Discount + dto.Items.Sum(i => i.Discount);
+        if (gross > 0 && discount > 0 && !_audit.IsAdmin)
+        {
+            var pct = discount / gross * 100;
+            if (pct > settings.MaxCashierDiscountPercent + 0.01m)
+                throw new BusinessRuleException($"Discount is {pct:0.#}% of the bill. Your limit is {settings.MaxCashierDiscountPercent:0.#}%; ask a manager.");
+        }
+
+        // Prescription-only medicines need the doctor's name.
+        if (settings.RequirePrescription && string.IsNullOrWhiteSpace(dto.DoctorName))
+        {
+            var ids = dto.Items.Select(i => i.ProductId).ToList();
+            var rx = await _db.Products.Where(p => ids.Contains(p.Id) && p.IsPrescriptionOnly).Select(p => p.ProductName).ToListAsync();
+            if (rx.Count > 0)
+                throw new BusinessRuleException($"{string.Join(", ", rx)} need a prescription. Enter the doctor's name before completing the bill.");
+        }
+
+        // Credit only for registered customers.
+        if (string.Equals(dto.PaymentMethod, "Credit", StringComparison.OrdinalIgnoreCase) && dto.CustomerId == null)
+            throw new BusinessRuleException("Credit is only available for registered customers.");
+
+        if (!string.IsNullOrWhiteSpace(dto.CouponCode))
+        {
+            var (ok, error, _) = await CouponRules.CheckAsync(_db, dto.CouponCode, dto.CustomerId, gross);
+            if (!ok) throw new BusinessRuleException(error!);
+        }
+    }
+
+    public async Task<(bool ok, string? invoiceNumber, string? error)> ResendToFbrAsync(int id) => await _fbr.SubmitAsync(id);
 
     public async Task<List<SalePaymentDto>?> GetPaymentsAsync(int saleId)
     {
@@ -428,11 +614,19 @@ public class SaleService : ISaleService
         Status = NormalizeOrderStatusForDto(s), PaymentStatus = s.PaymentStatus, Notes = s.Notes, Source = s.Source,
         ExpectedDate = s.ExpectedDate?.ToString("yyyy-MM-dd"),
         SaleDate = s.SaleDate.ToString("dd MMM yyyy"),
+        SaleDateTime = DateTime.SpecifyKind(s.SaleDate, DateTimeKind.Utc).ToString("o"),
+        Store = s.Store, PaymentMethod = s.PaymentMethod, CouponCode = s.CouponCode,
+        PatientName = s.PatientName, DoctorName = s.DoctorName, PrescriptionImage = s.PrescriptionImage,
+        FbrInvoiceNumber = s.FbrInvoiceNumber, FbrStatus = s.FbrStatus, TillSessionId = s.TillSessionId,
+        LocationId = s.LocationId, PriceLevelId = s.PriceLevelId, PreviousBalance = s.PreviousBalance, Channel = s.Channel,
+        OrderType = s.OrderType, DiningTableId = s.DiningTableId, Covers = s.Covers,
         Items = s.Items.Select(i => new SaleItemDto
         {
             Id = i.Id, ProductId = i.ProductId, ProductName = i.ProductName, Quantity = i.Quantity,
             PurchasePrice = i.PurchasePrice, Discount = i.Discount, TaxPercent = i.TaxPercent,
-            TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost
+            TaxAmount = i.TaxAmount, UnitCost = i.UnitCost, TotalCost = i.TotalCost,
+            CostPrice = i.CostPrice, SaleUnit = i.SaleUnit, UnitQuantity = i.UnitQuantity > 0 ? i.UnitQuantity : i.Quantity,
+            BatchInfo = i.BatchInfo, VariantId = i.VariantId, ModifiersJson = i.ModifiersJson
         }).ToList(),
         Payments = s.Payments.Select(p => new SalePaymentDto
         {
@@ -566,7 +760,25 @@ public class InvoiceService : IInvoiceService
 public class SalesReturnService : ISalesReturnService
 {
     private readonly AppDbContext _db;
-    public SalesReturnService(AppDbContext db) => _db = db;
+    private readonly IInventoryService _inventory;
+    private readonly IAuditService _audit;
+    private readonly ICustomerAccountService _accounts;
+
+    public SalesReturnService(AppDbContext db, IInventoryService inventory, IAuditService audit, ICustomerAccountService accounts)
+    {
+        _db = db;
+        _inventory = inventory;
+        _audit = audit;
+        _accounts = accounts;
+    }
+
+    private static bool IsCreditNote(string? method) => string.Equals(method, "Credit note", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<StockRef> RefFor(SalesReturn r, string suffix = "")
+    {
+        int? locationId = r.SaleId.HasValue ? await _db.Sales.Where(s => s.Id == r.SaleId).Select(s => s.LocationId).FirstOrDefaultAsync() : null;
+        return new StockRef("SaleReturn", r.Reference + suffix, r.Id > 0 ? r.Id : null, locationId, null, "SalesReturn");
+    }
 
     public async Task<PagedResult<SalesReturnDto>> GetAllPagedAsync(PaginationQuery query, string? paymentStatus = null)
     {
@@ -653,38 +865,69 @@ public class SalesReturnService : ISalesReturnService
             Status = r.Status, PaymentStatus = r.PaymentStatus,
             ReturnDate = r.ReturnDate.ToString("dd MMM yyyy"),
             CreatedAt = r.CreatedAt.ToString("dd MMM yyyy"),
+            SaleId = r.SaleId, RefundMethod = r.RefundMethod,
             Items = r.Items.Select(i => new SalesReturnItemDto
             {
                 Id = i.Id, ProductName = i.ProductName, NetUnitPrice = i.NetUnitPrice,
                 Stock = i.Stock, Quantity = i.Quantity, Discount = i.Discount,
-                TaxPercent = i.TaxPercent, Subtotal = i.Subtotal
+                TaxPercent = i.TaxPercent, Subtotal = i.Subtotal,
+                ProductId = i.ProductId, SaleItemId = i.SaleItemId, Condition = i.Condition
             }).ToList()
         };
     }
 
     public async Task<object> CreateAsync(CreateSalesReturnDto dto)
     {
-        var entity = new SalesReturn
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            Reference = dto.Reference ?? string.Empty,
-            CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
-            CustomerImage = dto.CustomerImage, ProductId = dto.ProductId,
-            ProductName = dto.ProductName, ProductImage = dto.ProductImage,
-            OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
-            GrandTotal = dto.GrandTotal, Paid = dto.Paid, Due = dto.Due,
-            Status = dto.Status, PaymentStatus = dto.PaymentStatus,
-            ReturnDate = dto.ReturnDate != null ? DateTime.Parse(dto.ReturnDate) : DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            Items = dto.Items.Select(i => new SalesReturnItem
+            var reference = string.IsNullOrWhiteSpace(dto.Reference)
+                ? $"RT{await _db.SalesReturns.CountAsync() + 1:D4}"
+                : dto.Reference;
+            var entity = new SalesReturn
             {
-                ProductName = i.ProductName, NetUnitPrice = i.NetUnitPrice,
-                Stock = i.Stock, Quantity = i.Quantity, Discount = i.Discount,
-                TaxPercent = i.TaxPercent, Subtotal = i.Subtotal
-            }).ToList()
-        };
-        _db.SalesReturns.Add(entity);
-        await _db.SaveChangesAsync();
-        return new { entity.Id };
+                Reference = reference,
+                CustomerId = dto.CustomerId, CustomerName = dto.CustomerName,
+                CustomerImage = dto.CustomerImage, ProductId = dto.ProductId,
+                ProductName = dto.ProductName, ProductImage = dto.ProductImage,
+                OrderTax = dto.OrderTax, Discount = dto.Discount, Shipping = dto.Shipping,
+                GrandTotal = dto.GrandTotal, Paid = dto.Paid, Due = dto.Due,
+                Status = dto.Status, PaymentStatus = dto.PaymentStatus,
+                ReturnDate = dto.ReturnDate != null ? DateTime.Parse(dto.ReturnDate) : DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                SaleId = dto.SaleId, RefundMethod = dto.RefundMethod,
+                Items = await BuildItemsAsync(dto, null)
+            };
+            if (string.IsNullOrWhiteSpace(entity.ProductName) && entity.Items.Count > 0)
+            {
+                entity.ProductName = entity.Items[0].ProductName;
+                entity.ProductId ??= entity.Items[0].ProductId;
+            }
+
+            if (IsCreditNote(entity.RefundMethod) && entity.CustomerId == null && entity.SaleId.HasValue)
+                entity.CustomerId = await _db.Sales.Where(s => s.Id == entity.SaleId).Select(s => s.CustomerId).FirstOrDefaultAsync();
+            if (IsCreditNote(entity.RefundMethod) && entity.CustomerId == null)
+                throw new BusinessRuleException("A credit note needs a registered customer. Refund by cash or card instead.");
+
+            _db.SalesReturns.Add(entity);
+            await ApplyStockAsync(entity.Items, +1, await RefFor(entity));
+            entity.StockApplied = true;
+            _audit.Log("Refund", "SalesReturn", entity.Reference, new
+            {
+                entity.SaleId, entity.CustomerName, entity.GrandTotal, entity.RefundMethod,
+                items = entity.Items.Select(i => new { i.ProductName, i.Quantity, i.Condition })
+            });
+            await _db.SaveChangesAsync();
+            // A credit note reduces what the customer owes (original bill first).
+            if (IsCreditNote(entity.RefundMethod)) await _accounts.ApplyCreditNoteAsync(entity);
+            await transaction.CommitAsync();
+            return new { entity.Id, entity.Reference };
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<object?> UpdateAsync(int id, CreateSalesReturnDto dto)
@@ -695,6 +938,9 @@ public class SalesReturnService : ISalesReturnService
         using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
+            if (entity.StockApplied) await ApplyStockAsync(entity.Items, -1, await RefFor(entity, " edit"));
+            await _accounts.RemoveCreditNoteAsync(entity.Id);
+
             entity.CustomerId = dto.CustomerId; entity.CustomerName = dto.CustomerName;
             entity.CustomerImage = dto.CustomerImage; entity.ProductId = dto.ProductId;
             entity.ProductName = dto.ProductName; entity.ProductImage = dto.ProductImage;
@@ -702,17 +948,19 @@ public class SalesReturnService : ISalesReturnService
             entity.Shipping = dto.Shipping; entity.GrandTotal = dto.GrandTotal;
             entity.Paid = dto.Paid; entity.Due = dto.Due;
             entity.Status = dto.Status; entity.PaymentStatus = dto.PaymentStatus;
+            entity.SaleId = dto.SaleId ?? entity.SaleId;
+            entity.RefundMethod = dto.RefundMethod ?? entity.RefundMethod;
             if (dto.ReturnDate != null) entity.ReturnDate = DateTime.Parse(dto.ReturnDate);
 
             _db.SalesReturnItems.RemoveRange(entity.Items);
-            entity.Items = dto.Items.Select(i => new SalesReturnItem
-            {
-                SalesReturnId = id, ProductName = i.ProductName, NetUnitPrice = i.NetUnitPrice,
-                Stock = i.Stock, Quantity = i.Quantity, Discount = i.Discount,
-                TaxPercent = i.TaxPercent, Subtotal = i.Subtotal
-            }).ToList();
+            entity.Items = await BuildItemsAsync(dto, id);
+            foreach (var i in entity.Items) i.SalesReturnId = id;
 
+            await ApplyStockAsync(entity.Items, +1, await RefFor(entity, " edit"));
+            entity.StockApplied = true;
+            _audit.Log("Updated", "SalesReturn", entity.Reference, new { entity.GrandTotal });
             await _db.SaveChangesAsync();
+            if (IsCreditNote(entity.RefundMethod)) await _accounts.ApplyCreditNoteAsync(entity);
             await transaction.CommitAsync();
             return new { entity.Id };
         }
@@ -727,9 +975,123 @@ public class SalesReturnService : ISalesReturnService
     {
         var entity = await _db.SalesReturns.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == id);
         if (entity == null) return false;
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        if (entity.StockApplied) await ApplyStockAsync(entity.Items, -1, await RefFor(entity, " deleted"));
+        await _accounts.RemoveCreditNoteAsync(entity.Id);
+        _audit.Log("Deleted", "SalesReturn", entity.Reference, new { entity.CustomerName, entity.GrandTotal });
         _db.SalesReturns.Remove(entity);
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return true;
+    }
+
+    /// <summary>Lines of a bill with how much can still be returned.</summary>
+    public async Task<object?> GetReturnableAsync(int saleId)
+    {
+        var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == saleId);
+        if (sale == null) return null;
+        var itemIds = sale.Items.Select(i => i.Id).ToList();
+        var returned = await _db.SalesReturnItems
+            .Where(r => r.SaleItemId != null && itemIds.Contains(r.SaleItemId.Value))
+            .GroupBy(r => r.SaleItemId!.Value)
+            .Select(g => new { Id = g.Key, Qty = g.Sum(x => x.Quantity) })
+            .ToListAsync();
+        return new
+        {
+            sale.Id, sale.Reference, sale.CustomerId, sale.CustomerName, sale.GrandTotal,
+            saleDate = sale.SaleDate.ToString("yyyy-MM-dd"),
+            items = sale.Items.Select(i =>
+            {
+                var done = returned.FirstOrDefault(r => r.Id == i.Id)?.Qty ?? 0;
+                var unitPrice = i.Quantity > 0 ? Math.Round(i.TotalCost / i.Quantity, 4) : 0;
+                return new
+                {
+                    saleItemId = i.Id, i.ProductId, i.ProductName, soldQuantity = i.Quantity,
+                    returnedQuantity = done, returnableQuantity = Math.Max(0, i.Quantity - done),
+                    unitPrice, i.SaleUnit, i.UnitQuantity, i.BatchInfo
+                };
+            })
+        };
+    }
+
+    private async Task<List<SalesReturnItem>> BuildItemsAsync(CreateSalesReturnDto dto, int? editingReturnId)
+    {
+        var items = new List<SalesReturnItem>();
+        foreach (var i in dto.Items)
+        {
+            if (i.Quantity <= 0) throw new BusinessRuleException($"Return quantity for {i.ProductName} must be above zero.");
+
+            var productId = i.ProductId;
+            if (productId == null && !string.IsNullOrWhiteSpace(i.ProductName))
+                productId = await _db.Products.Where(p => p.ProductName == i.ProductName).Select(p => (int?)p.Id).FirstOrDefaultAsync();
+
+            if (i.SaleItemId.HasValue)
+            {
+                var saleItem = await _db.SaleItems.FirstOrDefaultAsync(s => s.Id == i.SaleItemId);
+                if (saleItem == null) throw new BusinessRuleException($"The bill line for {i.ProductName} was not found.");
+                var already = await _db.SalesReturnItems
+                    .Where(r => r.SaleItemId == i.SaleItemId && r.SalesReturnId != (editingReturnId ?? 0))
+                    .SumAsync(r => (int?)r.Quantity) ?? 0;
+                if (already + i.Quantity > saleItem.Quantity)
+                    throw new BusinessRuleException($"{saleItem.ProductName}: {saleItem.Quantity} sold, {already} already returned; cannot return {i.Quantity} more.");
+                productId ??= saleItem.ProductId;
+            }
+
+            var condition = i.Condition switch
+            {
+                "Damaged" or "damaged" => "Damaged",
+                "Expired" or "expired" => "Expired",
+                _ => "Saleable"
+            };
+            items.Add(new SalesReturnItem
+            {
+                ProductName = i.ProductName, NetUnitPrice = i.NetUnitPrice,
+                Stock = i.Stock, Quantity = i.Quantity, Discount = i.Discount,
+                TaxPercent = i.TaxPercent, Subtotal = i.Subtotal,
+                ProductId = productId, SaleItemId = i.SaleItemId, Condition = condition
+            });
+        }
+        return items;
+    }
+
+    /// <summary>direction +1 puts saleable stock back; -1 undoes that (return edited or deleted).</summary>
+    private async Task ApplyStockAsync(IEnumerable<SalesReturnItem> items, int direction, StockRef at)
+    {
+        foreach (var i in items.Where(x => x.Condition == "Saleable" && x.ProductId != null))
+        {
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == i.ProductId);
+            if (product == null) continue;
+
+            // Return into the batches the bill took stock from, latest-expiry first.
+            var allocs = new List<BatchAllocation>();
+            if (i.SaleItemId.HasValue)
+            {
+                var remaining = i.Quantity;
+                var rows = await _db.SaleItemBatches.Where(b => b.SaleItemId == i.SaleItemId).ToListAsync();
+                var batchIds = rows.Select(r => r.BatchId).ToList();
+                var batches = await _db.ProductBatches.Where(b => batchIds.Contains(b.Id)).ToListAsync();
+                foreach (var row in rows.OrderByDescending(r => batches.FirstOrDefault(b => b.Id == r.BatchId)?.ExpiryDate ?? DateTime.MinValue))
+                {
+                    if (remaining <= 0) break;
+                    var q = Math.Min(row.Quantity, remaining);
+                    allocs.Add(new BatchAllocation(row.BatchId, q, row.UnitCost, "", null));
+                    remaining -= q;
+                }
+            }
+            var noBatch = i.Quantity - allocs.Sum(a => a.Quantity);
+
+            var lineAt = at with { VariantId = i.VariantId };
+            if (direction > 0)
+            {
+                if (allocs.Count > 0) await _inventory.RestoreAsync(product, allocs, 0, lineAt);
+                if (noBatch > 0) await _inventory.AddStockAsync(product, noBatch, "RETURN", null, product.PurchasePrice, at: lineAt);
+            }
+            else
+            {
+                foreach (var a in allocs) await _inventory.DeductFromBatchAsync(product, a.BatchId, a.Quantity, lineAt);
+                if (noBatch > 0) await _inventory.DeductFefoAsync(product, noBatch, lineAt, spillToOtherLocations: true);
+            }
+        }
     }
 }
 
@@ -979,5 +1341,39 @@ public class CouponService : ICouponService
         _db.Coupons.Remove(entity);
         await _db.SaveChangesAsync();
         return true;
+    }
+}
+
+
+/// <summary>Coupon checks shared by the counter and the coupon-validate endpoint.</summary>
+public static class CouponRules
+{
+    public static async Task<(bool ok, string? error, decimal discount)> CheckAsync(AppDbContext db, string code, int? customerId, decimal billAmount)
+    {
+        var c = code.Trim().ToUpperInvariant();
+        var coupon = await db.Coupons.FirstOrDefaultAsync(x => x.Code.ToUpper() == c);
+        if (coupon == null) return (false, $"Coupon {code} does not exist.", 0);
+        if (!string.Equals(coupon.Status, "Active", StringComparison.OrdinalIgnoreCase)) return (false, $"Coupon {code} is not active.", 0);
+
+        var today = DateTime.UtcNow.Date;
+        if (DateTime.TryParse(coupon.StartDate, out var start) && today < start.Date) return (false, $"Coupon {code} starts on {start:dd MMM yyyy}.", 0);
+        if (DateTime.TryParse(coupon.EndDate, out var end) && today > end.Date) return (false, $"Coupon {code} expired on {end:dd MMM yyyy}.", 0);
+
+        if (coupon.Limit > 0)
+        {
+            var used = await db.Sales.CountAsync(s => s.CouponCode == c);
+            if (used >= coupon.Limit) return (false, $"Coupon {code} has reached its limit of {coupon.Limit} uses.", 0);
+        }
+        if (coupon.OncePerCustomer)
+        {
+            if (customerId == null) return (false, $"Coupon {code} is once per customer; choose the customer first.", 0);
+            if (await db.Sales.AnyAsync(s => s.CouponCode == c && s.CustomerId == customerId))
+                return (false, $"This customer has already used coupon {code}.", 0);
+        }
+
+        var discount = string.Equals(coupon.Type, "Fixed", StringComparison.OrdinalIgnoreCase)
+            ? Math.Min(coupon.Discount, billAmount)
+            : Math.Round(billAmount * coupon.Discount / 100, 2);
+        return (true, null, discount);
     }
 }

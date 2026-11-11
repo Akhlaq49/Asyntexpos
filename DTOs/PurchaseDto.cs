@@ -15,6 +15,12 @@ public class PurchaseItemDto
     public decimal TaxAmount { get; set; }
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
+    public string? BatchNo { get; set; }
+    public string? ExpiryDate { get; set; }
+    public string? ManufacturedDate { get; set; }
+    public decimal BonusQuantity { get; set; }
+    public string PurchaseUnit { get; set; } = "Unit";
+    public int? VariantId { get; set; }
 }
 
 /// <summary>
@@ -37,6 +43,7 @@ public class PurchaseDto
     public decimal Due => Total - Paid;
     public string? Notes { get; set; }
     public List<PurchaseItemDto>? Items { get; set; }
+    public int? LocationId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -55,6 +62,14 @@ public class CreatePurchaseItemDto
     public decimal TaxAmount { get; set; } = 0;
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
+    public string? BatchNo { get; set; }
+    public string? ExpiryDate { get; set; }
+    public string? ManufacturedDate { get; set; }
+    /// <summary>Free units (in PurchaseUnit) from a distributor scheme.</summary>
+    public decimal BonusQuantity { get; set; } = 0;
+    /// <summary>Unit, Strip or Box.</summary>
+    public string? PurchaseUnit { get; set; } = "Unit";
+    public int? VariantId { get; set; }
 }
 
 /// <summary>
@@ -73,6 +88,8 @@ public class CreatePurchaseDto
     public decimal Total { get; set; }
     public decimal Paid { get; set; } = 0;
     public string? Notes { get; set; }
+    /// <summary>Branch or warehouse that receives the stock (empty = the user's branch).</summary>
+    public int? LocationId { get; set; }
     public List<CreatePurchaseItemDto>? Items { get; set; }
 }
 
@@ -92,6 +109,8 @@ public class UpdatePurchaseDto
     public decimal Total { get; set; }
     public decimal Paid { get; set; }
     public string? Notes { get; set; }
+    /// <summary>Branch or warehouse that receives the stock (empty = the user's branch).</summary>
+    public int? LocationId { get; set; }
     public List<CreatePurchaseItemDto>? Items { get; set; }
 }
 

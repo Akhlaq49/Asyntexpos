@@ -45,6 +45,19 @@ public class PurchaseItem : ITenantEntity
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalCost { get; set; }
 
+    // ── Pharmacy fields ──
+    [MaxLength(100)]
+    public string? BatchNo { get; set; }
+    public DateTime? ExpiryDate { get; set; }
+    public DateTime? ManufacturedDate { get; set; }
+    /// <summary>Free units from a distributor scheme (e.g. 10 + 1). Added to stock at zero cost.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal BonusQuantity { get; set; } = 0;
+    /// <summary>Unit the quantity was bought in: Unit, Strip or Box.</summary>
+    [MaxLength(20)]
+    public string? PurchaseUnit { get; set; } = "Unit";
+    public int? VariantId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties

@@ -11,9 +11,12 @@ public class StoreService : IStoreService
 
     public async Task<List<DropdownOptionDto>> GetAllAsync()
     {
-        return await _db.Stores
-            .Select(s => new DropdownOptionDto(s.Value, s.Label))
-            .ToListAsync();
+        // Branches come from Locations; old store rows are kept for names not yet migrated.
+        var locations = await _db.Locations.Where(l => l.IsActive && l.Type != "Warehouse" && l.Type != "Factory")
+            .OrderByDescending(l => l.IsDefault).ThenBy(l => l.Name)
+            .Select(l => new DropdownOptionDto(l.Code, l.Name)).ToListAsync();
+        var old = await _db.Stores.Select(s => new DropdownOptionDto(s.Value, s.Label)).ToListAsync();
+        return locations.Concat(old.Where(o => !locations.Any(l => l.Value == o.Value || l.Label == o.Label))).ToList();
     }
 }
 
@@ -24,8 +27,11 @@ public class WarehouseService : IWarehouseService
 
     public async Task<List<DropdownOptionDto>> GetAllAsync()
     {
-        return await _db.Warehouses
-            .Select(w => new DropdownOptionDto(w.Value, w.Label))
-            .ToListAsync();
+        // Every stock-holding location can send or receive stock.
+        var locations = await _db.Locations.Where(l => l.IsActive)
+            .OrderByDescending(l => l.Type == "Warehouse").ThenBy(l => l.Name)
+            .Select(l => new DropdownOptionDto(l.Code, l.Name)).ToListAsync();
+        var old = await _db.Warehouses.Select(w => new DropdownOptionDto(w.Value, w.Label)).ToListAsync();
+        return locations.Concat(old.Where(o => !locations.Any(l => l.Value == o.Value || l.Label == o.Label))).ToList();
     }
 }

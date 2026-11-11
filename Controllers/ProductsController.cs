@@ -45,6 +45,34 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
+    // ── Pharmacy: batches, expiry and substitutes ──
+
+    [HttpGet("{id}/batches")]
+    public async Task<IActionResult> GetBatches(int id) => Ok(await _service.GetBatchesAsync(id));
+
+    [HttpGet("expiring")]
+    public async Task<IActionResult> GetExpiring([FromQuery] int days = 90, [FromQuery] bool includeExpired = true,
+        [FromQuery] string? manufacturer = null, [FromQuery] string? supplier = null)
+        => Ok(await _service.GetExpiringBatchesAsync(days, includeExpired, manufacturer, supplier));
+
+    [HttpPut("batches/{batchId}")]
+    public async Task<IActionResult> UpdateBatch(int batchId, [FromBody] UpdateBatchDto dto)
+    {
+        var result = await _service.UpdateBatchAsync(batchId, dto);
+        return result == null ? NotFound() : Ok(result);
+    }
+
+    [HttpPost("batches/{batchId}/write-off")]
+    public async Task<IActionResult> WriteOffBatch(int batchId, [FromBody] WriteOffBatchDto dto)
+    {
+        var (ok, error) = await _service.WriteOffBatchAsync(batchId, dto, User.Identity?.Name ?? "System");
+        if (error != null) return BadRequest(new { message = error });
+        return ok ? NoContent() : NotFound();
+    }
+
+    [HttpGet("{id}/substitutes")]
+    public async Task<IActionResult> GetSubstitutes(int id) => Ok(await _service.GetSubstitutesAsync(id));
+
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductDto>> GetById(int id)
     {
@@ -123,4 +151,20 @@ public class ProductFormModel
     public string? ManufacturedDate { get; set; }
     public string? ExpiryDate { get; set; }
     public List<IFormFile>? Images { get; set; }
+    // Pharmacy
+    public string? GenericName { get; set; }
+    public string? Strength { get; set; }
+    public string? DosageForm { get; set; }
+    public string? RackLocation { get; set; }
+    public bool IsPrescriptionOnly { get; set; }
+    public bool IsControlled { get; set; }
+    public decimal PurchasePrice { get; set; }
+    public int UnitsPerStrip { get; set; } = 1;
+    public int StripsPerBox { get; set; } = 1;
+    public int RefillDays { get; set; }
+    public bool SellOnline { get; set; } = true;
+    public string? ArticleNo { get; set; }
+    public string? Season { get; set; }
+    /// <summary>Batch number for the opening / changed stock entered on the product form.</summary>
+    public string? BatchNo { get; set; }
 }

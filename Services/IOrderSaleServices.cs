@@ -14,6 +14,7 @@ public interface ISaleService
     Task<object?> CreatePaymentAsync(int saleId, CreateSalePaymentDto dto);
     Task<object?> UpdatePaymentAsync(int saleId, int paymentId, CreateSalePaymentDto dto);
     Task<bool> DeletePaymentAsync(int saleId, int paymentId);
+    Task<(bool ok, string? invoiceNumber, string? error)> ResendToFbrAsync(int id);
     /// <summary>Split payment across customer's outstanding sales (FIFO). Per-sale POST /payments remains available.</summary>
     Task<(CustomerFifoPaymentResponseDto? Result, string? Error)> ApplyCustomerFifoPaymentAsync(CustomerFifoPaymentRequestDto dto);
 }
@@ -32,6 +33,7 @@ public interface ISalesReturnService
     Task<List<SalesReturnDto>> GetAllAsync(string? customer, string? status, string? paymentStatus, string? sort);
     Task<PagedResult<SalesReturnDto>> GetAllPagedAsync(PaginationQuery query, string? paymentStatus = null);
     Task<SalesReturnDto?> GetByIdAsync(int id);
+    Task<object?> GetReturnableAsync(int saleId);
     Task<object> CreateAsync(CreateSalesReturnDto dto);
     Task<object?> UpdateAsync(int id, CreateSalesReturnDto dto);
     Task<bool> DeleteAsync(int id);

@@ -16,6 +16,10 @@ public interface IStockTransferService
     Task<object> CreateAsync(CreateStockTransferDto dto);
     Task<object?> UpdateAsync(int id, CreateStockTransferDto dto);
     Task<bool> DeleteAsync(int id);
+    Task<StockTransferDto?> GetAsync(int id);
+    Task<object> DispatchAsync(int id);
+    Task<object> ReceiveAsync(int id, ReceiveStockTransferDto? dto);
+    Task<object> CancelAsync(int id);
 }
 
 public interface IStockAdjustmentService

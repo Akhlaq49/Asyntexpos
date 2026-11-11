@@ -54,6 +54,8 @@ public class Purchase : ITenantEntity
     // Navigation property for line items
     public ICollection<PurchaseItem>? Items { get; set; }
 
+    public int? LocationId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

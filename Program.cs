@@ -9,7 +9,7 @@ using ReactPosApi.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers(o => o.Filters.Add<BusinessRuleExceptionFilter>());
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
@@ -25,6 +25,17 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IPharmacySettingsService, PharmacySettingsService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<ILocationService, LocationService>();
+builder.Services.AddScoped<IStockRequestService, StockRequestService>();
+builder.Services.AddScoped<ICustomerAccountService, CustomerAccountService>();
+builder.Services.AddScoped<IRestaurantService, RestaurantService>();
+builder.Services.AddScoped<IChannelSyncService, ChannelSyncService>();
+builder.Services.AddHttpClient<ShopifyClient>(c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHostedService<ChannelSyncWorker>();
+builder.Services.AddHttpClient<IFbrService, FbrService>(c => c.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddScoped<ISubCategoryService, SubCategoryService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();

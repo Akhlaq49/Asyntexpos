@@ -33,6 +33,9 @@ public class UserDto
     public string Role { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
+    public int? LocationId { get; set; }
+    public bool RestrictToLocation { get; set; }
+    public string Language { get; set; } = "en";
 }
 
 public class CreateUserDto
@@ -43,6 +46,8 @@ public class CreateUserDto
     public string Password { get; set; } = string.Empty;
     public string Role { get; set; } = "User";
     public bool IsActive { get; set; } = true;
+    public int? LocationId { get; set; }
+    public bool RestrictToLocation { get; set; }
 }
 
 public class UpdateUserDto
@@ -53,4 +58,6 @@ public class UpdateUserDto
     public string? Password { get; set; }
     public string Role { get; set; } = "User";
     public bool IsActive { get; set; } = true;
+    public int? LocationId { get; set; }
+    public bool RestrictToLocation { get; set; }
 }

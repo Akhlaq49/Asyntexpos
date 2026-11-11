@@ -25,7 +25,7 @@ public class AuthService : IAuthService
     /// <summary>Roles allowed to sign in via <see cref="LoginAsync"/> — align with <c>UserService</c> staff roles.</summary>
     private static readonly string[] LoginRoles =
     {
-        "SuperAdmin", "Admin", "Manager", "Salesman", "Supervisor",
+        "SuperAdmin", "Admin", "Manager", "Pharmacist", "Cashier", "Salesman", "Supervisor",
         "Store Keeper", "Delivery Biker", "Maintenance", "Quality Analyst",
         "Accountant", "Purchase", "User"
     };
@@ -152,7 +152,7 @@ public class AuthService : IAuthService
         FullName = p.FullName,
         Email = p.Email ?? "",
         Phone = p.Phone ?? "",
-        Role = p.Role,
+        Role = p.Role, LocationId = p.LocationId, RestrictToLocation = p.RestrictToLocation, Language = p.Language,
         IsActive = p.IsActive,
         CreatedAt = p.CreatedAt
     };

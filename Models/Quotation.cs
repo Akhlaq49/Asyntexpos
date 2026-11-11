@@ -67,4 +67,5 @@ public class QuotationItem : ITenantEntity
     public decimal TaxAmount { get; set; }
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
+    public int? VariantId { get; set; }
 }

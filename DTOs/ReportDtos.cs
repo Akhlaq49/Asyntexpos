@@ -525,6 +525,11 @@ public class ProductExpiryReportItemDto
     public string ProductName { get; set; } = "";
     public string ManufacturedDate { get; set; } = "";
     public string ExpiredDate { get; set; } = "";
+    public string BatchNo { get; set; } = "";
+    public int Quantity { get; set; }
+    public string Manufacturer { get; set; } = "";
+    public string Supplier { get; set; } = "";
+    public int? DaysToExpiry { get; set; }
 }
 
 // 7k. Product Quantity Alert Report

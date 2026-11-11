@@ -80,6 +80,24 @@ public class ProductDto
     public string ManufacturedDate { get; set; } = string.Empty;
     public string ExpiryDate { get; set; } = string.Empty;
     public string[] Images { get; set; } = Array.Empty<string>();
+    // Pharmacy
+    public string GenericName { get; set; } = string.Empty;
+    public string Strength { get; set; } = string.Empty;
+    public string DosageForm { get; set; } = string.Empty;
+    public string RackLocation { get; set; } = string.Empty;
+    public bool IsPrescriptionOnly { get; set; }
+    public bool IsControlled { get; set; }
+    public decimal PurchasePrice { get; set; }
+    public int UnitsPerStrip { get; set; } = 1;
+    public int StripsPerBox { get; set; } = 1;
+    public int RefillDays { get; set; }
+    public bool SellOnline { get; set; } = true;
+    public string? ArticleNo { get; set; }
+    public string? Season { get; set; }
+    public bool HasVariants { get; set; }
+    public bool IsMenuItem { get; set; }
+    public int? KitchenStationId { get; set; }
+    public int? MedicineMasterId { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
     public string UpdatedAt { get; set; } = string.Empty;
 }
@@ -331,6 +349,9 @@ public class StockAdjustmentDto
     public int Quantity { get; set; }
     public string? Notes { get; set; }
     public string Date { get; set; } = string.Empty;
+    public string? Reason { get; set; }
+    public int? BatchId { get; set; }
+    public string? BatchNo { get; set; }
 }
 
 public class CreateStockAdjustmentDto
@@ -342,6 +363,14 @@ public class CreateStockAdjustmentDto
     public string Person { get; set; } = string.Empty;
     public int Quantity { get; set; } = 1;
     public string? Notes { get; set; }
+    /// <summary>Damage, Breakage, Theft, Count correction, Expired write-off, Other</summary>
+    public string? Reason { get; set; }
+    /// <summary>Batch to add to / take from. Empty = opening batch (adding) or earliest expiry (removing).</summary>
+    public int? BatchId { get; set; }
+    public string? BatchNo { get; set; }
+    public string? ExpiryDate { get; set; }
+    public int? LocationId { get; set; }
+    public int? VariantId { get; set; }
 }
 
 // ============================
@@ -357,6 +386,14 @@ public class StockTransferDto
     public int NoOfProducts { get; set; }
     public int QuantityTransferred { get; set; }
     public string Date { get; set; } = string.Empty;
+    public int? FromLocationId { get; set; }
+    public int? ToLocationId { get; set; }
+    public string Status { get; set; } = "Received";
+    public string? DispatchedBy { get; set; }
+    public string? DispatchedAt { get; set; }
+    public string? ReceivedBy { get; set; }
+    public string? ReceivedAt { get; set; }
+    public int? StockRequestId { get; set; }
     public List<StockTransferItemDto> Items { get; set; } = new();
 }
 
@@ -369,6 +406,12 @@ public class StockTransferItemDto
     public string Sku { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public int Quantity { get; set; }
+    public int? VariantId { get; set; }
+    public int? BatchId { get; set; }
+    public string? BatchNo { get; set; }
+    public string? ExpiryDate { get; set; }
+    public int? ReceivedQty { get; set; }
+    public decimal UnitCost { get; set; }
 }
 
 public class CreateStockTransferDto
@@ -377,6 +420,10 @@ public class CreateStockTransferDto
     public string WarehouseTo { get; set; } = string.Empty;
     public string ReferenceNumber { get; set; } = string.Empty;
     public string? Notes { get; set; }
+    public int? FromLocationId { get; set; }
+    public int? ToLocationId { get; set; }
+    /// <summary>draft = save only; dispatch = stock leaves the sender (in transit); empty = dispatch and receive at once (old behaviour).</summary>
+    public string? Mode { get; set; }
     public List<CreateStockTransferItemDto> Items { get; set; } = new();
 }
 
@@ -384,6 +431,21 @@ public class CreateStockTransferItemDto
 {
     public int ProductId { get; set; }
     public int Quantity { get; set; } = 1;
+    public int? VariantId { get; set; }
+    /// <summary>Send from this batch; empty = earliest expiry first.</summary>
+    public int? BatchId { get; set; }
+}
+
+public class ReceiveStockTransferDto
+{
+    public List<ReceiveStockTransferLineDto> Lines { get; set; } = new();
+    public string? Notes { get; set; }
+}
+
+public class ReceiveStockTransferLineDto
+{
+    public int ItemId { get; set; }
+    public int ReceivedQty { get; set; }
 }
 
 // ============================
@@ -473,6 +535,23 @@ public class SaleDto
     public string Source { get; set; } = string.Empty;
     public string? ExpectedDate { get; set; }
     public string SaleDate { get; set; } = string.Empty;
+    public string SaleDateTime { get; set; } = string.Empty;
+    public string? Store { get; set; }
+    public string? PaymentMethod { get; set; }
+    public string? CouponCode { get; set; }
+    public string? PatientName { get; set; }
+    public string? DoctorName { get; set; }
+    public string? PrescriptionImage { get; set; }
+    public string? FbrInvoiceNumber { get; set; }
+    public string? FbrStatus { get; set; }
+    public int? TillSessionId { get; set; }
+    public int? LocationId { get; set; }
+    public int? PriceLevelId { get; set; }
+    public decimal? PreviousBalance { get; set; }
+    public string Channel { get; set; } = "POS";
+    public string? OrderType { get; set; }
+    public int? DiningTableId { get; set; }
+    public int? Covers { get; set; }
     public List<SaleItemDto> Items { get; set; } = new();
     public List<SalePaymentDto> Payments { get; set; } = new();
 }
@@ -489,6 +568,12 @@ public class SaleItemDto
     public decimal TaxAmount { get; set; }
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
+    public decimal CostPrice { get; set; }
+    public string SaleUnit { get; set; } = "Unit";
+    public int UnitQuantity { get; set; }
+    public string? BatchInfo { get; set; }
+    public int? VariantId { get; set; }
+    public string? ModifiersJson { get; set; }
 }
 
 public class SalePaymentDto
@@ -518,6 +603,27 @@ public class CreateSaleDto
     public string? OrderNumber { get; set; }
     public string? ExpectedDate { get; set; }
     public List<CreateSaleItemDto> Items { get; set; } = new();
+    // Pharmacy counter
+    public string? Store { get; set; }
+    /// <summary>Cash, Card or Credit</summary>
+    public string? PaymentMethod { get; set; }
+    public string? CouponCode { get; set; }
+    public string? PatientName { get; set; }
+    public string? DoctorName { get; set; }
+    /// <summary>Path returned by POST /api/sales/prescription-image.</summary>
+    public string? PrescriptionImage { get; set; }
+    /// <summary>Quotation this sale was made from; it is marked Ordered.</summary>
+    public int? QuotationId { get; set; }
+
+    public int? LocationId { get; set; }
+    public int? PriceLevelId { get; set; }
+    /// <summary>Manager allows a credit sale over the customer's limit.</summary>
+    public bool CreditOverride { get; set; }
+    /// <summary>POS | Web | Shopify (empty = from Source).</summary>
+    public string? Channel { get; set; }
+    public string? OrderType { get; set; }
+    public int? DiningTableId { get; set; }
+    public int? Covers { get; set; }
 }
 
 public class CreateSaleItemDto
@@ -531,6 +637,11 @@ public class CreateSaleItemDto
     public decimal TaxAmount { get; set; }
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
+    /// <summary>Unit, Strip or Box. With UnitQuantity set, Quantity is worked out on the server in base units.</summary>
+    public string? SaleUnit { get; set; }
+    public int UnitQuantity { get; set; }
+    public int? VariantId { get; set; }
+    public string? ModifiersJson { get; set; }
 }
 
 public class CreateSalePaymentDto
@@ -672,6 +783,8 @@ public class SalesReturnDto
     public string PaymentStatus { get; set; } = string.Empty;
     public string ReturnDate { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
+    public int? SaleId { get; set; }
+    public string? RefundMethod { get; set; }
     public List<SalesReturnItemDto> Items { get; set; } = new();
 }
 
@@ -685,6 +798,9 @@ public class SalesReturnItemDto
     public decimal Discount { get; set; }
     public decimal TaxPercent { get; set; }
     public decimal Subtotal { get; set; }
+    public int? ProductId { get; set; }
+    public int? SaleItemId { get; set; }
+    public string Condition { get; set; } = "Saleable";
 }
 
 public class CreateSalesReturnDto
@@ -706,6 +822,10 @@ public class CreateSalesReturnDto
     public string PaymentStatus { get; set; } = "Unpaid";
     public string? ReturnDate { get; set; }
     public List<CreateSalesReturnItemDto> Items { get; set; } = new();
+    /// <summary>Original bill. When set, quantities are checked against what was sold.</summary>
+    public int? SaleId { get; set; }
+    /// <summary>Cash, Card or Credit note</summary>
+    public string? RefundMethod { get; set; }
 }
 
 public class CreateSalesReturnItemDto
@@ -713,10 +833,15 @@ public class CreateSalesReturnItemDto
     public string ProductName { get; set; } = string.Empty;
     public decimal NetUnitPrice { get; set; }
     public int Stock { get; set; }
+    /// <summary>Base units returned.</summary>
     public int Quantity { get; set; } = 1;
     public decimal Discount { get; set; }
     public decimal TaxPercent { get; set; }
     public decimal Subtotal { get; set; }
+    public int? ProductId { get; set; }
+    public int? SaleItemId { get; set; }
+    /// <summary>Saleable (back to stock), Damaged or Expired (recorded only)</summary>
+    public string? Condition { get; set; }
 }
 
 // ── Quotation ──────────────────────────────────────────
@@ -848,4 +973,44 @@ public class CreateMiscTransactionDto
     public string Description { get; set; } = string.Empty;
     public string? ReferenceId { get; set; }
     public string ReferenceType { get; set; } = "ManualAdjustment";
+}
+
+// ============================
+// Pharmacy: batches
+// ============================
+public class ProductBatchDto
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string GenericName { get; set; } = string.Empty;
+    public string Manufacturer { get; set; } = string.Empty;
+    public string BatchNo { get; set; } = string.Empty;
+    public string? ExpiryDate { get; set; }
+    public string? ManufacturedDate { get; set; }
+    public int Quantity { get; set; }
+    public decimal PurchasePrice { get; set; }
+    public decimal RetailPrice { get; set; }
+    public string? Supplier { get; set; }
+    public string? Store { get; set; }
+    /// <summary>Days until expiry; negative when already expired; null when no expiry.</summary>
+    public int? DaysToExpiry { get; set; }
+    /// <summary>Expired, Critical (≤ alert 3), Warning (≤ alert 2), Watch (≤ alert 1), Ok</summary>
+    public string ExpiryStatus { get; set; } = "Ok";
+    public decimal StockValue { get; set; }
+}
+
+public class UpdateBatchDto
+{
+    public string? BatchNo { get; set; }
+    public string? ExpiryDate { get; set; }
+    public string? ManufacturedDate { get; set; }
+}
+
+public class WriteOffBatchDto
+{
+    /// <summary>Base units to write off; 0 or missing = the whole batch.</summary>
+    public int Quantity { get; set; }
+    public string Reason { get; set; } = "Expired write-off";
+    public string? Notes { get; set; }
 }

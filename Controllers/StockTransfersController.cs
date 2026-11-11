@@ -29,6 +29,25 @@ public class StockTransfersController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> Get(int id)
+    {
+        var t = await _service.GetAsync(id);
+        return t == null ? NotFound() : Ok(t);
+    }
+
+    /// <summary>Stock leaves the sender and shows as in transit.</summary>
+    [HttpPost("{id:int}/dispatch")]
+    public async Task<IActionResult> Dispatch(int id) => Ok(await _service.DispatchAsync(id));
+
+    /// <summary>The receiver confirms what arrived; short quantities are recorded.</summary>
+    [HttpPost("{id:int}/receive")]
+    public async Task<IActionResult> Receive(int id, [FromBody] ReceiveStockTransferDto? dto) => Ok(await _service.ReceiveAsync(id, dto));
+
+    /// <summary>Cancels a draft, or an in-transit transfer (stock goes back to the sender).</summary>
+    [HttpPost("{id:int}/cancel")]
+    public async Task<IActionResult> Cancel(int id) => Ok(await _service.CancelAsync(id));
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
