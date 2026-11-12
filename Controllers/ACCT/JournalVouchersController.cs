@@ -23,9 +23,9 @@ public class JournalVouchersController : ControllerBase
     private readonly AppDbContext _db;
     public JournalVouchersController(AppDbContext db) => _db = db;
 
-    public record LineDto(int AccountId, decimal Debit, decimal Credit, int? PartyId, string? PartyName, string? Note);
-    public record SaveDto(DateTime? Date, string? Description, List<LineDto>? Lines);
-    public record ReverseDto(DateTime? Date, string? Description);
+    public record VoucherLineDto(int AccountId, decimal Debit, decimal Credit, int? PartyId, string? PartyName, string? Note);
+    public record VoucherSaveDto(DateTime? Date, string? Description, List<VoucherLineDto>? Lines);
+    public record VoucherReverseDto(DateTime? Date, string? Description);
 
     /// <summary>The party a line on this account must name (null = none)</summary>
     public static string? PartyFor(string? systemKey) => systemKey switch
@@ -72,7 +72,7 @@ public class JournalVouchersController : ControllerBase
 
     // ── write ────────────────────────────────────────────────────────────────────────────────────────────────
     [HttpPost]
-    public async Task<IActionResult> Create(SaveDto dto, CancellationToken ct)
+    public async Task<IActionResult> Create(VoucherSaveDto dto, CancellationToken ct)
     {
         var (lines, error) = await CheckAsync(dto, ct);
         if (error != null) return BadRequest(new { message = error });
@@ -87,7 +87,7 @@ public class JournalVouchersController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, SaveDto dto, CancellationToken ct)
+    public async Task<IActionResult> Update(int id, VoucherSaveDto dto, CancellationToken ct)
     {
         var v = await _db.JournalVouchers.Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (v == null) return NotFound(new { message = "This voucher no longer exists." });
@@ -119,7 +119,7 @@ public class JournalVouchersController : ControllerBase
 
     /// <summary>A new voucher with the same lines, debit and credit swapped (undoes the voucher from its date on)</summary>
     [HttpPost("{id:int}/reverse")]
-    public async Task<IActionResult> Reverse(int id, ReverseDto dto, CancellationToken ct)
+    public async Task<IActionResult> Reverse(int id, VoucherReverseDto dto, CancellationToken ct)
     {
         var v = await _db.JournalVouchers.AsNoTracking().Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (v == null) return NotFound(new { message = "This voucher no longer exists." });
@@ -145,7 +145,7 @@ public class JournalVouchersController : ControllerBase
     }
 
     // ── rules ────────────────────────────────────────────────────────────────────────────────────────────────
-    private async Task<(List<JournalVoucherLine>? Lines, string? Error)> CheckAsync(SaveDto dto, CancellationToken ct)
+    private async Task<(List<JournalVoucherLine>? Lines, string? Error)> CheckAsync(VoucherSaveDto dto, CancellationToken ct)
     {
         if (dto.Date == null) return (null, "Choose the voucher date.");
         if (string.IsNullOrWhiteSpace(dto.Description)) return (null, "Enter a description (why this entry is made).");
@@ -198,7 +198,7 @@ public class JournalVouchersController : ControllerBase
         return (lines, null);
     }
 
-    private async Task<Dictionary<int, string>> PartyNamesAsync(List<LineDto> input, Dictionary<int, LedgerAccount> accounts, string type, CancellationToken ct)
+    private async Task<Dictionary<int, string>> PartyNamesAsync(List<VoucherLineDto> input, Dictionary<int, LedgerAccount> accounts, string type, CancellationToken ct)
     {
         var ids = input.Where(l => l.PartyId != null && accounts.TryGetValue(l.AccountId, out var a) && PartyFor(a.SystemKey) == type)
             .Select(l => l.PartyId!.Value).Distinct().ToList();

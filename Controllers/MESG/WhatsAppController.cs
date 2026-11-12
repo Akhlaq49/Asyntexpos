@@ -141,7 +141,7 @@ public class WhatsAppController : ControllerBase
     /// Files are stored in wwwroot/shares/ and auto-cleaned after 24 hours.
     /// </summary>
     [HttpPost("upload-pdf")]
-    public async Task<IActionResult> UploadPdf([FromForm] IFormFile file)
+    public async Task<IActionResult> UploadPdf(IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "No file provided." });

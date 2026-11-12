@@ -321,6 +321,29 @@ public class LedgerPostingTests
     }
 
     [Fact]
+    public void A_later_sale_of_one_product_keeps_the_cost_of_the_other_products_on_earlier_sales()
+    {
+        // live, 12 Nov: SL001 sold a switch and a remote; SL002 then sold one switch. Re-costing the switch re-posted
+        // SL001, and the remote's cost (not reloaded) became 0
+        using var t = new TestDb();
+        var a = Product(t.Db, "Switch");
+        var b = Product(t.Db, "Remote");
+        Purchase(t.Db, a, 10, 500, Day.AddDays(-5));
+        Purchase(t.Db, b, 10, 5000, Day.AddDays(-5));
+        var s = new Sale { Reference = "SL001", CustomerName = "Ali", SaleDate = Day, Status = "Completed", GrandTotal = 22000,
+            Items = new() {
+                new SaleItem { ProductId = a, ProductName = "Switch", Quantity = 2, PurchasePrice = 1000, UnitCost = 1000, TotalCost = 2000 },
+                new SaleItem { ProductId = b, ProductName = "Remote", Quantity = 4, PurchasePrice = 5000, UnitCost = 5000, TotalCost = 20000 } } };
+        t.Db.Sales.Add(s); t.Db.SaveChanges();
+        Assert.Equal(21000, Entry(t.Fresh(), VoucherType.Sale, s.Id)[C.Cogs]);      // 2 x 500 + 4 x 5,000
+
+        Sale(t.Fresh(), a, 1, 1000, Day.AddMinutes(2));                               // SL002: the switch only
+        Assert.Equal(21000, Entry(t.Fresh(), VoucherType.Sale, s.Id)[C.Cogs]);
+        Assert.Equal(21500, Balance(t.Fresh(), C.Cogs));                              // + SL002's switch, 500
+        AssertAllBalanced(t.Fresh());
+    }
+
+    [Fact]
     public void Entries_belong_to_their_company_only()
     {
         using var t = new TestDb();

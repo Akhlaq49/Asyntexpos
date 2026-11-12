@@ -7,8 +7,8 @@ using ReactPosApi.Services;
 using Xunit;
 using static ReactPosApi.UnitTests.ACCT.Seed;
 using C = ReactPosApi.Services.LedgerChart;
-using Line = ReactPosApi.Controllers.JournalVouchersController.LineDto;
-using Save = ReactPosApi.Controllers.JournalVouchersController.SaveDto;
+using Line = ReactPosApi.Controllers.JournalVouchersController.VoucherLineDto;
+using Save = ReactPosApi.Controllers.JournalVouchersController.VoucherSaveDto;
 
 namespace ReactPosApi.UnitTests.ACCT;
 

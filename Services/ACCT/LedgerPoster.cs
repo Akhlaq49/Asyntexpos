@@ -43,7 +43,7 @@ public class LedgerTouches
 public class LedgerPoster
 {
     /// <summary>Change this when the rules change: every company's ledger is then rebuilt on its next report</summary>
-    public const int RulesVersion = 2;     // 2: the company's own account codes (LedgerChart)
+    public const int RulesVersion = 3;     // 2: the company's own account codes (LedgerChart); 3: re-posted sales keep every product's cost
 
     private readonly AppDbContext _db;
     private readonly int _tenant;
@@ -152,11 +152,17 @@ public class LedgerPoster
             if (list.Count > 0) dates.AddRange(await _db.JournalEntries.Where(j => j.VoucherType == type && list.Contains(j.VoucherId)).Select(j => j.Date).ToListAsync(ct));
         }
         var from = dates.Count > 0 ? dates.Min().Date : DateTime.MinValue;
-        _cost = await StockCost.LoadAsync(_db, _tenant, products, ct);
         foreach (var id in await _db.Sales.Where(s => s.SaleDate >= from && s.Items.Any(i => products.Contains(i.ProductId))).Select(s => s.Id).ToListAsync(ct))
             vouchers.Add((VoucherType.Sale, id));
         foreach (var id in await _db.SalesReturns.Where(r => r.ReturnDate >= from && r.Items.Any(i => i.ProductId != null && products.Contains(i.ProductId.Value))).Select(r => r.Id).ToListAsync(ct))
             vouchers.Add((VoucherType.SalesReturn, id));
+        // a sale posted again is posted whole: the cost of every product on it is needed, not only of the products that
+        // changed (else its other lines would get no cost). Each product's average is worked out on its own.
+        sales = ids(VoucherType.Sale); sret = ids(VoucherType.SalesReturn);
+        products.UnionWith(await _db.SaleItems.IgnoreQueryFilters().Where(i => i.TenantId == _tenant && sales.Contains(i.SaleId)).Select(i => i.ProductId).ToListAsync(ct));
+        products.UnionWith(await _db.SalesReturnItems.IgnoreQueryFilters().Where(i => i.TenantId == _tenant && sret.Contains(i.SalesReturnId) && i.ProductId != null).Select(i => i.ProductId!.Value).ToListAsync(ct));
+        products.Remove(0);
+        _cost = await StockCost.LoadAsync(_db, _tenant, products, ct);
     }
 
     private async Task<AccountingSettings> SettingsAsync(CancellationToken ct)

@@ -11,7 +11,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Schema names: a type nested in a controller is named after it (CatalogControllerProductDto), so two controllers
+// can each have their own ProductDto / LineDto without stopping Swagger
+static string SwaggerSchemaId(Type t)
+{
+    var name = t.IsGenericType ? t.Name.Split('`')[0] + string.Concat(t.GetGenericArguments().Select(SwaggerSchemaId)) : t.Name;
+    return t.DeclaringType != null && !t.IsGenericParameter ? SwaggerSchemaId(t.DeclaringType) + name : name;
+}
+builder.Services.AddSwaggerGen(c => c.CustomSchemaIds(SwaggerSchemaId));
 builder.Services.AddMemoryCache();
 
 // Register application services
