@@ -77,8 +77,10 @@ CREATE TABLE IF NOT EXISTS `ACCT_STNG` (
   `NeedsRebuild` tinyint(1) NOT NULL DEFAULT 1,
   `RebuiltAt` datetime(6) NULL,
   `LastError` varchar(500) NULL,
+  `FiscalYearStartMonth` int NOT NULL DEFAULT 1,
   PRIMARY KEY (`TenantId`)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CALL SYST_PROC_ADCL('ACCT_STNG', 'FiscalYearStartMonth', '`FiscalYearStartMonth` int NOT NULL DEFAULT 1');
 
 CREATE TABLE IF NOT EXISTS `ACCT_JVHD` (
   `Id` int NOT NULL AUTO_INCREMENT,

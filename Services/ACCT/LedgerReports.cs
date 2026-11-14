@@ -62,6 +62,135 @@ public class LedgerReports
         };
     }
 
+    // ── year-based reports (accumulated balances, comparison, GL balances by month) ─────────────────────────────
+    // Balance sheet accounts carry their balance from year to year. Income and expense accounts start each financial year
+    // at zero: what they held before is shown on one line, "Profit of earlier years" (equity), so the totals still balance.
+    // Amounts are signed: + debit, - credit.
+
+    public const string EarlierProfitName = "Profit of earlier years (carried forward)";
+
+    public async Task<int> FiscalYearStartMonthAsync(CancellationToken ct) =>
+        (await _db.AccountingSettings.AsNoTracking().Select(s => (int?)s.FiscalYearStartMonth).FirstOrDefaultAsync(ct)) is int m and >= 1 and <= 12 ? m : 1;
+
+    /// <summary>First day of the financial year that contains <paramref name="date"/></summary>
+    public static DateTime FiscalYearStart(DateTime date, int startMonth)
+    {
+        var start = new DateTime(date.Year, startMonth, 1);
+        return date.Date >= start ? start : start.AddYears(-1);
+    }
+
+    private static decimal Sum(IEnumerable<Line> lines) => lines.Sum(l => l.Debit - l.Credit);
+
+    /// <summary>
+    /// Each account from the start of the financial year that contains "from": balance carried forward into the year,
+    /// balance of the earlier periods of the year (year start to "from"), their total, the debits and credits from "from"
+    /// to "to", the debits and credits of the whole year up to "to", and the accumulated balance at "to".
+    /// </summary>
+    public async Task<object> AccountBalancesAsync(DateTime from, DateTime to, CancellationToken ct)
+    {
+        from = from.Date;
+        var year = FiscalYearStart(from, await FiscalYearStartMonthAsync(ct));
+        var accounts = await AccountsAsync(ct);
+        var byAccount = (await LinesAsync(null, End(to), ct)).GroupBy(l => l.AccountId).ToDictionary(g => g.Key, g => g.ToList());
+        var rows = new List<object>();
+        decimal earlierProfit = 0;
+        foreach (var a in accounts.Where(a => !a.IsGroup))
+        {
+            var mine = byAccount.GetValueOrDefault(a.Id) ?? new List<Line>();
+            var before = Sum(mine.Where(l => l.Date < year));
+            var pl = LedgerRootType.IsProfitAndLoss(a.RootType);
+            if (pl) earlierProfit += before;
+            var carry = pl ? 0 : before;
+            var previous = Sum(mine.Where(l => l.Date >= year && l.Date < from));
+            var period = mine.Where(l => l.Date >= from).ToList();
+            var yearLines = mine.Where(l => l.Date >= year).ToList();
+            decimal debit = period.Sum(l => l.Debit), credit = period.Sum(l => l.Credit);
+            decimal cumDebit = yearLines.Sum(l => l.Debit), cumCredit = yearLines.Sum(l => l.Credit);
+            if (carry == 0 && previous == 0 && cumDebit == 0 && cumCredit == 0) continue;
+            rows.Add(new { a.Id, a.Code, a.Name, a.RootType, carryforward = carry, previousPeriods = previous, accumulatedPrevious = carry + previous,
+                debit, credit, cumulativeDebit = cumDebit, cumulativeCredit = cumCredit, accumulated = carry + cumDebit - cumCredit });
+        }
+        if (earlierProfit != 0)
+            rows.Add(new { Id = 0, Code = "", Name = EarlierProfitName, RootType = LedgerRootType.Equity, carryforward = earlierProfit, previousPeriods = 0m,
+                accumulatedPrevious = earlierProfit, debit = 0m, credit = 0m, cumulativeDebit = 0m, cumulativeCredit = 0m, accumulated = earlierProfit });
+        return new { from, to, fiscalYearStart = year, rows };
+    }
+
+    /// <summary>
+    /// The reporting period next to a comparison period: balance sheet accounts at the end of each period, income and
+    /// expense accounts for the period itself; the difference (reporting - comparison) and the change in percent.
+    /// </summary>
+    public async Task<object> ComparisonAsync(DateTime from, DateTime to, DateTime cmpFrom, DateTime cmpTo, CancellationToken ct)
+    {
+        var accounts = await AccountsAsync(ct);
+        var lines = await LinesAsync(null, End(to > cmpTo ? to : cmpTo), ct);
+        var byAccount = lines.GroupBy(l => l.AccountId).ToDictionary(g => g.Key, g => g.ToList());
+        // one period: balance sheet accounts up to its end, income / expense within it, earlier income / expense on one line
+        (Dictionary<int, decimal> Amounts, decimal Earlier) Period(DateTime f, DateTime t)
+        {
+            var end = End(t)!.Value;
+            var amounts = new Dictionary<int, decimal>();
+            decimal earlier = 0;
+            foreach (var a in accounts.Where(a => !a.IsGroup))
+            {
+                var mine = (byAccount.GetValueOrDefault(a.Id) ?? new List<Line>()).Where(l => l.Date < end).ToList();
+                if (LedgerRootType.IsProfitAndLoss(a.RootType))
+                {
+                    earlier += Sum(mine.Where(l => l.Date < f.Date));
+                    amounts[a.Id] = Sum(mine.Where(l => l.Date >= f.Date));
+                }
+                else amounts[a.Id] = Sum(mine);
+            }
+            return (amounts, earlier);
+        }
+        var current = Period(from, to);
+        var comparison = Period(cmpFrom, cmpTo);
+        static object Row(int id, string code, string name, string root, decimal cur, decimal cmp) => new
+        {
+            Id = id, Code = code, Name = name, RootType = root, current = cur, comparison = cmp, difference = cur - cmp,
+            percent = cmp == 0 ? (decimal?)null : Math.Round((cur - cmp) / Math.Abs(cmp) * 100, 1),
+        };
+        var rows = accounts.Where(a => !a.IsGroup)
+            .Select(a => (a, cur: current.Amounts[a.Id], cmp: comparison.Amounts[a.Id]))
+            .Where(x => x.cur != 0 || x.cmp != 0)
+            .Select(x => Row(x.a.Id, x.a.Code, x.a.Name, x.a.RootType, x.cur, x.cmp)).ToList();
+        if (current.Earlier != 0 || comparison.Earlier != 0)
+            rows.Add(Row(0, "", "Profit of earlier periods", LedgerRootType.Equity, current.Earlier, comparison.Earlier));
+        return new { from, to, cmpFrom, cmpTo, rows };
+    }
+
+    /// <summary>
+    /// Selected accounts by month for one financial year: balance carried forward, then each month's debits, credits,
+    /// balance (debits - credits) and cumulative balance. Several accounts are added together.
+    /// </summary>
+    public async Task<object> GlBalancesAsync(IReadOnlyCollection<int> accountIds, int fiscalYear, CancellationToken ct)
+    {
+        var startMonth = await FiscalYearStartMonthAsync(ct);
+        var start = new DateTime(fiscalYear, startMonth, 1);
+        var end = start.AddYears(1);
+        var accounts = (await AccountsAsync(ct)).Where(a => !a.IsGroup && accountIds.Contains(a.Id)).ToList();
+        var ids = accounts.Select(a => a.Id).ToHashSet();
+        var pl = accounts.Where(a => LedgerRootType.IsProfitAndLoss(a.RootType)).Select(a => a.Id).ToHashSet();
+        var lines = (await LinesAsync(null, end, ct)).Where(l => ids.Contains(l.AccountId)).ToList();
+        var carry = Sum(lines.Where(l => l.Date < start && !pl.Contains(l.AccountId)));
+        var running = carry;
+        var periods = Enumerable.Range(0, 12).Select(i =>
+        {
+            var f = start.AddMonths(i); var t = f.AddMonths(1);
+            var mine = lines.Where(l => l.Date >= f && l.Date < t).ToList();
+            decimal debit = mine.Sum(l => l.Debit), credit = mine.Sum(l => l.Credit);
+            running += debit - credit;
+            return new { period = i + 1, from = f, to = t.AddDays(-1), debit, credit, balance = debit - credit, cumulative = running };
+        }).ToList();
+        return new
+        {
+            fiscalYear, fiscalYearStart = start, fiscalYearEnd = end.AddDays(-1),
+            accounts = accounts.Select(a => new { a.Id, a.Code, a.Name, a.RootType }),
+            carryforward = carry, periods,
+            totals = new { debit = periods.Sum(p => p.debit), credit = periods.Sum(p => p.credit), balance = periods.Sum(p => p.balance), closing = running },
+        };
+    }
+
     // ── profit and loss ──────────────────────────────────────────────────────────────────────────────────────
     /// <summary>accrual: income when sold, cost when sold. cash: a sale's income, tax and cost count as it is paid
     /// (each payment's share of the sale total); everything else (expenses, returns ...) on its date.</summary>
@@ -225,7 +354,7 @@ public class LedgerReports
         var settings = await _db.AccountingSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var unbalanced = await _db.JournalEntries.AsNoTracking().Where(e => e.Lines.Sum(l => l.Debit) != e.Lines.Sum(l => l.Credit))
             .Select(e => new { e.Id, e.VoucherType, e.VoucherId, e.Reference }).Take(50).ToListAsync(ct);
-        return new { settings?.LockDate, settings?.RebuiltAt, settings?.LastError, settings?.NeedsRebuild, rulesVersion = settings?.RulesVersion,
+        return new { settings?.LockDate, fiscalYearStartMonth = settings?.FiscalYearStartMonth ?? 1, settings?.RebuiltAt, settings?.LastError, settings?.NeedsRebuild, rulesVersion = settings?.RulesVersion,
             entries = await _db.JournalEntries.CountAsync(ct), unbalanced, stockMismatches = await StockMismatchesAsync(ct) };
     }
 

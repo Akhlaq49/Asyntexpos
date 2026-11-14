@@ -61,6 +61,9 @@ public class AccountingSettings : ITenantEntity
     public int TenantId { get; set; }
     /// <summary>Entries on or before this date can't change (documents dated then can't be added, edited or deleted)</summary>
     public DateTime? LockDate { get; set; }
+    /// <summary>First month of the financial year (1 = January, 7 = July). Income and expense accounts start each year at
+    /// zero in the year-based reports; their earlier total is carried forward as profit of earlier years.</summary>
+    public int FiscalYearStartMonth { get; set; } = 1;
     /// <summary>The posting rules the ledger was built with; a different value = rebuilt on the next report</summary>
     public int RulesVersion { get; set; }
     public bool NeedsRebuild { get; set; } = true;

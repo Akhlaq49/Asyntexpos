@@ -111,6 +111,39 @@ public class AccountingController : ControllerBase
         return Ok(await _reports.TrialBalanceAsync(from, to, ct));
     }
 
+    /// <summary>Accumulated balances: carried forward into the financial year, earlier periods, this period, year to date</summary>
+    [HttpGet("account-balances")]
+    public async Task<IActionResult> AccountBalances([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+    {
+        await _reports.EnsureFreshAsync(ct);
+        var end = (to ?? DateTime.UtcNow).Date;
+        var start = (from ?? LedgerReports.FiscalYearStart(end, await _reports.FiscalYearStartMonthAsync(ct))).Date;
+        if (start > end) return BadRequest(new { message = "The start date is after the end date." });
+        return Ok(await _reports.AccountBalancesAsync(start, end, ct));
+    }
+
+    /// <summary>Trial balance of a reporting period next to a comparison period, with the difference</summary>
+    [HttpGet("comparison")]
+    public async Task<IActionResult> Comparison([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] DateTime cmpFrom, [FromQuery] DateTime cmpTo, CancellationToken ct)
+    {
+        if (from > to || cmpFrom > cmpTo) return BadRequest(new { message = "A start date is after its end date." });
+        await _reports.EnsureFreshAsync(ct);
+        return Ok(await _reports.ComparisonAsync(from.Date, to.Date, cmpFrom.Date, cmpTo.Date, ct));
+    }
+
+    /// <summary>Balance display: one or more accounts (accounts=1,2,3) by month for a financial year</summary>
+    [HttpGet("gl-balances")]
+    public async Task<IActionResult> GlBalances([FromQuery] string? accounts, [FromQuery] int? year, CancellationToken ct)
+    {
+        var ids = (accounts ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => int.TryParse(s, out var n) ? n : 0).Where(n => n > 0).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { message = "Choose at least one account." });
+        await _reports.EnsureFreshAsync(ct);
+        var fy = year ?? LedgerReports.FiscalYearStart(DateTime.UtcNow, await _reports.FiscalYearStartMonthAsync(ct)).Year;
+        if (fy < 2000 || fy > 2100) return BadRequest(new { message = "Choose a financial year." });
+        return Ok(await _reports.GlBalancesAsync(ids, fy, ct));
+    }
+
     [HttpGet("profit-and-loss")]
     public async Task<IActionResult> ProfitAndLoss([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string basis = "accrual", CancellationToken ct = default)
     {
@@ -141,15 +174,18 @@ public class AccountingController : ControllerBase
         return Ok(await _reports.CheckAsync(ct));
     }
 
-    public record SettingsDto(DateTime? LockDate);
+    /// <summary>FiscalYearStartMonth null = unchanged (older screens send only the lock date)</summary>
+    public record SettingsDto(DateTime? LockDate, int? FiscalYearStartMonth = null);
 
-    /// <summary>Lock date: entries on or before it can't change (null = nothing locked)</summary>
+    /// <summary>Lock date: entries on or before it can't change (null = nothing locked); first month of the financial year</summary>
     [HttpPut("settings")]
     public async Task<IActionResult> SaveSettings(SettingsDto dto, CancellationToken ct)
     {
+        if (dto.FiscalYearStartMonth is < 1 or > 12) return BadRequest(new { message = "Choose the month the financial year starts in." });
         await _reports.EnsureFreshAsync(ct);
         var s = await _db.AccountingSettings.FirstAsync(ct);
         s.LockDate = dto.LockDate?.Date;
+        if (dto.FiscalYearStartMonth != null) s.FiscalYearStartMonth = dto.FiscalYearStartMonth.Value;
         await _db.SaveChangesAsync(ct);
         return Ok(await _reports.CheckAsync(ct));
     }
