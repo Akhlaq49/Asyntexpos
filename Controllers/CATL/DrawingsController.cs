@@ -8,7 +8,7 @@ namespace ReactPosApi.Controllers;
 /// <summary>
 /// Drawing to Solution: upload an electrical drawing (DXF / vector PDF), review what was read, then get the
 /// suggested Standard or Premium solution from the company's Solution Packages data.
-/// The drawing is read by the Drawing2Quote service (Python); see Services/DrawingService.cs.
+/// The drawing is read by the Drawing2Quote service (.NET or Python, DrawingService:Reader); see Services/DrawingService.cs.
 /// </summary>
 [Authorize]
 [ApiController]
@@ -23,7 +23,7 @@ public class DrawingsController : ControllerBase
     public record OtherBrandDto(string? Company, List<string>? Areas);
 
     [HttpGet("status")]
-    public async Task<IActionResult> Status(CancellationToken ct) => Ok(new { running = await _service.IsRunningAsync(ct) });
+    public async Task<IActionResult> Status(CancellationToken ct) => Ok(new { running = await _service.IsRunningAsync(ct), reader = _service.Reader });
 
     [HttpPost("extract")]
     [RequestSizeLimit(DrawingService.MaxBytes + 1024 * 1024)]

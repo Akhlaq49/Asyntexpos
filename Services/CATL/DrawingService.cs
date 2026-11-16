@@ -8,7 +8,7 @@ using ReactPosApi.Data;
 
 namespace ReactPosApi.Services;
 
-/// <summary>The drawing reader (Python "Drawing2Quote" service) could not do it - Message is shown to the user</summary>
+/// <summary>The drawing reader (the Drawing2Quote service) could not do it - Message is shown to the user</summary>
 public class DrawingServiceException : Exception
 {
     public int StatusCode { get; }
@@ -16,12 +16,17 @@ public class DrawingServiceException : Exception
 }
 
 /// <summary>
-/// Hybrid drawing -> solution: the Python service reads the drawing and works out the solution; this side
+/// Hybrid drawing -> solution: the Drawing2Quote service (.NET or Python) reads the drawing and works out the solution; this side
 /// checks the user, validates the upload and gives the service the company's solution data from the database
 /// (sizes, package items and quantities, the Standard / Premium rule, the linked inventory products).
 /// The service estimates products and quantities only; the prices are then joined here from the Products table
 /// (each line's linked inventory product): unitPrice and lineTotal per line, the amount in totals.
-/// Settings: DrawingService:Url (default http://127.0.0.1:8765) and DrawingService:Key (sent as X-Service-Key).
+/// Settings (appsettings.{Development|Production}.json, "DrawingService"):
+///   Reader            which reader reads the drawings: "dotnet" (Drawing2Quote .NET, branch DotNet/change) or
+///                     "python" (Drawing2Quote Python, branch main) - both answer the same API
+///   Readers:{name}    Url and Key (sent as X-Service-Key) of each reader: local ports in Development, the deployed
+///                     readers (drawingreader / abc .asyntexconsultancy.com) in Production
+///   Url / Key         (optional) send every request here instead, whatever Reader says
 /// </summary>
 public class DrawingService
 {
@@ -37,14 +42,32 @@ public class DrawingService
     private readonly string? _key;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>the reader the requests go to: "dotnet" or "python"</summary>
+    public string Reader { get; }
+
+    /// <summary>(reader, url, key) from the DrawingService settings of this environment</summary>
+    public static (string Reader, string Url, string? Key) ResolveReader(IConfiguration config)
+    {
+        var section = config.GetSection("DrawingService");
+        var reader = (section["Reader"] ?? "python").Trim().ToLowerInvariant();
+        var chosen = section.GetSection($"Readers:{reader}");
+        var url = section["Url"] ?? chosen["Url"];
+        if (string.IsNullOrWhiteSpace(url))
+            throw new InvalidOperationException($"DrawingService: no Url for the reader \"{reader}\" - set DrawingService:Readers:{reader}:Url " +
+                                                "in appsettings.Development.json / appsettings.Production.json (Reader is \"dotnet\" or \"python\").");
+        return (reader, url.TrimEnd('/'), section["Key"] ?? chosen["Key"]);
+    }
+
     public DrawingService(HttpClient http, AppDbContext db, CatalogService catalog, IConfiguration config)
     {
         _http = http;
         _db = db;
         _catalog = catalog;
-        _http.BaseAddress = new Uri((config["DrawingService:Url"] ?? "http://127.0.0.1:8765").TrimEnd('/') + "/");
+        var (reader, url, key) = ResolveReader(config);
+        Reader = reader;
+        _http.BaseAddress = new Uri(url + "/");
         _http.Timeout = TimeSpan.FromMinutes(3);
-        _key = config["DrawingService:Key"];
+        _key = key;
     }
 
     private HttpRequestMessage Request(HttpMethod method, string path, HttpContent? content = null)

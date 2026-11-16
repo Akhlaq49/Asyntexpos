@@ -57,7 +57,9 @@ builder.Services.AddHttpClient<IWhatsAppService, WhatsAppService>();
 builder.Services.AddScoped<IAgentToolExecutor, AgentToolExecutor>();
 builder.Services.AddHttpClient<IAgentService, AgentService>();
 
-// Drawing to Solution: the Python Drawing2Quote service reads drawings (DrawingService:Url)
+// Drawing to Solution: the Drawing2Quote service reads drawings - the .NET or the Python reader, as
+// DrawingService:Reader says, at its Url for this environment (appsettings.Development / Production.json)
+var drawingReader = DrawingService.ResolveReader(builder.Configuration);      // (wrong settings stop the start, with the reason)
 builder.Services.AddHttpClient<DrawingService>();
 
 // EF Core - MySQL (Pomelo)
@@ -124,6 +126,8 @@ if (!builder.Configuration.GetSection("ASPNETCORE_URLS").Exists() &&
 }
 
 var app = builder.Build();
+app.Logger.LogWarning("Drawing to Solution: drawings are read by the {Reader} reader at {Url} ({Environment})",
+                      drawingReader.Reader, drawingReader.Url, app.Environment.EnvironmentName);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

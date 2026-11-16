@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\ReactPosApi.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="CATL\data\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
