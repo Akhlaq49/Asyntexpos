@@ -96,6 +96,14 @@ public class AccountingController : ControllerBase
         return Ok(await _reports.JournalAsync(from, to, voucherType, search, page, pageSize, ct));
     }
 
+    /// <summary>One voucher (journal entry) with all its debit and credit lines</summary>
+    [HttpGet("journal/{entryId:int}")]
+    public async Task<IActionResult> Entry(int entryId, CancellationToken ct)
+    {
+        await _reports.EnsureFreshAsync(ct);
+        return await _reports.EntryAsync(entryId, ct) is { } entry ? Ok(entry) : NotFound(new { message = "This entry no longer exists (its document was changed or deleted)." });
+    }
+
     [HttpGet("ledger/{accountId:int}")]
     public async Task<IActionResult> Ledger(int accountId, [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? party, CancellationToken ct)
     {

@@ -169,4 +169,32 @@ public class LedgerReportsTests
         var m = mismatches.EnumerateArray().Single();
         Assert.Equal(1, m.GetProperty("difference").GetDecimal());
     }
+
+    /// <summary>GL Balances drill-down: an account's postings in a month, then one posting's whole voucher</summary>
+    [Fact]
+    public async Task A_posting_opens_its_whole_voucher()
+    {
+        var (t, sale) = Books();
+        using (t)
+        {
+            var db = t.Fresh();
+            var reports = new LedgerReports(db);
+            var receivable = db.LedgerAccounts.Single(a => a.Code == "153001").Id;
+            var march = new DateTime(2026, 3, 1);
+            var ledger = Json(await reports.AccountLedgerAsync(receivable, march, new DateTime(2026, 3, 31), null, default));
+            var rows = ledger.GetProperty("rows").EnumerateArray().ToList();
+            Assert.Equal(2, rows.Count);        // the sale (1050 owed) and the payment (500)
+            var salePosting = rows.Single(r => r.GetProperty("voucherType").GetString() == VoucherType.Sale);
+            Assert.Equal(1050, salePosting.GetProperty("debit").GetDecimal());
+
+            var voucher = Json((await reports.EntryAsync(salePosting.GetProperty("entryId").GetInt32(), default))!);
+            Assert.Equal(sale.Id, voucher.GetProperty("voucherId").GetInt32());
+            var lines = voucher.GetProperty("lines").EnumerateArray().ToList();
+            Assert.Contains(lines, l => l.GetProperty("code").GetString() == "153001" && l.GetProperty("debit").GetDecimal() == 1050);
+            Assert.Contains(lines, l => l.GetProperty("code").GetString() == "511001");      // the sale income
+            Assert.Equal(lines.Sum(l => l.GetProperty("debit").GetDecimal()), lines.Sum(l => l.GetProperty("credit").GetDecimal()));
+
+            Assert.Null(await reports.EntryAsync(999999, default));      // a voucher that no longer exists
+        }
+    }
 }

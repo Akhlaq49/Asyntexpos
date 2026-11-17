@@ -207,21 +207,7 @@ public class LedgerReports
         }
         else
         {
-            var all = (await LinesAsync(null, End(to), ct)).Where(l => plIds.Contains(l.AccountId)).ToList();
-            foreach (var l in all.Where(l => l.VoucherType != VoucherType.Sale && l.Date >= from.Date)) Add(l.AccountId, l.Debit - l.Credit);
-            var saleIds = all.Where(l => l.VoucherType == VoucherType.Sale).Select(l => l.VoucherId).Distinct().ToList();
-            var totals = await _db.Sales.AsNoTracking().Where(s => saleIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.GrandTotal, ct);
-            var payments = (await _db.SalePayments.AsNoTracking().Where(p => saleIds.Contains(p.SaleId) && p.PaymentDate < End(to)).Select(p => new { p.SaleId, p.PayingAmount, p.PaymentDate }).ToListAsync(ct))
-                .ToLookup(p => p.SaleId);
-            foreach (var sale in all.Where(l => l.VoucherType == VoucherType.Sale).GroupBy(l => l.VoucherId))
-            {
-                var total = totals.GetValueOrDefault(sale.Key);
-                if (total <= 0) continue;
-                var before = payments[sale.Key].Where(p => p.PaymentDate < from.Date).Sum(p => p.PayingAmount);
-                var upTo = payments[sale.Key].Sum(p => p.PayingAmount);
-                var share = Math.Clamp(upTo / total, 0, 1) - Math.Clamp(before / total, 0, 1);
-                if (share != 0) foreach (var l in sale) Add(l.AccountId, (l.Debit - l.Credit) * share);
-            }
+            foreach (var (account, value) in await CashBasisAsync(from.Date, End(to)!.Value, accounts.Values, plIds, ct)) Add(account, value);
         }
         object Rows(string root) => amounts.Where(x => accounts[x.Key].RootType == root && Math.Round(x.Value, 2) != 0)
             .Select(x => new { accountId = x.Key, accounts[x.Key].Code, accounts[x.Key].Name, accounts[x.Key].SystemKey, amount = Math.Round(Natural(root, x.Value), 2) })
@@ -233,6 +219,100 @@ public class LedgerReports
         var grossProfit = -Key(LedgerChart.Sales) - Key(LedgerChart.ShippingIncome) - Key(LedgerChart.InstallationIncome) - Key(LedgerChart.SalesReturns) - Key(LedgerChart.Cogs);
         return new { from, to, basis = cash ? "cash" : "accrual", income = Rows(LedgerRootType.Income), expenses = Rows(LedgerRootType.Expense),
             totalIncome = income, totalExpenses = expense, grossProfit, netProfit = income - expense };
+    }
+
+    /// <summary>
+    /// Cash basis: income and expenses count when the money moves, in proportion to what has been paid.
+    ///   Sale: as the customer pays it (its payments' share of the sale total).
+    ///   Purchase: as the supplier is paid for it (shipping, discount and items not kept in stock), return credits not counted.
+    ///   Any other entry: the part paid in cash / bank counts on its date; the part left on Receivables / Payables /
+    ///   supplier returns counts when that customer's / supplier's account is paid by a later voucher, oldest first.
+    ///   An entry with neither (depreciation, stock brought in by the owner) counts on its date.
+    /// Returns account -> (debit - credit) for the period [from, toExclusive).
+    /// </summary>
+    private async Task<Dictionary<int, decimal>> CashBasisAsync(DateTime from, DateTime toExclusive, IEnumerable<AccountRow> accounts, HashSet<int> plIds, CancellationToken ct)
+    {
+        var keyOf = accounts.Where(a => a.SystemKey != null).ToDictionary(a => a.Id, a => a.SystemKey!);
+        bool IsMoney(int id) => keyOf.TryGetValue(id, out var k) && k is LedgerChart.Cash or LedgerChart.Bank;
+        bool IsOnAccount(int id) => keyOf.TryGetValue(id, out var k) && k is LedgerChart.Receivable or LedgerChart.Payable or LedgerChart.SupplierReturns;
+        var amounts = new Dictionary<int, decimal>();
+        var entries = (await LinesAsync(null, toExclusive, ct)).GroupBy(l => l.EntryId).Select(g => g.ToList()).OrderBy(g => g[0].Date).ThenBy(g => g[0].EntryId).ToList();
+
+        // the share of an entry that counts in the period, given what was paid before the period and up to its end
+        void Count(List<Line> entry, decimal shareBefore, decimal shareUpTo)
+        {
+            var share = Math.Clamp(shareUpTo, 0, 1) - Math.Clamp(shareBefore, 0, 1);
+            if (share == 0) return;
+            foreach (var l in entry.Where(l => plIds.Contains(l.AccountId))) amounts[l.AccountId] = amounts.GetValueOrDefault(l.AccountId) + (l.Debit - l.Credit) * share;
+        }
+
+        // sales and purchases: by the payments recorded against them
+        var saleIds = entries.Where(e => e[0].VoucherType == VoucherType.Sale).Select(e => e[0].VoucherId).ToList();
+        var saleTotals = await _db.Sales.AsNoTracking().Where(s => saleIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.GrandTotal, ct);
+        var salePaid = (await _db.SalePayments.AsNoTracking().Where(p => saleIds.Contains(p.SaleId) && p.PaymentDate < toExclusive)
+            .Select(p => new { p.SaleId, p.PayingAmount, p.PaymentDate }).ToListAsync(ct)).ToLookup(p => p.SaleId);
+        var purchaseIds = entries.Where(e => e[0].VoucherType == VoucherType.Purchase).Select(e => e[0].VoucherId).ToList();
+        var purchaseTotals = await _db.Purchases.AsNoTracking().Where(p => purchaseIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Total, ct);
+        var purchasePaid = (await _db.PurchasePayments.AsNoTracking().Where(p => purchaseIds.Contains(p.PurchaseId) && p.Date < toExclusive).ToListAsync(ct))
+            .ToLookup(p => p.PurchaseId);
+
+        // the parts of entries left on a customer's / supplier's account, waiting to be paid (oldest first)
+        var waiting = new Dictionary<string, List<(List<Line> Entry, decimal Amount, decimal Share)>>();
+        static string Party(Line l) => $"{l.AccountId}|{l.PartyId}|{(l.PartyName ?? "").Trim().ToLowerInvariant()}";
+
+        foreach (var entry in entries)
+        {
+            var e = entry[0];
+            var hasPl = entry.Any(l => plIds.Contains(l.AccountId));
+            if (e.VoucherType == VoucherType.Sale)
+            {
+                var total = saleTotals.GetValueOrDefault(e.VoucherId);
+                if (hasPl && total > 0)
+                    Count(entry, salePaid[e.VoucherId].Where(p => p.PaymentDate < from).Sum(p => p.PayingAmount) / total, salePaid[e.VoucherId].Sum(p => p.PayingAmount) / total);
+                continue;
+            }
+            if (e.VoucherType == VoucherType.Purchase)
+            {
+                var total = purchaseTotals.GetValueOrDefault(e.VoucherId);
+                if (hasPl && total > 0)
+                    Count(entry, PurchasePaymentRules.CashPaid(purchasePaid[e.VoucherId].Where(p => p.Date < from)) / total, PurchasePaymentRules.CashPaid(purchasePaid[e.VoucherId]) / total);
+                continue;
+            }
+            if (e.VoucherType is VoucherType.SalePayment or VoucherType.PurchasePayment) continue;      // they pay a sale / purchase (above)
+
+            var money = Math.Abs(entry.Where(l => IsMoney(l.AccountId)).Sum(l => l.Debit - l.Credit));
+            var onAccount = entry.Where(l => IsOnAccount(l.AccountId)).GroupBy(Party).Select(g => (Key: g.Key, Net: g.Sum(l => l.Debit - l.Credit))).Where(g => g.Net != 0).ToList();
+            if (hasPl)
+            {
+                var offset = money + onAccount.Sum(g => Math.Abs(g.Net));
+                if (offset == 0) { if (e.Date >= from) Count(entry, 0, 1); continue; }     // no money, nothing owed: on its date
+                if (money > 0 && e.Date >= from) Count(entry, 0, money / offset);         // the part paid now
+                foreach (var g in onAccount)                                                // the part left owing: paid later
+                {
+                    if (!waiting.TryGetValue(g.Key, out var queue)) waiting[g.Key] = queue = new();
+                    queue.Add((entry, g.Net, Math.Abs(g.Net) / offset));
+                }
+                continue;
+            }
+            // a voucher that pays (or collects) what is owed with money: it settles the oldest waiting parts of that account
+            if (money == 0) continue;
+            foreach (var g in onAccount)
+            {
+                if (!waiting.TryGetValue(g.Key, out var queue)) continue;
+                var left = Math.Abs(g.Net);
+                for (int i = 0; i < queue.Count && left > 0; i++)
+                {
+                    var (owed, amount, share) = queue[i];
+                    if (Math.Sign(amount) == Math.Sign(g.Net) || amount == 0) continue;     // same direction: not a payment of it
+                    var paid = Math.Min(left, Math.Abs(amount));
+                    if (e.Date >= from) Count(owed, 0, share * paid / Math.Abs(amount));
+                    left -= paid;
+                    queue[i] = (owed, amount - Math.Sign(amount) * paid, share * (Math.Abs(amount) - paid) / Math.Abs(amount));
+                }
+                queue.RemoveAll(q => q.Amount == 0);
+            }
+        }
+        return amounts;
     }
 
     // ── balance sheet ────────────────────────────────────────────────────────────────────────────────────────
@@ -329,6 +409,21 @@ public class LedgerReports
                 lines = e.Lines.OrderByDescending(l => l.Debit).Select(l => new { l.AccountId, account = names.GetValueOrDefault(l.AccountId)?.Name, code = names.GetValueOrDefault(l.AccountId)?.Code,
                     l.Debit, l.Credit, l.PartyType, l.PartyName, l.Note }),
             }),
+        };
+    }
+
+    /// <summary>One entry (voucher) with all its lines: the drill-down from an account's posting to the whole voucher</summary>
+    public async Task<object?> EntryAsync(int entryId, CancellationToken ct)
+    {
+        var e = await _db.JournalEntries.AsNoTracking().Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == entryId, ct);
+        if (e == null) return null;
+        var ids = e.Lines.Select(l => l.AccountId).Distinct().ToList();
+        var names = await _db.LedgerAccounts.AsNoTracking().Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => new { a.Code, a.Name }, ct);
+        return new
+        {
+            e.Id, e.Date, e.VoucherType, e.VoucherId, e.Reference, e.Description,
+            lines = e.Lines.OrderByDescending(l => l.Debit).ThenBy(l => l.Id).Select(l => new { l.AccountId, account = names.GetValueOrDefault(l.AccountId)?.Name,
+                code = names.GetValueOrDefault(l.AccountId)?.Code, l.Debit, l.Credit, l.PartyType, l.PartyName, l.Note }),
         };
     }
 
