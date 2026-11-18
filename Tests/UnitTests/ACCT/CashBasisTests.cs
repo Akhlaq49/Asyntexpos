@@ -79,8 +79,25 @@ public class CashBasisTests
         Assert.Equal(100m, (await PlAsync(t.Fresh(), "cash", month.Item1, month.Item2)).Expenses);           // half paid: half of it
     }
 
+    /// <summary>IT cost 4,000 paid from the bank, then 300 of it reclassed to Maintenance (expense to expense, no money)</summary>
     [Fact]
-    public async Task An_expense_paid_in_cash_and_depreciation_count_on_their_date_on_both_bases()
+    public async Task A_reclass_between_expenses_shows_on_the_accrual_basis_only()
+    {
+        using var t = new TestDb();
+        var id = await ChartAsync(t);
+        Voucher(t.Fresh(), Day, (id("635000"), 4000, 0, null), (id(C.Bank), 0, 4000, null));
+        Voucher(t.Fresh(), Day.AddDays(1), (id("633000"), 300, 0, null), (id("635000"), 0, 300, null));
+        var month = (Day.AddDays(-9), Day.AddDays(20));
+
+        var accrual = Json(await new LedgerReports(t.Fresh()).ProfitAndLossAsync(month.Item1, month.Item2, "accrual", default));
+        var cash = Json(await new LedgerReports(t.Fresh()).ProfitAndLossAsync(month.Item1, month.Item2, "cash", default));
+        static Dictionary<string, decimal> Rows(JsonElement pl) => pl.GetProperty("expenses").EnumerateArray().ToDictionary(r => r.GetProperty("code").GetString()!, r => r.GetProperty("amount").GetDecimal());
+        Assert.Equal(new Dictionary<string, decimal> { ["633000"] = 300, ["635000"] = 3700 }, Rows(accrual));
+        Assert.Equal(new Dictionary<string, decimal> { ["635000"] = 4000 }, Rows(cash));          // only where the bank was posted
+    }
+
+    [Fact]
+    public async Task An_expense_paid_in_cash_counts_on_both_bases_depreciation_on_the_accrual_basis_only()
     {
         using var t = new TestDb();
         var cat = new ExpenseCategory { Name = "Rent" };
@@ -90,6 +107,6 @@ public class CashBasisTests
         t.Db.SaveChanges();
         var month = (Day.AddDays(-9), Day.AddDays(20));
         Assert.Equal(100m, (await PlAsync(t.Fresh(), "accrual", month.Item1, month.Item2)).Expenses);
-        Assert.Equal(100m, (await PlAsync(t.Fresh(), "cash", month.Item1, month.Item2)).Expenses);
+        Assert.Equal(75m, (await PlAsync(t.Fresh(), "cash", month.Item1, month.Item2)).Expenses);       // depreciation moves no money
     }
 }

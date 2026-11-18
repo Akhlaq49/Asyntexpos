@@ -227,7 +227,8 @@ public class LedgerReports
     ///   Purchase: as the supplier is paid for it (shipping, discount and items not kept in stock), return credits not counted.
     ///   Any other entry: the part paid in cash / bank counts on its date; the part left on Receivables / Payables /
     ///   supplier returns counts when that customer's / supplier's account is paid by a later voucher, oldest first.
-    ///   An entry with neither (depreciation, stock brought in by the owner) counts on its date.
+    ///   An entry that moves no money (a reclass from one expense to another, depreciation, an accrual) is not on the
+    ///   cash basis at all; the accrual basis shows everything.
     /// Returns account -> (debit - credit) for the period [from, toExclusive).
     /// </summary>
     private async Task<Dictionary<int, decimal>> CashBasisAsync(DateTime from, DateTime toExclusive, IEnumerable<AccountRow> accounts, HashSet<int> plIds, CancellationToken ct)
@@ -284,8 +285,12 @@ public class LedgerReports
             var onAccount = entry.Where(l => IsOnAccount(l.AccountId)).GroupBy(Party).Select(g => (Key: g.Key, Net: g.Sum(l => l.Debit - l.Credit))).Where(g => g.Net != 0).ToList();
             if (hasPl)
             {
-                var offset = money + onAccount.Sum(g => Math.Abs(g.Net));
-                if (offset == 0) { if (e.Date >= from) Count(entry, 0, 1); continue; }     // no money, nothing owed: on its date
+                // the other side of the income / expense: money, a customer's / supplier's account, or something else that is
+                // no money (accumulated depreciation, an accrual, a loan ...): that part never shows on the cash basis
+                var other = entry.Where(l => !plIds.Contains(l.AccountId) && !IsMoney(l.AccountId) && !IsOnAccount(l.AccountId))
+                    .GroupBy(l => l.AccountId).Sum(g => Math.Abs(g.Sum(l => l.Debit - l.Credit)));
+                var offset = money + onAccount.Sum(g => Math.Abs(g.Net)) + other;
+                if (offset == 0) continue;      // only income / expense accounts moved (a reclass): no money, not on the cash basis
                 if (money > 0 && e.Date >= from) Count(entry, 0, money / offset);         // the part paid now
                 foreach (var g in onAccount)                                                // the part left owing: paid later
                 {
