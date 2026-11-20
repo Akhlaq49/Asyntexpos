@@ -206,6 +206,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             po.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
+            await PurchasePriceService.EnsureAllAsync(_db);   // purchase prices follow the latest received purchase
             await transaction.CommitAsync();
         }
         catch

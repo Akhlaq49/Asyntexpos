@@ -138,6 +138,7 @@ public class PurchasesController : ControllerBase
                 await _context.SaveChangesAsync();
             }
 
+            await PurchasePriceService.EnsureAllAsync(_context);   // purchase prices follow the latest received purchase
             await transaction.CommitAsync();
 
             // Re-fetch with items included
@@ -265,6 +266,7 @@ public class PurchasesController : ControllerBase
 
             _context.Purchases.Update(purchase);
             await _context.SaveChangesAsync();
+            await PurchasePriceService.EnsureAllAsync(_context);   // purchase prices follow the latest received purchase
             await transaction.CommitAsync();
 
             // Re-fetch with items
@@ -331,6 +333,7 @@ public class PurchasesController : ControllerBase
 
             _context.Purchases.Remove(purchase);
             await _context.SaveChangesAsync();
+            await PurchasePriceService.EnsureAllAsync(_context);   // purchase prices follow the latest received purchase
             await transaction.CommitAsync();
 
             return Ok(new { message = "Purchase deleted successfully" });

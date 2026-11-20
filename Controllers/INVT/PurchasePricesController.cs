@@ -6,7 +6,8 @@ using ReactPosApi.Services;
 
 namespace ReactPosApi.Controllers;
 
-/// <summary>Inventory > Purchase Prices: what the company pays for each product (INVT_PPRC)</summary>
+/// <summary>What the company pays for each product (INVT_PPRC). Normally set by the latest received purchase; PUT sets
+/// the cost of a product not bought yet (a new product's cost typed on a purchase order). The page is Inventory > Sale Prices.</summary>
 [Authorize]
 [ApiController]
 [Route("api/purchase-prices")]
