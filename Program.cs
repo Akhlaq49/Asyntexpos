@@ -101,8 +101,10 @@ builder.Services.AddCors(options =>
                 "https://OneTouchAutomationPOS.asyntexconsultancy.com",
                 "http://OneTouchAutomationPOS.asyntexconsultancy.com",
                 "https://faizmart.co.uk",
-                "http://faizmart.co.uk"
-
+                "http://faizmart.co.uk",
+                // generic POS frontend
+                "https://pos.asyntexconsultancy.com",
+                "http://pos.asyntexconsultancy.com"
             )
             .AllowAnyHeader()
             .AllowAnyMethod();
