@@ -144,29 +144,30 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Database: created from the model when new, then the module scripts (Data/DatabaseSetup.cs); the default company
-// and its SuperAdmin are created once
+// and its SuperAdmin (admin@gmail.com) are created once
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    const string DefaultAdminEmail = "admin@gmail.com";   // first sign-in: admin@gmail.com / admin123
     DatabaseSetup.Apply(db);
 
     // Use IgnoreQueryFilters() because there's no authenticated user at startup
-    var adminExists = db.Parties.IgnoreQueryFilters().NotDeleted().Any(p => p.Email == "admin@reactpos.com" && p.Role == "SuperAdmin");
+    var adminExists = db.Parties.IgnoreQueryFilters().NotDeleted().Any(p => p.Email == DefaultAdminEmail && p.Role == "SuperAdmin");
     if (!adminExists)
     {
-        var defaultTenant = new Tenant { Name = "System Admin", Email = "admin@reactpos.com", IsActive = true, CreatedAt = DateTime.UtcNow };
+        var defaultTenant = new Tenant { Name = "System Admin", Email = DefaultAdminEmail, IsActive = true, CreatedAt = DateTime.UtcNow };
         db.Tenants.Add(defaultTenant);
         db.SaveChanges();
         db.Parties.Add(new Party
         {
-            FullName = "Admin", Email = "admin@reactpos.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
+            FullName = "Admin", Email = DefaultAdminEmail, PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
             Role = "SuperAdmin", IsActive = true, TenantId = defaultTenant.Id, CreatedAt = DateTime.UtcNow,
         });
         db.SaveChanges();
     }
 
     // default form field configurations of the default company
-    var seedTenant = db.Tenants.FirstOrDefault(t => t.Email == "admin@reactpos.com");
+    var seedTenant = db.Tenants.FirstOrDefault(t => t.Email == DefaultAdminEmail);
     if (seedTenant != null)
         scope.ServiceProvider.GetRequiredService<IFormFieldConfigService>().SeedDefaultsAsync(seedTenant.Id).GetAwaiter().GetResult();
 }
