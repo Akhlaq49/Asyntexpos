@@ -61,21 +61,6 @@ public class SalesController : ControllerBase
         return Ok(payments);
     }
 
-    /// <summary>Sale queue: the goods have arrived - take them out of stock and count the sale from today</summary>
-    [HttpPost("{id:int}/mark-sold")]
-    public async Task<IActionResult> MarkSold(int id, [FromBody] MarkSoldDto? dto = null)
-    {
-        try
-        {
-            var sale = await _service.MarkQueuedAsSoldAsync(id, dto);
-            return sale == null ? NotFound() : Ok(sale);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-    }
-
     /// <summary>Apply payment to one sale (unchanged). For cross-order FIFO use POST customer-fifo-payment.</summary>
     [HttpPost("{id}/payments")]
     public async Task<IActionResult> CreatePayment(int id, [FromBody] CreateSalePaymentDto dto)

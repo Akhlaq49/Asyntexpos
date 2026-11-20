@@ -105,18 +105,6 @@ public class StockCostTests
     }
 
     [Fact]
-    public async Task Queued_sales_do_not_take_stock()
-    {
-        using var t = new TestDb();
-        var pid = Product(t.Db);
-        Purchase(t.Db, pid, 2, 100, Day.AddDays(-3));
-        Sale(t.Db, pid, 2, 400, Day, status: SaleStatus.Queued);
-        Purchase(t.Db, pid, 2, 200, Day.AddDays(1));
-        var s = Sale(t.Db, pid, 4, 400, Day.AddDays(2));
-        Assert.Equal(600, (await Cost(t)).SaleLine(LineId(t, s)));   // the queued sale left all 4 in stock: 4 x 150
-    }
-
-    [Fact]
     public async Task Only_the_requested_products_are_costed()
     {
         using var t = new TestDb();

@@ -30,8 +30,6 @@ public class Sale : ITenantEntity
     public decimal OrderTax { get; set; }
     public decimal Discount { get; set; }
     public decimal Shipping { get; set; }
-    /// <summary>Installation, testing and commissioning (added to the total)</summary>
-    public decimal InstallationCharges { get; set; }
 
     [MaxLength(30)]
     public string Status { get; set; } = "Pending";
@@ -42,7 +40,7 @@ public class Sale : ITenantEntity
     [MaxLength(500)]
     public string? Notes { get; set; }
 
-    /// <summary>Taxes applied (copied from the quotation it was converted from); OrderTax is their total (JSON list of AppliedTaxDto)</summary>
+    /// <summary>Taxes applied to the sale; OrderTax is their total (JSON list of AppliedTaxDto)</summary>
     public string? TaxesJson { get; set; }
 
     [MaxLength(20)]
@@ -110,13 +108,4 @@ public class SalePayment : ITenantEntity
 
     public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
-
-/// <summary>Sale order states that change how a sale is counted</summary>
-public static class SaleStatus
-{
-    /// <summary>Converted quotation waiting for its goods: no stock taken out and not counted as a sale
-    /// (dashboard, reports) until it is marked as sold</summary>
-    public const string Queued = "Queued";
-    public static bool IsQueued(string? status) => string.Equals(status?.Trim(), Queued, StringComparison.OrdinalIgnoreCase);
 }

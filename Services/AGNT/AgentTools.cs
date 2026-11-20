@@ -12,7 +12,7 @@ public static class AgentTools
         MakeTool("get_database_schema", "Get the full database schema with all table definitions, columns, types, foreign keys, and relationships. Call this FIRST before writing any SQL query so you know the exact table and column names.",
             new { type = "object", properties = new {} }),
 
-        MakeTool("execute_sql_query", "Execute a read-only SQL SELECT query against the MySQL database. ALWAYS use WHERE TenantId = @TenantId for tenant isolation. Use proper JOINs for related data. Use LIMIT to prevent huge results. Only SELECT is allowed.",
+        MakeTool("execute_sql_query", "Execute a read-only T-SQL SELECT query against the Microsoft SQL Server database. ALWAYS use WHERE TenantId = @TenantId for tenant isolation. Use proper JOINs for related data. Use SELECT TOP n to prevent huge results. Only SELECT is allowed.",
             new { type = "object", properties = new {
                 query = new { type = "string", description = "The SQL SELECT query to execute. MUST include WHERE TenantId = @TenantId in every table reference. Use JOINs for related data." }
             }, required = new[] { "query" } }),

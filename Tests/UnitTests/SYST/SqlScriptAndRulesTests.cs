@@ -9,13 +9,13 @@ namespace ReactPosApi.UnitTests.SYST;
 public class SqlScriptAndRulesTests
 {
     [Fact]
-    public void Script_is_split_into_statements_and_DELIMITER_blocks_stay_whole()
+    public void Script_is_split_into_batches_at_GO_lines()
     {
-        var sql = "CREATE TABLE a (x int);\n-- note\nDROP PROCEDURE IF EXISTS p;\nDELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END$$\nDELIMITER ;\nSELECT 3;";
-        var parts = SqlScript.Split(sql).Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
-        Assert.Equal(4, parts.Count);
-        Assert.Contains(parts, p => p.StartsWith("CREATE PROCEDURE p()") && p.Contains("SELECT 1; SELECT 2;"));
-        Assert.DoesNotContain(parts, p => p.Contains("DELIMITER"));
+        var sql = "CREATE TABLE a (x int);\n-- note\nGO\nCREATE OR ALTER PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END\ngo\n-- only a comment\nGO\nSELECT 3;";
+        var parts = SqlScript.Split(sql).ToList();
+        Assert.Equal(3, parts.Count);
+        Assert.Contains(parts, p => p.StartsWith("CREATE OR ALTER PROCEDURE p") && p.Contains("SELECT 1; SELECT 2;"));
+        Assert.DoesNotContain(parts, p => p.Split('\n').Any(l => l.Trim().Equals("GO", StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public class SqlScriptAndRulesTests
             using var s = typeof(DatabaseSetup).Assembly.GetManifestResourceStream(name)!;
             var parts = SqlScript.Split(new StreamReader(s).ReadToEnd()).ToList();
             Assert.NotEmpty(parts);
-            Assert.DoesNotContain(parts, p => p.Contains("DELIMITER"));
+            Assert.DoesNotContain(parts, p => p.Contains("DELIMITER") || p.Contains("`"));
         }
     }
 

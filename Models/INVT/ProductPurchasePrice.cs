@@ -5,7 +5,7 @@ namespace ReactPosApi.Models;
 
 /// <summary>
 /// The price the company pays for an inventory product (INVT_PPRC): one row per product, set on Inventory > Purchase
-/// Prices. Purchase orders take their unit cost from it, and a quotation's profit is worked out against it.
+/// Prices. Purchase orders take their unit cost from it.
 /// The selling (end user) price stays on the product (Products.Price).
 /// </summary>
 public class ProductPurchasePrice : ITenantEntity

@@ -1,30 +1,25 @@
 -- ============================================================================================================
--- INVT: inventory additions EF can't describe. MySQL 8 / MariaDB 10.5. Safe to rerun.
--- Run by the backend on start (Data/DatabaseSetup.cs) after Database/SYST/Procedures.sql.
+-- INVT: inventory additions EF can't describe. Microsoft SQL Server (T-SQL). Safe to rerun.
+-- Run by the backend on start (Data/DatabaseSetup.cs) after Database/SYST/Procedures.sql; the tables themselves
+-- are made from the model (EnsureCreated).
 --
 --   INVT_PPRC   the purchase price of each inventory product (one row per product), set on Inventory > Purchase
---               Prices; purchase orders take their unit cost from it and quotations show their profit against it.
---               A product without one gets its end user price less 10,000 (never below 0).
+--               Prices; purchase orders take their unit cost from it.
+--               Until someone enters it, it is the product's sale price (no margin) and follows it - Services/INVT/PurchasePriceService.cs
 -- ============================================================================================================
 
--- products: (TenantId, Id) is unique, so company tables can reference it (also made by Database/CATL/Schema.sql)
-CALL SYST_PROC_ADIX('INVT_PROD', 'UX_Products_Tenant_Id', 'UNIQUE KEY `UX_Products_Tenant_Id` (`TenantId`, `Id`)');
+-- products: (TenantId, Id) is unique, so company tables can reference it
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = 'UX_Products_Tenant_Id' AND [object_id] = OBJECT_ID('INVT_PROD'))
+  CREATE UNIQUE INDEX [UX_Products_Tenant_Id] ON [INVT_PROD] ([TenantId], [Id]);
+GO
 
-CREATE TABLE IF NOT EXISTS `INVT_PPRC` (
-  `Id` int NOT NULL AUTO_INCREMENT,
-  `TenantId` int NOT NULL,
-  `ProductId` int NOT NULL,
-  `PurchasePrice` decimal(18,2) NOT NULL,
-  `UpdatedAt` datetime(6) NOT NULL,
-  `UpdatedBy` varchar(150) NULL,
-  PRIMARY KEY (`Id`),
-  UNIQUE KEY `UX_INVT_PPRC_Product` (`TenantId`, `ProductId`),
-  CONSTRAINT `FK_INVT_PPRC_Product` FOREIGN KEY (`TenantId`, `ProductId`) REFERENCES `INVT_PROD` (`TenantId`, `Id`) ON DELETE CASCADE,
-  CONSTRAINT `CK_INVT_PPRC_Price` CHECK (`PurchasePrice` >= 0)
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE [name] = 'CK_INVT_PPRC_Price')
+  ALTER TABLE [INVT_PPRC] ADD CONSTRAINT [CK_INVT_PPRC_Price] CHECK ([PurchasePrice] >= 0);
+GO
 
--- every product has its purchase price: the ones without get the starting price (end user price - 10,000)
-INSERT INTO `INVT_PPRC` (`TenantId`, `ProductId`, `PurchasePrice`, `UpdatedAt`, `UpdatedBy`)
-SELECT p.`TenantId`, p.`Id`, GREATEST(p.`Price` - 10000, 0), UTC_TIMESTAMP(6), 'system'
-FROM `INVT_PROD` p
-WHERE NOT EXISTS (SELECT 1 FROM `INVT_PPRC` x WHERE x.`TenantId` = p.`TenantId` AND x.`ProductId` = p.`Id`);
+-- every product has its purchase price: the ones without get their sale price (not entered yet: UpdatedBy = 'system')
+INSERT INTO [INVT_PPRC] ([TenantId], [ProductId], [PurchasePrice], [UpdatedAt], [UpdatedBy])
+SELECT p.[TenantId], p.[Id], CASE WHEN p.[Price] > 0 THEN p.[Price] ELSE 0 END, SYSUTCDATETIME(), 'system'
+FROM [INVT_PROD] p
+WHERE NOT EXISTS (SELECT 1 FROM [INVT_PPRC] x WHERE x.[TenantId] = p.[TenantId] AND x.[ProductId] = p.[Id]);
+GO

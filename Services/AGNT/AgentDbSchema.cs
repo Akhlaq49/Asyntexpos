@@ -13,9 +13,9 @@ public static class AgentDbSchema
     public static string GetSchemaDescription(DbContext db)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("=== DATABASE SCHEMA (MySQL) ===");
+        sb.AppendLine("=== DATABASE SCHEMA (Microsoft SQL Server, T-SQL) ===");
         sb.AppendLine("Table names: MODULE_ENTITY, 4 letters each (SYST system, SECU security, PRTY parties, INVT inventory, SALE sales,");
-        sb.AppendLine("PRCH purchases, FINC finance, ACCT accounting, CATL product catalogue). Most tables have TenantId and IsDeleted.");
+        sb.AppendLine("PRCH purchases, FINC finance, ACCT accounting). Most tables have TenantId and IsDeleted.");
         sb.AppendLine();
         foreach (var entity in db.Model.GetEntityTypes().Where(e => !e.IsOwned()).OrderBy(e => e.GetTableName()))
         {
@@ -33,9 +33,9 @@ public static class AgentDbSchema
         sb.AppendLine("=== RULES ===");
         sb.AppendLine("1. ALWAYS include WHERE TenantId = @TenantId (and IsDeleted = 0 where the table has it) in every query");
         sb.AppendLine("2. Use LEFT JOIN when data might not exist");
-        sb.AppendLine("3. For today's date use CURDATE() (MySQL)");
+        sb.AppendLine("3. For today's date use CAST(GETDATE() AS date) (T-SQL)");
         sb.AppendLine("4. Only generate SELECT queries - never INSERT/UPDATE/DELETE");
-        sb.AppendLine("5. Limit results to prevent huge responses (use LIMIT)");
+        sb.AppendLine("5. Limit results to prevent huge responses (use SELECT TOP n - there is no LIMIT in T-SQL)");
         return sb.ToString();
     }
 }

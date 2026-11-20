@@ -4,7 +4,7 @@ namespace ReactPosApi.Models;
 
 /// <summary>
 /// The company's terms &amp; conditions (one row per tenant), printed on the last pages
-/// of quotations and purchase orders. Plain text, one item per line:
+/// of receipts, invoices and purchase orders. Plain text, one item per line:
 /// "- " = bullet, "1: Payment" = numbered heading, a short line on its own = section heading.
 /// </summary>
 public class TermsConditions : ITenantEntity

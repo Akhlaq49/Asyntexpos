@@ -18,7 +18,7 @@ public class SaveTaxTypeDto
     public bool IsActive { get; set; } = true;
 }
 
-/// <summary>One tax applied to a product / quotation / purchase order / sale (name copied so it survives renames)</summary>
+/// <summary>One tax applied to a product / purchase order / sale (name copied so it survives renames)</summary>
 public class AppliedTaxDto
 {
     public int? TaxTypeId { get; set; }

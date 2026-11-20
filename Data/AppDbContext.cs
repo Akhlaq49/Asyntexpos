@@ -41,8 +41,6 @@ public class AppDbContext : DbContext
     public DbSet<SalePayment> SalePayments => Set<SalePayment>();
     public DbSet<SalesReturn> SalesReturns => Set<SalesReturn>();
     public DbSet<SalesReturnItem> SalesReturnItems => Set<SalesReturnItem>();
-    public DbSet<Quotation> Quotations => Set<Quotation>();
-    public DbSet<QuotationItem> QuotationItems => Set<QuotationItem>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<PurchaseItem> PurchaseItems => Set<PurchaseItem>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
@@ -55,7 +53,6 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseReturnRefund> PurchaseReturnRefunds => Set<PurchaseReturnRefund>();
     public DbSet<FinanceEntry> FinanceEntries => Set<FinanceEntry>();
     public DbSet<Role> Roles => Set<Role>();
-    public DbSet<QuotationApproval> QuotationApprovals => Set<QuotationApproval>();
 
     // Inventory
     public DbSet<Category> Categories => Set<Category>();
@@ -81,24 +78,7 @@ public class AppDbContext : DbContext
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
 
-    // SMS / Notifications
-
-    // Solution packages (calculation engine data)
-    public DbSet<SolutionGroup> SolutionGroups => Set<SolutionGroup>();
-    public DbSet<SolutionProductLine> SolutionProductLines => Set<SolutionProductLine>();
-    public DbSet<PackageSize> PackageSizes => Set<PackageSize>();
-    // product catalogue (Database/CatalogSchema.sql)
-    public DbSet<CatalogTier> CatalogTiers => Set<CatalogTier>();
-    public DbSet<CatalogFamilyTier> CatalogFamilyTiers => Set<CatalogFamilyTier>();
-    public DbSet<CatalogColor> CatalogColors => Set<CatalogColor>();
-    public DbSet<CatalogProduct> CatalogProducts => Set<CatalogProduct>();
-    public DbSet<CatalogAlias> CatalogAliases => Set<CatalogAlias>();
-    public DbSet<CatalogPackageLine> CatalogPackageLines => Set<CatalogPackageLine>();
-    public DbSet<CatalogDrawingRuleItem> CatalogDrawingRuleItems => Set<CatalogDrawingRuleItem>();
-    public DbSet<CatalogImportProfile> CatalogImportProfiles => Set<CatalogImportProfile>();
-    public DbSet<CatalogUnmatched> CatalogUnmatched => Set<CatalogUnmatched>();
-
-    // Double-entry ledger (Database/LedgerSchema.sql, Services/LedgerPoster.cs)
+    // Double-entry ledger (Database/ACCT/Schema.sql, Services/LedgerPoster.cs)
     public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
@@ -243,34 +223,6 @@ public class AppDbContext : DbContext
             e.Property(i => i.Subtotal).HasColumnType("decimal(18,2)");
         });
 
-        // Quotation
-        modelBuilder.Entity<Quotation>(e =>
-        {
-            e.HasOne(q => q.Customer)
-             .WithMany()
-             .HasForeignKey(q => q.CustomerId)
-             .OnDelete(DeleteBehavior.SetNull);
-            e.Property(q => q.OrderTax).HasColumnType("decimal(18,2)");
-            e.Property(q => q.Discount).HasColumnType("decimal(18,2)");
-            e.Property(q => q.Shipping).HasColumnType("decimal(18,2)");
-            e.Property(q => q.GrandTotal).HasColumnType("decimal(18,2)");
-        });
-
-        // QuotationItem -> Quotation
-        modelBuilder.Entity<QuotationItem>(e =>
-        {
-            e.HasOne(i => i.Quotation)
-             .WithMany(q => q.Items)
-             .HasForeignKey(i => i.QuotationId)
-             .OnDelete(DeleteBehavior.Cascade);
-            e.Property(i => i.PurchasePrice).HasColumnType("decimal(18,2)");
-            e.Property(i => i.Discount).HasColumnType("decimal(18,2)");
-            e.Property(i => i.TaxPercent).HasColumnType("decimal(8,4)");
-            e.Property(i => i.TaxAmount).HasColumnType("decimal(18,2)");
-            e.Property(i => i.UnitCost).HasColumnType("decimal(18,2)");
-            e.Property(i => i.TotalCost).HasColumnType("decimal(18,2)");
-        });
-
         // PurchaseItem -> Purchase & Product (FK for inventory sync)
         modelBuilder.Entity<PurchaseItem>(e =>
         {
@@ -290,7 +242,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TermsConditions>(e => e.HasIndex(t => t.TenantId).IsUnique());
         modelBuilder.Entity<TaxType>(e => e.HasIndex(nameof(TaxType.TenantId), nameof(TaxType.Name), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_TaxTypes_TenantId_Name"));
         modelBuilder.Entity<Role>(e => e.HasIndex(nameof(Role.TenantId), nameof(Role.Name), SoftDelete.DeletedKey).IsUnique().HasDatabaseName("UX_Roles_TenantId_Name"));
-        modelBuilder.Entity<QuotationApproval>(e => { e.HasIndex(a => a.QuotationId); e.HasIndex(a => new { a.TenantId, a.Status }); });
         modelBuilder.Entity<PurchasePayment>(e => { e.HasIndex(p => p.PurchaseId); e.HasIndex(p => p.PurchaseOrderId); });
         // goods sent back to the supplier from a received purchase
         modelBuilder.Entity<PurchaseReturn>(e =>
@@ -332,16 +283,9 @@ public class AppDbContext : DbContext
             e.HasIndex(c => new { c.TenantId, c.MenuKey }).IsUnique();
         });
 
-        // Solution packages: categorization lines under groups; package quantities per item and building size
-        modelBuilder.Entity<SolutionProductLine>(e => e.HasOne(l => l.Group).WithMany(g => g.ProductLines).HasForeignKey(l => l.GroupId).OnDelete(DeleteBehavior.Cascade));
-        // Product catalogue: keys only - the composite foreign keys, unique names and views are in Database/CatalogSchema.sql
-        modelBuilder.Entity<CatalogFamilyTier>(e => e.HasKey(x => new { x.TenantId, x.FamilyId, x.TierId }));
-        modelBuilder.Entity<CatalogImportProfile>(e => e.HasKey(x => new { x.TenantId, x.Kind }));
-        modelBuilder.Entity<CatalogPackageLine>(e => e.Property(x => x.Quantity).HasColumnType("decimal(12,3)"));
-        modelBuilder.Entity<CatalogProduct>(e => e.Property(x => x.FallbackPrice).HasColumnType("decimal(18,2)"));
-
-        // Ledger: keys only - the composite foreign keys and unique keys are in Database/LedgerSchema.sql
-        modelBuilder.Entity<AccountingSettings>(e => e.HasKey(x => x.TenantId));
+        // Ledger: keys only - the composite foreign keys and unique keys are in Database/ACCT/Schema.sql
+        // keyed by the company: the value is the company's id, never generated (SQL Server would make it IDENTITY)
+        modelBuilder.Entity<AccountingSettings>(e => { e.HasKey(x => x.TenantId); e.Property(x => x.TenantId).ValueGeneratedNever(); });
         modelBuilder.Entity<JournalEntry>(e => e.HasMany(x => x.Lines).WithOne(l => l.JournalEntry).HasForeignKey(l => l.JournalEntryId).OnDelete(DeleteBehavior.Cascade));
         modelBuilder.Entity<JournalVoucher>(e => e.HasMany(x => x.Lines).WithOne(l => l.JournalVoucher).HasForeignKey(l => l.JournalVoucherId).OnDelete(DeleteBehavior.Cascade));
 

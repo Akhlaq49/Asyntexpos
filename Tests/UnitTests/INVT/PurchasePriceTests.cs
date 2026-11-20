@@ -19,13 +19,13 @@ public class PurchasePriceTests
     }
 
     [Theory]
-    [InlineData(25000, 15000)]
-    [InlineData(10000, 0)]
-    [InlineData(4000, 0)]          // never below 0
+    [InlineData(25000, 25000)]
+    [InlineData(150, 150)]
+    [InlineData(99.50, 99.50)]
     [InlineData(0, 0)]
-    [InlineData(10000.50, 0.50)]
-    public void Starting_price_is_the_end_user_price_less_10000(decimal endUser, decimal purchase) =>
-        Assert.Equal(purchase, PurchasePriceService.StartingPrice(endUser));
+    [InlineData(-5, 0)]            // never below 0
+    public void Starting_price_is_the_sale_price_with_no_margin(decimal salePrice, decimal purchase) =>
+        Assert.Equal(purchase, PurchasePriceService.StartingPrice(salePrice));
 
     [Fact]
     public async Task Every_product_gets_its_starting_purchase_price_once()
@@ -34,8 +34,8 @@ public class PurchasePriceTests
         var a = Product(t, "Gas Sensor", 18684);
         var b = Product(t, "Cheap", 900);
         Assert.Equal(2, await PurchasePriceService.EnsureAllAsync(t.Db));
-        Assert.Equal(8684, t.Db.ProductPurchasePrices.Single(x => x.ProductId == a).PurchasePrice);
-        Assert.Equal(0, t.Db.ProductPurchasePrices.Single(x => x.ProductId == b).PurchasePrice);
+        Assert.Equal(18684, t.Db.ProductPurchasePrices.Single(x => x.ProductId == a).PurchasePrice);
+        Assert.Equal(900, t.Db.ProductPurchasePrices.Single(x => x.ProductId == b).PurchasePrice);
         Assert.Equal(0, await PurchasePriceService.EnsureAllAsync(t.Db));     // nothing new the second time
     }
 
@@ -59,7 +59,35 @@ public class PurchasePriceTests
         Product(t, "Piano Switch", 17311);
         var rows = await PurchasePriceService.ListAsync(t.Db);
         Assert.Equal(new[] { "Gas Sensor", "Piano Switch" }, rows.Select(r => r.ProductName));
-        Assert.All(rows, r => Assert.Equal(10000, r.Margin));
+        Assert.All(rows, r => Assert.Equal(0, r.Margin));            // not entered yet: the sale price
+        Assert.All(rows, r => Assert.False(r.IsSet));
+    }
+
+    [Fact]
+    public async Task A_price_nobody_entered_follows_the_sale_price()
+    {
+        using var t = new TestDb();
+        var a = Product(t, "Soap", 150);
+        await PurchasePriceService.EnsureAllAsync(t.Db);
+        t.Db.Products.Single(p => p.Id == a).Price = 180;
+        t.Db.SaveChanges();
+        Assert.Equal(1, await PurchasePriceService.EnsureAllAsync(t.Db));
+        Assert.Equal(180, t.Fresh().ProductPurchasePrices.Single(x => x.ProductId == a).PurchasePrice);
+    }
+
+    [Fact]
+    public async Task An_entered_price_no_longer_follows_the_sale_price()
+    {
+        using var t = new TestDb();
+        var a = Product(t, "Soap", 150);
+        await PurchasePriceService.SaveAsync(t.Db, new[] { new PurchasePriceService.Change(a, 150) }, "Ali");   // same amount, but entered
+        t.Db.Products.Single(p => p.Id == a).Price = 180;
+        t.Db.SaveChanges();
+        await PurchasePriceService.EnsureAllAsync(t.Db);
+        var row = (await PurchasePriceService.ListAsync(t.Fresh())).Single();
+        Assert.Equal(150, row.PurchasePrice);
+        Assert.Equal(30, row.Margin);
+        Assert.True(row.IsSet);
     }
 
     [Fact]
@@ -88,24 +116,5 @@ public class PurchasePriceTests
         using var other = t.Create(t.TenantId + 1000);
         Assert.Empty(other.ProductPurchasePrices.ToList());
         Assert.Empty(await PurchasePriceService.ListAsync(other));
-    }
-
-    [Fact]
-    public async Task Purchase_order_from_a_quotation_takes_the_purchase_price_as_its_cost()
-    {
-        using var t = new TestDb();
-        var a = Product(t, "Gas Sensor", 18684);
-        await PurchasePriceService.SaveAsync(t.Db, new[] { new PurchasePriceService.Change(a, 11000) }, "x");
-        var sale = new Sale { Reference = "SL1", CustomerName = "Ali", Status = SaleStatus.Queued, SaleDate = DateTime.UtcNow };
-        t.Db.Sales.Add(sale); t.Db.SaveChanges();
-        var q = new Quotation { Reference = "QT1", CustomerName = "Ali", SaleId = sale.Id, GrandTotal = 37368,
-            Items = new() { new QuotationItem { ProductId = a, ProductName = "Gas Sensor", Quantity = 2, PurchasePrice = 18684, UnitCost = 18684, TotalCost = 37368 } } };
-        t.Db.Quotations.Add(q); t.Db.SaveChanges();
-        var result = await new QuotationPurchasePlanController(t.Fresh()).Plan(q.Id);
-        var json = JsonSerializer.SerializeToElement(((OkObjectResult)result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var line = json.GetProperty("lines").EnumerateArray().Single();
-        Assert.Equal(11000, line.GetProperty("purchasePrice").GetDecimal());
-        Assert.Equal(18684, line.GetProperty("price").GetDecimal());
-        Assert.Equal(2, line.GetProperty("suggested").GetInt32());
     }
 }

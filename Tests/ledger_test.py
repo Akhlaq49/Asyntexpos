@@ -5,11 +5,12 @@ the balance sheet balances, cost of goods sold is the moving average; a backdate
 deleting a document removes its entry; the lock date refuses changes; a rebuild gives the same ledger.
 The company is deleted at the end (SYST_PROC_DLCO).
 
-    python -I Tests/ledger_test.py --api http://localhost:5195/api --db "Server=localhost;Port=3306;Database=...;User=...;Password=..."
+    python -I Tests/ledger_test.py --api http://localhost:5194/api --db "Driver={ODBC Driver 17 for SQL Server};Server=localhost\SQLEXPRESS;Database=GenericPosDb;Trusted_Connection=yes"
 """
 import argparse, json, sys, time, uuid, urllib.request, urllib.error
+from contextlib import closing
 from datetime import date, timedelta
-import pymysql
+import pyodbc   # pip install pyodbc
 
 FAILED = []
 def ok(cond, msg):
@@ -39,16 +40,15 @@ class Api:
         except ValueError: return code, text
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--api", default="http://localhost:5195/api"); ap.add_argument("--db", required=True)
+    ap = argparse.ArgumentParser(); ap.add_argument("--api", default="http://localhost:5194/api"); ap.add_argument("--db", required=True)
     args = ap.parse_args()
-    parts = {k.strip().lower(): v.strip() for k, _, v in (p.partition("=") for p in args.db.split(";") if "=" in p)}
-    db = pymysql.connect(host=parts.get("server", "localhost"), port=int(parts.get("port", 3306)), user=parts["user"], password=parts["password"], database=parts["database"], autocommit=True)
+    db = pyodbc.connect(args.db, autocommit=True)   # an ODBC connection string to the SQL Server database
     api = Api(args.api)
     email = f"ledger-{int(time.time())}@test.local"
     api.call("POST", "/auth/register", {"fullName": "Ledger Test", "email": email, "password": "Test-12345"})
     api.token = api.call("POST", "/auth/login", {"email": email, "password": "Test-12345"})[1]["token"]
-    with db.cursor() as c:
-        c.execute("SELECT TenantId FROM PRTY_MAST WHERE Email=%s", (email,)); tenant = c.fetchone()[0]
+    with closing(db.cursor()) as c:
+        c.execute("SELECT TenantId FROM PRTY_MAST WHERE Email=?", (email,)); tenant = c.fetchone()[0]
     today = date.today(); d = lambda n: (today - timedelta(days=n)).isoformat()
     try:
         prod = api.call("POST", "/products", form={"productName": "Ledger Switch", "sku": f"LT-{tenant}", "price": 250, "quantity": 0, "sellingType": "pos", "productType": "single", "taxesJson": "[]"})[1]
@@ -99,16 +99,16 @@ def main():
         ok(bal("cogs") == 460, f"backdated purchase re-costs the sale: 4 x 115 = 460 (got {bal('cogs')})")
         # delete the expense: its entry goes
         api.call("DELETE", f"/expenses/{exp['id']}")
-        with db.cursor() as c:
-            c.execute("SELECT COUNT(*) FROM ACCT_JRNL WHERE TenantId=%s AND VoucherType='Expense'", (tenant,)); n = c.fetchone()[0]
+        with closing(db.cursor()) as c:
+            c.execute("SELECT COUNT(*) FROM ACCT_JRNL WHERE TenantId=? AND VoucherType='Expense'", (tenant,)); n = c.fetchone()[0]
         ok(n == 0 and bal("cash") == 5500, "deleted expense: its entry is gone, cash back to 5500")
 
         # lock date: nothing on or before it can change
         api.call("PUT", "/accounting/settings", {"lockDate": d(0)})
         code, res = api.call("POST", "/expenses", {"expenseName": "Late", "expenseCategoryId": cat["id"], "description": "", "date": d(2), "amount": 10, "status": "active"}, expect=True)
         ok(code == 400 and "locked" in json.dumps(res).lower(), f"expense dated in a locked period refused: {code} {str(res)[:120]}")
-        with db.cursor() as c:
-            c.execute("SELECT COUNT(*) FROM FINC_EXPN WHERE TenantId=%s AND ExpenseName='Late'", (tenant,)); n = c.fetchone()[0]
+        with closing(db.cursor()) as c:
+            c.execute("SELECT COUNT(*) FROM FINC_EXPN WHERE TenantId=? AND ExpenseName='Late'", (tenant,)); n = c.fetchone()[0]
         ok(n == 0, "the refused expense was not saved either")
         code, res = api.call("DELETE", f"/sales/{sale['id']}", expect=True)
         ok(code >= 400, f"deleting a sale in a locked period refused: {code}")
@@ -121,7 +121,7 @@ def main():
         key = lambda rows: sorted((r["code"], round(r["closing"], 2)) for r in rows)
         ok(key(before) == key(after), "rebuild from the documents gives the same balances")
     finally:
-        with db.cursor() as c: c.execute("CALL SYST_PROC_DLCO(%s)", (tenant,))
+        with closing(db.cursor()) as c: c.execute("EXEC SYST_PROC_DLCO @CompanyId = ?", (tenant,))
         print("   cleanup: company", tenant, "deleted")
     print("\nALL PASSED" if not FAILED else f"\n{len(FAILED)} FAILED")
     return 1 if FAILED else 0

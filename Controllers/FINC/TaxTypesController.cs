@@ -7,7 +7,7 @@ using ReactPosApi.Models;
 
 namespace ReactPosApi.Controllers;
 
-/// <summary>Tax types (GST, WHT, ...) that can be applied to products, quotations and purchase orders</summary>
+/// <summary>Tax types (GST, WHT, ...) that can be applied to products and purchase orders</summary>
 [Authorize]
 [ApiController]
 [Route("api/tax-types")]

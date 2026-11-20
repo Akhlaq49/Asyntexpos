@@ -18,7 +18,7 @@ public class LedgerChart
         InputTax = "input-tax", FixedAssets = "fixed-assets", AccDepreciation = "acc-depreciation",
         Payable = "payable", TaxPayable = "tax-payable", Loans = "loans",
         OwnerCapital = "owner-capital", OwnerStock = "owner-stock", Drawings = "drawings", Retained = "retained",
-        Sales = "sales", ShippingIncome = "shipping-income", InstallationIncome = "installation-income", SalesReturns = "sales-returns",
+        Sales = "sales", ShippingIncome = "shipping-income", SalesReturns = "sales-returns",
         PurchaseDiscounts = "purchase-discounts",
         Cogs = "cogs", Freight = "freight", NonStockPurchases = "non-stock-purchases", Depreciation = "depreciation", Rounding = "rounding";
 
@@ -84,7 +84,6 @@ public class LedgerChart
         new("g:510000", "510000", "Revenue", I, Income, true),
         new(Sales, "511001", "Operating Revenue", I, "g:510000"),
         new(ShippingIncome, "511002", "Shipping charged to customers", I, "g:510000"),
-        new(InstallationIncome, "511003", "Installation charges", I, "g:510000"),
         new(SalesReturns, "511004", "Sales returns", I, "g:510000"),
         new(PurchaseDiscounts, "812001", "Miscellaneous Income", I, Income),
 

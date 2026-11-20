@@ -34,12 +34,12 @@ public static class Seed
     }
 
     public static Sale Sale(AppDbContext db, int productId, int qty, decimal unitPrice, DateTime date, decimal orderTax = 0, decimal shipping = 0,
-        decimal installation = 0, string status = "Completed", string customer = "Ali")
+        string status = "Completed", string customer = "Ali")
     {
         var s = new Sale
         {
             Reference = $"S-{Guid.NewGuid():N}"[..10], CustomerName = customer, SaleDate = date, Status = status,
-            OrderTax = orderTax, Shipping = shipping, InstallationCharges = installation, GrandTotal = qty * unitPrice + orderTax + shipping + installation,
+            OrderTax = orderTax, Shipping = shipping, GrandTotal = qty * unitPrice + orderTax + shipping,
             Items = new List<SaleItem> { new() { ProductId = productId, ProductName = "x", Quantity = qty, PurchasePrice = unitPrice, UnitCost = unitPrice, TotalCost = qty * unitPrice } },
         };
         db.Sales.Add(s);

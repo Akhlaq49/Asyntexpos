@@ -25,7 +25,7 @@ public class LedgerTouches
 /// the company's ledger is marked to be rebuilt instead (reports rebuild it).
 ///
 ///   document                  debit                                  credit
-///   Sale                      Receivable (customer) total            Sales, Sales tax collected, Shipping / Installation charged
+///   Sale                      Receivable (customer) total            Sales, Sales tax collected, Shipping charged
 ///                             Cost of goods sold                     Stock (quantity x average cost)
 ///   SalePayment               Cash / bank                            Receivable (customer)
 ///   SalesReturn               Sales returns, tax, shipping           Receivable (customer); refund paid: Receivable / Cash
@@ -302,15 +302,14 @@ public class LedgerPoster
     private async Task<JournalEntry?> SaleAsync(int id, CancellationToken ct)
     {
         var s = await _db.Sales.Include(x => x.Items).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (s == null || SaleStatus.IsQueued(s.Status) || Cancelled(s.Status)) return null;   // queued: not sold yet (payments are advances)
+        if (s == null || Cancelled(s.Status)) return null;
         var tax = s.OrderTax + s.Items.Sum(i => i.TaxAmount * i.Quantity);
-        var income = s.GrandTotal - tax - s.Shipping - s.InstallationCharges;
+        var income = s.GrandTotal - tax - s.Shipping;
         var c = LedgerPartyType.Customer;
         var l = L().Add(_chart.Id(LedgerChart.Receivable), s.GrandTotal, c, s.CustomerId, s.CustomerName)
             .Add(_chart.Id(LedgerChart.Sales), -income)
             .Add(_chart.Id(LedgerChart.TaxPayable), -tax)
-            .Add(_chart.Id(LedgerChart.ShippingIncome), -s.Shipping)
-            .Add(_chart.Id(LedgerChart.InstallationIncome), -s.InstallationCharges);
+            .Add(_chart.Id(LedgerChart.ShippingIncome), -s.Shipping);
         var stock = s.Items.Where(i => i.ProductId > 0).ToList();
         if (stock.Count > 0)
         {
@@ -496,7 +495,7 @@ public class StockCost
                                  where i.ProductId != null select new { i.Id, i.ProductId, i.Quantity, i.Total, r.ReturnDate }).ToListAsync(ct))
             if (P(x.ProductId)) moves.Add(new(x.ProductId!.Value, x.ReturnDate, 2, x.Id, -x.Quantity, -x.Total, ValueOut));
         foreach (var x in await (from i in db.SaleItems join s in db.Sales on i.SaleId equals s.Id
-                                 where s.Status != SaleStatus.Queued && s.Status != "Cancelled" && i.ProductId > 0
+                                 where s.Status != "Cancelled" && i.ProductId > 0
                                  select new { i.Id, i.ProductId, i.Quantity, s.SaleDate }).ToListAsync(ct))
             if (P(x.ProductId)) moves.Add(new(x.ProductId, x.SaleDate, 3, x.Id, -x.Quantity, 0, SaleOut));
 

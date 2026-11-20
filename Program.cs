@@ -29,8 +29,6 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IProductService, ProductService>();
-builder.Services.AddScoped<CatalogService>();
-builder.Services.AddScoped<CatalogImportService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
 builder.Services.AddScoped<IBrandService, BrandService>();
@@ -39,7 +37,6 @@ builder.Services.AddScoped<IWarrantyService, WarrantyService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<ISaleService, SaleService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
-builder.Services.AddScoped<IQuotationService, QuotationService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
 
@@ -57,16 +54,10 @@ builder.Services.AddHttpClient<IWhatsAppService, WhatsAppService>();
 builder.Services.AddScoped<IAgentToolExecutor, AgentToolExecutor>();
 builder.Services.AddHttpClient<IAgentService, AgentService>();
 
-// Drawing to Solution: the Drawing2Quote service reads drawings - the .NET or the Python reader, as
-// DrawingService:Reader says, at its Url for this environment (appsettings.Development / Production.json)
-var drawingReader = DrawingService.ResolveReader(builder.Configuration);      // (wrong settings stop the start, with the reason)
-builder.Services.AddHttpClient<DrawingService>();
-
-// EF Core - MySQL (Pomelo)
+// EF Core - Microsoft SQL Server
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
-var serverVersion = ServerVersion.AutoDetect(connectionString);
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(connectionString, serverVersion));
+    options.UseSqlServer(connectionString));   // no retrying strategy: the app opens its own transactions
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"]!;
@@ -126,8 +117,7 @@ if (!builder.Configuration.GetSection("ASPNETCORE_URLS").Exists() &&
 }
 
 var app = builder.Build();
-app.Logger.LogWarning("Drawing to Solution: drawings are read by the {Reader} reader at {Url} ({Environment})",
-                      drawingReader.Reader, drawingReader.Url, app.Environment.EnvironmentName);
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

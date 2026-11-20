@@ -7,7 +7,7 @@ using ReactPosApi.Models;
 
 namespace ReactPosApi.Controllers;
 
-/// <summary>Terms &amp; conditions printed at the end of quotations and purchase orders</summary>
+/// <summary>Terms &amp; conditions printed on receipts, invoices and purchase orders</summary>
 [Authorize]
 [ApiController]
 [Route("api/terms-conditions")]

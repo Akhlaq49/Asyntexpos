@@ -17,7 +17,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
@@ -29,7 +29,6 @@
     <!-- run on start by Data/DatabaseSetup.cs, in this order -->
     <EmbeddedResource Include="Database\SYST\Procedures.sql" LogicalName="SYST/Procedures.sql" />
     <EmbeddedResource Include="Database\INVT\Schema.sql" LogicalName="INVT/Schema.sql" />
-    <EmbeddedResource Include="Database\CATL\Schema.sql" LogicalName="CATL/Schema.sql" />
     <EmbeddedResource Include="Database\ACCT\Schema.sql" LogicalName="ACCT/Schema.sql" />
     <!-- tests (unit tests project, Python acceptance tests, fixtures): not part of the app -->
     <Compile Remove="Tests\**" />

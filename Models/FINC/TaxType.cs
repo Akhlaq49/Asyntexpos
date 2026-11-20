@@ -4,7 +4,7 @@ namespace ReactPosApi.Models;
 
 /// <summary>
 /// A kind of tax the company charges (GST, WHT, Sales Tax ...), managed under Inventory > Tax Types.
-/// The percentage is entered each time the tax is applied to a product, quotation or purchase order.
+/// The percentage is entered each time the tax is applied to a product or purchase order.
 /// </summary>
 public class TaxType : ITenantEntity
 {

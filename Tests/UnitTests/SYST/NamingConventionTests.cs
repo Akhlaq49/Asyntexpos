@@ -9,7 +9,7 @@ namespace ReactPosApi.UnitTests.SYST;
 /// <summary>Constitution I (database naming) and II (module codes)</summary>
 public class NamingConventionTests
 {
-    public static readonly string[] ModuleCodes = { "SYST", "SECU", "PRTY", "INVT", "CATL", "SALE", "PRCH", "FINC", "ACCT", "RPRT", "AGNT", "MESG" };
+    public static readonly string[] ModuleCodes = { "SYST", "SECU", "PRTY", "INVT", "SALE", "PRCH", "FINC", "ACCT", "RPRT", "AGNT", "MESG" };
     private static readonly Regex Name = new(DbNames.Pattern);
     private static string RepoRoot([System.Runtime.CompilerServices.CallerFilePath] string path = "") =>
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, "..", "..", ".."));
@@ -62,20 +62,11 @@ public class NamingConventionTests
     }
 
     [Fact]
-    public void Every_legacy_name_maps_to_a_registered_table_and_only_newer_tables_have_none()
-    {
-        Assert.All(DbNames.Legacy.Values, v => Assert.Contains(v, DbNames.Tables.Values));
-        Assert.Equal(DbNames.Legacy.Count, DbNames.Legacy.Values.Distinct().Count());
-        // tables made after the naming convention never had an old name
-        Assert.Equal(new[] { DbNames.AcctJvhd, DbNames.AcctJvln, DbNames.InvtPprc },DbNames.Tables.Values.Except(DbNames.Legacy.Values).OrderBy(x => x));
-    }
-
-    [Fact]
     public void Sql_scripts_only_create_conforming_tables_views_and_procedures()
     {
         var sqlFiles = Directory.GetFiles(Path.Combine(RepoRoot(), "Database"), "*.sql", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}") && !f.Contains($"{Path.DirectorySeparatorChar}tests{Path.DirectorySeparatorChar}"));
-        var created = new Regex(@"CREATE\s+(?:TABLE\s+IF\s+NOT\s+EXISTS|OR\s+REPLACE\s+VIEW|PROCEDURE)\s+`?(\w+)`?", RegexOptions.IgnoreCase);
+        var created = new Regex(@"CREATE\s+(?:TABLE|OR\s+ALTER\s+(?:VIEW|PROCEDURE))\s+\[?(\w+)\]?", RegexOptions.IgnoreCase);
         var names = sqlFiles.SelectMany(f => created.Matches(File.ReadAllText(f)).Select(m => m.Groups[1].Value)).ToList();
         Assert.NotEmpty(names);
         Assert.All(names, n => Assert.Matches(DbNames.Pattern, n));
@@ -104,20 +95,8 @@ public class NamingConventionTests
     [Fact]
     public void Embedded_scripts_run_in_dependency_order()
     {
-        Assert.Equal(new[] { "SYST/Procedures.sql", "INVT/Schema.sql", "CATL/Schema.sql", "ACCT/Schema.sql" }, DatabaseSetup.Scripts);
+        Assert.Equal(new[] { "SYST/Procedures.sql", "INVT/Schema.sql", "ACCT/Schema.sql" }, DatabaseSetup.Scripts);
         var names = typeof(DatabaseSetup).Assembly.GetManifestResourceNames();
         Assert.All(DatabaseSetup.Scripts, s => Assert.Contains(s, names));
-    }
-
-    [Theory]
-    [InlineData("Sales", true)]
-    [InlineData("sales", true)]                 // lower_case_table_names = 1
-    [InlineData("JournalLines", true)]
-    [InlineData("SALE_HEAD", false)]
-    [InlineData("acct_detl", false)]
-    [InlineData("SomethingElse", false)]
-    public void Legacy_table_names_are_recognised_in_any_case(string table, bool legacy)
-    {
-        Assert.Equal(legacy, DatabaseSetup.FindLegacy(new[] { table }).Count == 1);
     }
 }

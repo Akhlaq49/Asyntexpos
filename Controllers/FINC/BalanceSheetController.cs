@@ -55,17 +55,17 @@ public class BalanceSheetController : ControllerBase
         var salePaid = await _db.SalePayments.Where(p => p.PaymentDate < end).GroupBy(p => p.SaleId)
             .Select(g => new { SaleId = g.Key, Paid = g.Sum(p => p.PayingAmount) }).ToDictionaryAsync(x => x.SaleId, x => x.Paid);
         var paidSaleIds = salePaid.Keys.ToList();
-        // sold by the date, still in the sale queue, or paid for by the date (an advance on an order sold later)
-        var sales = await _db.Sales.Where(s => s.SaleDate < end || s.Status == ReactPosApi.Models.SaleStatus.Queued || paidSaleIds.Contains(s.Id))
+        // sold by the date, or paid for by the date (an advance on a sale dated later)
+        var sales = await _db.Sales.Where(s => s.SaleDate < end || paidSaleIds.Contains(s.Id))
             .Select(s => new { s.Id, s.Reference, s.CustomerName, s.SaleDate, s.GrandTotal, s.Status }).ToListAsync();
         var receivables = new List<Detail>(); var customerAdvances = new List<Detail>();
         foreach (var s in sales.Where(s => !string.Equals(s.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)))
         {
-            // not sold yet on the date (in the sale queue, or converted to a sale later): money received for it is a customer advance
-            var queued = s.Status == ReactPosApi.Models.SaleStatus.Queued || s.SaleDate >= end;
-            var due = Math.Round((queued ? 0 : s.GrandTotal) - (salePaid.TryGetValue(s.Id, out var p) ? p : 0), 2);
+            // not sold yet on the date (a sale dated later): money received for it is a customer advance
+            var notYetSold = s.SaleDate >= end;
+            var due = Math.Round((notYetSold ? 0 : s.GrandTotal) - (salePaid.TryGetValue(s.Id, out var p) ? p : 0), 2);
             if (due > 0) receivables.Add(new Detail(s.Reference, s.CustomerName, s.SaleDate, due, $"of Rs {s.GrandTotal:N2}"));
-            else if (due < 0) customerAdvances.Add(new Detail(s.Reference, s.CustomerName, s.SaleDate, -due, queued ? "advance - order in the sale queue" : "paid more than the sale"));
+            else if (due < 0) customerAdvances.Add(new Detail(s.Reference, s.CustomerName, s.SaleDate, -due, notYetSold ? "advance - sale dated later" : "paid more than the sale"));
         }
         // refunds still owed to customers on sales returns
         var salesReturnsDue = (await _db.SalesReturns.Where(r => r.ReturnDate < end && r.GrandTotal - r.Paid > 0)
@@ -100,7 +100,7 @@ public class BalanceSheetController : ControllerBase
             foreach (var x in await (from i in _db.PurchaseItems join p in _db.Purchases on i.PurchaseId equals p.Id
                                      where p.Date >= end && p.Status == "Received" && i.ProductId != null select new { i.ProductId, i.Quantity }).ToListAsync()) Undo(x.ProductId, x.Quantity);
             foreach (var x in await _db.StockEntries.Where(e => e.Date >= end).Select(e => new { e.ProductId, e.Quantity }).ToListAsync()) Undo(x.ProductId, x.Quantity);
-            foreach (var x in await (from i in _db.SaleItems join s in _db.Sales on i.SaleId equals s.Id where s.SaleDate >= end && s.Status != ReactPosApi.Models.SaleStatus.Queued select new { i.ProductId, i.Quantity }).ToListAsync()) Undo(x.ProductId, -x.Quantity);
+            foreach (var x in await (from i in _db.SaleItems join s in _db.Sales on i.SaleId equals s.Id where s.SaleDate >= end select new { i.ProductId, i.Quantity }).ToListAsync()) Undo(x.ProductId, -x.Quantity);
             foreach (var x in await (from i in _db.SalesReturnItems join r in _db.SalesReturns on i.SalesReturnId equals r.Id where r.ReturnDate >= end && i.ProductId != null select new { i.ProductId, i.Quantity }).ToListAsync()) Undo(x.ProductId, x.Quantity);
             foreach (var x in await (from i in _db.PurchaseReturnItems join r in _db.PurchaseReturns on i.PurchaseReturnId equals r.Id where r.ReturnDate >= end && i.ProductId != null select new { i.ProductId, i.Quantity }).ToListAsync()) Undo(x.ProductId, -x.Quantity);
         }

@@ -4,8 +4,6 @@ namespace ReactPosApi.Services;
 
 public interface ISaleService
 {
-    Task<SaleDto?> ConvertQuotationAsync(int quotationId, ConvertQuotationToSaleDto dto, string biller);
-    Task<SaleDto?> MarkQueuedAsSoldAsync(int saleId, MarkSoldDto? payment = null);
     Task<List<SaleDto>> GetAllAsync(string? source);
     Task<PagedResult<SaleDto>> GetAllPagedAsync(string? source, PaginationQuery query, string? paymentStatus = null);
     Task<SaleDto?> GetByIdAsync(int id);
@@ -29,18 +27,3 @@ public interface ISalesReturnService
     Task<object?> UpdateAsync(int id, CreateSalesReturnDto dto);
     Task<bool> DeleteAsync(int id);
 }
-
-public interface IQuotationService
-{
-    Task<List<QuotationDto>> GetAllAsync(string? product, string? customer, string? status, string? sort);
-    Task<PagedResult<QuotationDto>> GetAllPagedAsync(PaginationQuery query);
-    Task<QuotationDto?> GetByIdAsync(int id);
-    Task<object> CreateAsync(CreateQuotationDto dto);
-    Task<object?> UpdateAsync(int id, CreateQuotationDto dto);
-    Task<bool> DeleteAsync(int id);
-    /// <summary>Saves a new version of the quotation (…_R1, _R2 …); the old version is kept read-only</summary>
-    Task<QuotationDto?> ReviseAsync(int id, CreateQuotationDto dto);
-    /// <summary>All versions of the quotation (original first)</summary>
-    Task<List<QuotationDto>> GetRevisionsAsync(int id);
-}
-

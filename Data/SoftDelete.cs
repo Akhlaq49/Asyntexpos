@@ -20,10 +20,6 @@ public static class SoftDelete
     public static readonly HashSet<Type> HardDeleteTypes = new()
     {
         typeof(Tenant), typeof(RolePermission), typeof(FormFieldConfig), typeof(TenantMenuConfig), typeof(TermsConditions),
-        // product catalogue: unique names per company and composite foreign keys (Database/CatalogSchema.sql)
-        typeof(CatalogTier), typeof(CatalogFamilyTier), typeof(CatalogColor), typeof(CatalogProduct), typeof(CatalogAlias),
-        typeof(CatalogPackageLine), typeof(CatalogDrawingRuleItem),
-        typeof(CatalogImportProfile), typeof(CatalogUnmatched),
         // ledger: derived from the documents and rewritten when they change (Services/LedgerPoster.cs)
         typeof(LedgerAccount), typeof(JournalEntry), typeof(JournalLine), typeof(AccountingSettings),
         // a product's purchase price: one row, rewritten in place

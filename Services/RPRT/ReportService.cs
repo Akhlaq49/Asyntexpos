@@ -20,7 +20,7 @@ public class ReportService : IReportService
 
     public async Task<SalesReportDto> GetSalesReportAsync(DateTime? from, DateTime? to)
     {
-        var sales = await _db.Sales.Include(s => s.Items).Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var sales = await _db.Sales.Include(s => s.Items).ToListAsync();
         if (from.HasValue) sales = sales.Where(s => s.SaleDate >= from.Value).ToList();
         if (to.HasValue) sales = sales.Where(s => s.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -120,7 +120,7 @@ public class ReportService : IReportService
 
     public async Task<List<CustomerReportItemDto>> GetCustomerReportAsync(DateTime? from, DateTime? to)
     {
-        var sales = await _db.Sales.Include(s => s.Payments).Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var sales = await _db.Sales.Include(s => s.Payments).ToListAsync();
         if (from.HasValue) sales = sales.Where(s => s.SaleDate >= from.Value).ToList();
         if (to.HasValue) sales = sales.Where(s => s.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -141,7 +141,7 @@ public class ReportService : IReportService
 
     public async Task<List<CustomerDueReportItemDto>> GetCustomerDueReportAsync(DateTime? from, DateTime? to)
     {
-        var sales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var sales = await _db.Sales.ToListAsync();
         if (from.HasValue) sales = sales.Where(s => s.SaleDate >= from.Value).ToList();
         if (to.HasValue) sales = sales.Where(s => s.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -161,7 +161,7 @@ public class ReportService : IReportService
     public async Task<List<ProductReportItemDto>> GetProductReportAsync(DateTime? from, DateTime? to)
     {
         var products = await _db.Products.ToListAsync();
-        var saleItems = await _db.SaleItems.Include(si => si.Sale).Where(si => si.Sale!.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var saleItems = await _db.SaleItems.Include(si => si.Sale).ToListAsync();
         if (from.HasValue) saleItems = saleItems.Where(si => si.Sale?.SaleDate >= from.Value).ToList();
         if (to.HasValue) saleItems = saleItems.Where(si => si.Sale?.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -222,7 +222,7 @@ public class ReportService : IReportService
         var startDate = from ?? DateTime.UtcNow.AddMonths(-5);
         var endDate = to ?? DateTime.UtcNow;
 
-        var sales = await _db.Sales.Include(s => s.Items).Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var sales = await _db.Sales.Include(s => s.Items).ToListAsync();
         var purchases = await _db.Purchases.ToListAsync();
         var returns = await _db.SalesReturns.ToListAsync();
         var purchaseReturns = await _db.PurchaseReturns.ToListAsync();
@@ -259,7 +259,7 @@ public class ReportService : IReportService
 
     public async Task<AnnualReportDto> GetAnnualReportAsync(int year)
     {
-        var sales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var sales = await _db.Sales.ToListAsync();
         var purchases = await _db.Purchases.ToListAsync();
         var returns = await _db.SalesReturns.ToListAsync();
         var purchaseReturns = await _db.PurchaseReturns.ToListAsync();

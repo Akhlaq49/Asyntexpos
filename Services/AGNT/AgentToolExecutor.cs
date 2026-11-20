@@ -2,7 +2,7 @@ using System.Data;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
+using Microsoft.Data.SqlClient;
 using ReactPosApi.Data;
 
 namespace ReactPosApi.Services;
@@ -48,6 +48,8 @@ public class AgentToolExecutor : IAgentToolExecutor
 
     // ──────────────────── DYNAMIC SQL EXECUTION ────────────────────
 
+    private const int MaxRows = 50;
+
     private async Task<string> ExecuteSqlQuery(JsonElement args, int tenantId)
     {
         var sql = GetStr(args, "query").Trim();
@@ -63,19 +65,15 @@ public class AgentToolExecutor : IAgentToolExecutor
             return ToJson(new { error = "Only SELECT queries are allowed." });
 
         // Block dangerous keywords
-        var forbidden = new[] { "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "EXEC", "EXECUTE", "GRANT", "REVOKE", "CALL" };
+        var forbidden = new[] { "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "EXEC", "EXECUTE", "GRANT", "REVOKE", "CALL", "MERGE", "INTO" };
         foreach (var kw in forbidden)
         {
             if (Regex.IsMatch(normalized, $@"\b{kw}\b", RegexOptions.IgnoreCase))
                 return ToJson(new { error = $"Forbidden keyword '{kw}' detected. Only SELECT queries are allowed." });
         }
 
-        // Enforce LIMIT if not present
-        if (!Regex.IsMatch(sql, @"\bLIMIT\b", RegexOptions.IgnoreCase))
-            sql += " LIMIT 50";
-
         var connStr = _config.GetConnectionString("DefaultConnection");
-        await using var conn = new MySqlConnection(connStr);
+        await using var conn = new SqlConnection(connStr);
         await conn.OpenAsync();
 
         await using var cmd = conn.CreateCommand();
@@ -87,7 +85,7 @@ public class AgentToolExecutor : IAgentToolExecutor
         {
             await using var reader = await cmd.ExecuteReaderAsync();
             var rows = new List<Dictionary<string, object?>>();
-            while (await reader.ReadAsync())
+            while (rows.Count < MaxRows && await reader.ReadAsync())   // at most MaxRows rows go back
             {
                 var row = new Dictionary<string, object?>();
                 for (int i = 0; i < reader.FieldCount; i++)
@@ -137,7 +135,7 @@ public class AgentToolExecutor : IAgentToolExecutor
         var from = ParseDate(GetStr(args, "from"));
         var to = ParseDate(GetStr(args, "to"));
 
-        var sales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var sales = await _db.Sales.ToListAsync();
         if (from.HasValue) sales = sales.Where(s => s.SaleDate >= from.Value).ToList();
         if (to.HasValue) sales = sales.Where(s => s.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -154,7 +152,7 @@ public class AgentToolExecutor : IAgentToolExecutor
     private async Task<string> GetTodaySales()
     {
         var today = DateTime.UtcNow.Date;
-        var sales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued && s.SaleDate >= today && s.SaleDate < today.AddDays(1)).ToListAsync();
+        var sales = await _db.Sales.Where(s => s.SaleDate >= today && s.SaleDate < today.AddDays(1)).ToListAsync();
         return ToJson(new
         {
             date = today.ToString("yyyy-MM-dd"),
@@ -244,7 +242,7 @@ public class AgentToolExecutor : IAgentToolExecutor
         var from = ParseDate(GetStr(args, "from"));
         var to = ParseDate(GetStr(args, "to"));
 
-        var saleItems = await _db.SaleItems.Include(si => si.Sale).Where(si => si.Sale!.Status != ReactPosApi.Models.SaleStatus.Queued).ToListAsync();
+        var saleItems = await _db.SaleItems.Include(si => si.Sale).ToListAsync();
         if (from.HasValue) saleItems = saleItems.Where(si => si.Sale?.SaleDate >= from.Value).ToList();
         if (to.HasValue) saleItems = saleItems.Where(si => si.Sale?.SaleDate <= to.Value.AddDays(1)).ToList();
 
@@ -272,10 +270,10 @@ public class AgentToolExecutor : IAgentToolExecutor
         var today = DateTime.UtcNow.Date;
         var totalProducts = await _db.Products.CountAsync();
         var totalCustomers = await _db.Parties.CountAsync(p => p.Role == "Customer" || p.Role == "customer");
-        var totalSales = await _db.Sales.CountAsync(s => s.Status != ReactPosApi.Models.SaleStatus.Queued);
-        var todaySales = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued && s.SaleDate >= today).SumAsync(s => s.GrandTotal);
+        var totalSales = await _db.Sales.CountAsync();
+        var todaySales = await _db.Sales.Where(s => s.SaleDate >= today).SumAsync(s => s.GrandTotal);
         var lowStock = await _db.Products.CountAsync(p => p.Quantity <= p.QuantityAlert);
-        var totalRevenue = await _db.Sales.Where(s => s.Status != ReactPosApi.Models.SaleStatus.Queued).SumAsync(s => s.GrandTotal);
+        var totalRevenue = await _db.Sales.SumAsync(s => s.GrandTotal);
 
         return ToJson(new
         {

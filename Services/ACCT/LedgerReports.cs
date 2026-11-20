@@ -216,7 +216,7 @@ public class LedgerReports
         decimal Key(string key) => Math.Round(amounts.Where(x => accounts[x.Key].SystemKey == key).Sum(x => x.Value), 2);
         var income = Sum(LedgerRootType.Income); var expense = Sum(LedgerRootType.Expense);
         // gross profit: sales income less returns less the cost of what was sold
-        var grossProfit = -Key(LedgerChart.Sales) - Key(LedgerChart.ShippingIncome) - Key(LedgerChart.InstallationIncome) - Key(LedgerChart.SalesReturns) - Key(LedgerChart.Cogs);
+        var grossProfit = -Key(LedgerChart.Sales) - Key(LedgerChart.ShippingIncome) - Key(LedgerChart.SalesReturns) - Key(LedgerChart.Cogs);
         return new { from, to, basis = cash ? "cash" : "accrual", income = Rows(LedgerRootType.Income), expenses = Rows(LedgerRootType.Expense),
             totalIncome = income, totalExpenses = expense, grossProfit, netProfit = income - expense };
     }
@@ -470,7 +470,7 @@ public class LedgerReports
         var entries = (await _db.StockEntries.Select(e => new { e.ProductId, e.Quantity }).ToListAsync(ct))
             .GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => (decimal)g.Sum(x => x.Quantity));
         var sold = (await (from i in _db.SaleItems join s in _db.Sales on i.SaleId equals s.Id
-                           where s.Status != SaleStatus.Queued && s.Status != "Cancelled" && i.ProductId > 0 select new { i.ProductId, i.Quantity }).ToListAsync(ct))
+                           where s.Status != "Cancelled" && i.ProductId > 0 select new { i.ProductId, i.Quantity }).ToListAsync(ct))
             .GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => (decimal)g.Sum(x => x.Quantity));
         var returned = (await _db.SalesReturnItems.Where(i => i.ProductId != null).Select(i => new { Id = i.ProductId!.Value, i.Quantity }).ToListAsync(ct))
             .GroupBy(x => x.Id).ToDictionary(g => g.Key, g => (decimal)g.Sum(x => x.Quantity));

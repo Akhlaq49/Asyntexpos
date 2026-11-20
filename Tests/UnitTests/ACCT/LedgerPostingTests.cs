@@ -11,18 +11,17 @@ namespace ReactPosApi.UnitTests.ACCT;
 public class LedgerPostingTests
 {
     [Fact]
-    public void Sale_debits_the_customer_and_splits_sales_tax_shipping_installation_and_cost()
+    public void Sale_debits_the_customer_and_splits_sales_tax_shipping_and_cost()
     {
         using var t = new TestDb();
         var pid = Product(t.Db);
         Purchase(t.Db, pid, 10, 100, Day.AddDays(-5));
-        var sale = Sale(t.Db, pid, 4, 250, Day, orderTax: 50, shipping: 20, installation: 30);
+        var sale = Sale(t.Db, pid, 4, 250, Day, orderTax: 50, shipping: 20);
         var e = Entry(t.Db, VoucherType.Sale, sale.Id);
-        Assert.Equal(1100, e[C.Receivable]);
+        Assert.Equal(1070, e[C.Receivable]);
         Assert.Equal(-1000, e[C.Sales]);
         Assert.Equal(-50, e[C.TaxPayable]);
         Assert.Equal(-20, e[C.ShippingIncome]);
-        Assert.Equal(-30, e[C.InstallationIncome]);
         Assert.Equal(400, e[C.Cogs]);                  // 4 x average cost 100
         Assert.Equal(-400, e[C.Stock]);
         AssertAllBalanced(t.Db);
@@ -41,13 +40,11 @@ public class LedgerPostingTests
         Assert.Equal(-200, e[C.Sales]);
     }
 
-    [Theory]
-    [InlineData("Queued")]
-    [InlineData("Cancelled")]
-    public void Queued_or_cancelled_sale_posts_nothing(string status)
+    [Fact]
+    public void Cancelled_sale_posts_nothing()
     {
         using var t = new TestDb();
-        var sale = Sale(t.Db, Product(t.Db), 1, 100, Day, status: status);
+        var sale = Sale(t.Db, Product(t.Db), 1, 100, Day, status: "Cancelled");
         Assert.Empty(Entry(t.Db, VoucherType.Sale, sale.Id));
     }
 
@@ -66,15 +63,6 @@ public class LedgerPostingTests
         var e = Entry(t.Db, VoucherType.SalePayment, p.Id);
         Assert.Equal(300, e[account]);
         Assert.Equal(-300, e[C.Receivable]);
-    }
-
-    [Fact]
-    public void Payment_on_a_queued_sale_is_a_customer_advance()
-    {
-        using var t = new TestDb();
-        var sale = Sale(t.Db, Product(t.Db), 1, 500, Day, status: "Queued");
-        SalePayment(t.Db, sale.Id, 200);
-        Assert.Equal(-200, Balance(t.Db, C.Receivable));     // the customer is owed (credit balance)
     }
 
     [Fact]
